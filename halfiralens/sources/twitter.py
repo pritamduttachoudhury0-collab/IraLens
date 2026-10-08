@@ -121,6 +121,7 @@ class TwitterSource(Source):
             out = run_cli(mapping[op], timeout=90)
             method = "cli:opencli"
         else:
+            assert cli  # guaranteed by the availability check above when no bridge is used
             mapping = {
                 "feed": [cli, "feed", "-n", limit],
                 "tweet": [cli, "tweet", str(params.get("url", "")), "--json"],
@@ -154,7 +155,7 @@ class TwitterSource(Source):
             discovered_from=found_via,
         )
 
-    def read_url(self, url: str, context: "Context") -> Artifact:
+    def read_url(self, url: str, context: "Context", mode: str = "auto") -> Artifact:
         result = self.fetch("tweet", {"url": url}, context)
         return result[0] if isinstance(result, list) and result else result
 

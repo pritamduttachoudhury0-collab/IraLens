@@ -173,8 +173,9 @@ class GitHubSource(Source):
             if not repo:
                 raise ExtractionError(f"operation '{op}' requires 'repo' (owner/name)")
             repo = repo.strip("/")
-            if _REPO_RE.match(repo):
-                repo = "/".join(_REPO_RE.match(repo).groups())
+            repo_match = _REPO_RE.match(repo)
+            if repo_match:
+                repo = "/".join(repo_match.groups())
             if op == "repo":
                 return _repo_artifact(_api_get(f"/repos/{repo}"))
             if op == "readme":
@@ -224,7 +225,7 @@ class GitHubSource(Source):
 
         return super().fetch(op, params, context)
 
-    def read_url(self, url: str, context: "Context") -> Artifact:
+    def read_url(self, url: str, context: "Context", mode: str = "auto") -> Artifact:
         match = _REPO_RE.search(url)
         if not match:
             raise ExtractionError("only github.com/<owner>/<repo> URLs are read natively")

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import socket
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -17,10 +17,15 @@ def isolated_home(tmp_path, monkeypatch):
 
 
 def _has_network() -> bool:
+    """True only when a real HTTPS response comes back.
+
+    A bare TCP connect is not enough: sandboxes can accept the TCP connection
+    through a proxy while HTTPS fails, which made live tests run and fail.
+    """
     try:
-        socket.create_connection(("example.com", 443), timeout=3).close()
-        return True
-    except OSError:
+        with urllib.request.urlopen("https://example.com/", timeout=5) as resp:
+            return 200 <= resp.status < 400
+    except (OSError, ValueError):
         return False
 
 

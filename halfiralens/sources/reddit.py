@@ -86,7 +86,7 @@ class RedditSource(Source):
             return self.read_url(params["url"], context)
         return super().fetch(op, params, context)
 
-    def read_url(self, url: str, context: "Context") -> Artifact:
+    def read_url(self, url: str, context: "Context", mode: str = "auto") -> Artifact:
         st = opencli_status()
         if st.installed and st.ready and _POST_RE.search(url):
             out = run_cli(["opencli", "reddit", "post", url, "-f", "yaml"], timeout=60)

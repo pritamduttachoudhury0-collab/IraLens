@@ -13,7 +13,7 @@ def test_registry_shape():
     for source in ALL_SOURCES:
         assert source.name and source.description
         assert isinstance(source.operations, dict)
-        for op, spec in source.operations.items():
+        for _op, spec in source.operations.items():
             assert isinstance(spec, dict) and "description" in spec
 
 

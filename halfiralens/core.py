@@ -273,7 +273,6 @@ class HalfIraLens:
             try:
                 health = s.health(self._context)
             except Exception as exc:
-                health = None
                 out[s.name] = {"status": "error", "message": public_message(exc)}
                 continue
             out[s.name] = health.to_dict()

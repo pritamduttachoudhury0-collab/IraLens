@@ -215,10 +215,10 @@ class BrowserEngine:
             while True:
                 try:
                     payload = deadline_queue.get(timeout=timeout)
-                except queue.Empty:
+                except queue.Empty as exc:
                     raise errors.OperationTimeoutError(
                         f"browser engine did not respond within {timeout}s"
-                    )
+                    ) from exc
                 if payload.get("id") != req_id:
                     continue  # notification or stale frame
                 if "error" in payload:

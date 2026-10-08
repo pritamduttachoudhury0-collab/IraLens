@@ -11,9 +11,10 @@ Ordered by how much they can mislead a user. Read this before relying on output.
 2. **Bing is experimental.** Its parser mirrors the `li.b_algo` structure from a
    fixture, and has never run against live Bing. Use `--engine duckduckgo` if
    Bing misbehaves.
-3. **Live tests fail here.** Three `test_integration_live` tests fail because the
-   sandbox blocks their hosts. The `@live` probe is a TCP connect, which succeeds
-   through the proxy. See DECISIONS D-000.
+3. **Live tests skip here.** The `live` probe now makes a real HTTPS request
+   (DECISIONS D-052). In this sandbox it fails, so the live tests skip with a
+   reason. They have never run to completion in this environment, so their
+   assertions against live sites are unverified.
 4. **Browser-engine behavior was not run.** The engine is not installed in this
    sandbox. `install-engine` was not executed. The engine release URL and asset
    names were checked against the GitHub API (release v0.2.4 exists, and the
@@ -45,8 +46,10 @@ Ordered by how much they can mislead a user. Read this before relying on output.
     unsupported on engines that cannot apply them (reported per engine).
 12. **Exa filters are post-filtered.** The bridge tool is called with only the
     arguments known to work, so domain and date filters do not reach Exa.
-13. **Empty results are no longer an error.** `search()` returns `[]` when every
-    engine answered with no hits. Before, it raised. This is documented in D-012.
+13. **Empty results are not an error; total failure is.** `search()` returns `[]`
+    when every engine answered with no hits (D-012). It still raises
+    `SourceUnavailableError` when every engine failed, as the baseline did.
+    `search_api()` reports the same case in its `outcomes` instead of raising.
 14. **Cross-engine agreement needs two engines.** With one engine configured, the
     agreement factor is always 1.0 and tells you nothing.
 
@@ -67,8 +70,21 @@ Ordered by how much they can mislead a user. Read this before relying on output.
     for the adapted Agent Reach code.
 20. **`xiaoyuzhou` is not implemented.** `ARCHITECTURE.md` used to list it as a
     source. It has no module in this bundle.
-21. **No GitHub PR or push to `main`.** Work is on `arena/a44d3b38-iralens`
-    (DECISIONS D-002).
+21. **Not pushed to `main`.** Work is on `arena/a44d3b38-iralens`, and a PR
+    into `main` is the route (DECISIONS D-002, D-055).
 22. **Web-search and specialized-source tests cover offline behavior only.**
     Parsers, filters, ranking, and the pipeline are tested offline with fakes and
     fixtures. End-to-end behavior against the live web is not tested.
+
+## Not built in this release
+
+23. **No HTTP API.** Access is through the Python facade, the CLI, and the MCP
+    server over stdio. See DECISIONS D-053.
+24. **No Docker image.** Docker is not available in the build sandbox, so an image
+    could not be built or tested. See DECISIONS D-054.
+25. **Windows setup is untested.** `scripts/setup.ps1` was written without a
+    Windows machine. `scripts/setup.sh` was run here (Linux, Python 3.11). See D-054.
+26. **Not published to PyPI.** Install from a checkout (README).
+27. **No CI workflow.** The offline checks run locally only (see README and AGENTS.md).
+28. **Packaging metadata warnings.** setuptools warns that the table form of
+    `project.license` is deprecated, with a 2027 cut-off. This is not a build failure.

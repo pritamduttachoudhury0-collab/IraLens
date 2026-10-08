@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 from datetime import date
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from ..search.reformulate import STOPWORDS
 from ..search.urls import domain_of
@@ -102,7 +102,7 @@ def _measurements(sentence: str) -> List[str]:
     return out
 
 
-def extract_claims(question: str, text: str, limit: int = 10) -> List[Dict[str, object]]:
+def extract_claims(question: str, text: str, limit: int = 10) -> List[Dict[str, Any]]:
     """Sentences that mention the question's terms, as claim candidates."""
     q = question_terms(question)
     found: List[Dict[str, object]] = []

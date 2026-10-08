@@ -22,11 +22,19 @@ The Internet       ← search engines, web pages, browsers, platforms
 
 ## Install
 
+The package is **not yet published to PyPI**, so install from a checkout:
+
 ```bash
-pip install half-iralens        # core system (search, reading, RSS, GitHub, V2EX, browser…)
-halfiralens install-engine      # one-time: the local headless browser engine
+git clone https://github.com/pritamduttachoudhury0-collab/IraLens.git
+cd IraLens
+./scripts/setup.sh              # Linux/macOS: creates .venv, installs, runs a health check
+# Windows (UNTESTED, see scripts/setup.ps1): .\scripts\setup.ps1
+source .venv/bin/activate
+halfiralens install-engine      # optional: the local headless browser engine
 halfiralens doctor              # see exactly what is available right now
 ```
+
+Plain `pip install -e .` also works. `./scripts/setup.sh --no-dev` skips the test tools.
 
 Optional capabilities unlock as their (free) tools appear — `yt-dlp` for
 YouTube, `gh` for private GitHub repos and code search, the desktop browser
@@ -110,7 +118,7 @@ halfiralens mcp                                    # start the MCP server
 | **Specialized sources** | GitHub, YouTube, Twitter/X, Reddit, Bilibili, XiaoHongShu, V2EX, Xueqiu, Boss直聘, LinkedIn, Facebook, Instagram, RSS, podcast transcription — each with honest health status and multi-backend fallbacks |
 | **Session** | One session across everything: history, discovered URLs with provenance, and browser login state that survives restarts |
 | **Data model** | Every retrieval is an `Artifact`: title, url, source, content, source-specific metadata, retrieval method, timestamp, discovered_from — content always flagged untrusted |
-| **Errors** | One taxonomy: page_unavailable, navigation_failed, source_unavailable, authentication_required, operation_unsupported, timeout, extraction_failed, blocked_by_security_policy, browser_engine_unavailable, session_state_error |
+| **Errors** | One taxonomy: page_unavailable, navigation_failed, source_unavailable, authentication_required, operation_unsupported, timeout, extraction_failed, blocked_by_security_policy, browser_engine_unavailable, session_state_error, invalid_input (MCP: missing or malformed arguments) |
 
 ## Security
 
@@ -149,6 +157,11 @@ attributions and licenses of the incorporated open-source components.
 
 ## Scope boundary
 
-Half IraLens stops at access. It does not rank sources, score evidence,
-detect contradictions, plan research, or synthesize reports — that is the
-future IraLens intelligence layer, which will consume exactly this facade.
+Full IraLens = the access layer (search, reading, browsing, specialized sources)
+plus the research layer built on it (planning, evidence evaluation, contradiction
+candidates, synthesis, provenance). The research layer is deterministic by default
+and uses no model. Its outputs are leads with stated limits, not verified answers.
+See `docs/RESEARCH.md` and `KNOWN_LIMITATIONS.md`.
+
+Not in this release: an HTTP API, a Docker image, and a published PyPI package
+(see DECISIONS D-053 to D-054).

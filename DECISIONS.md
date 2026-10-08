@@ -200,3 +200,45 @@ it was the owner's explicit choice from the options offered. The copyright line
 The MIT attribution for the adapted Agent Reach code is kept in `NOTICE`, as its
 terms require.
 
+## Release hardening
+
+Numbers D-037 to D-039 were planned for this work and never assigned. They are
+left unused rather than reused, so no entry changes meaning.
+
+Addendum to D-000: the live-probe weakness recorded above is fixed by D-052.
+
+**D-052 Live probe is a real HTTPS request.** `tests/conftest.py` now calls
+`urlopen("https://example.com/")` and counts the network as available only on a
+2xx/3xx response. The bare TCP connect let the sandbox proxy pass the probe while
+HTTPS failed, so live tests ran and failed. Now they skip with a reason. Live
+tests still need a real network to be verified.
+
+**D-053 No HTTP API in this release.** The brief asked for one. It is not built,
+because a server with auth, request limits, and error mapping needs its own
+design and tests, and none were done. The facade, CLI, and MCP stdio server are
+the supported interfaces. Revisit as a separate phase.
+
+**D-054 Setup: POSIX tested, Windows not; no Docker image.** `scripts/setup.sh`
+was run here in a fresh virtualenv on Linux (Python 3.11): install, `--version`,
+and `doctor` pass. `scripts/setup.ps1` was written but has not been run on Windows,
+so it is labeled UNTESTED in the file and in the README. Docker is not available in
+the build sandbox, so no image was built. The brief asked for one; it is deferred.
+
+**D-055 Branch and PR.** The owner asked for a push to `main`. The session is fixed
+to `arena/a44d3b38-iralens`, so the work is pushed there and a pull request into
+`main` is opened. No direct push to `main` is made.
+
+**D-056 Type and lint fixes are behavior-neutral except one bug.** mypy is clean on
+`halfiralens` (59 files). Ruff `E9,F,B` is clean. The real bug was
+`ProvenanceGraph.node()` receiving `kind` twice whenever a contradiction was
+recorded. That crashed any research run with contested claims. The attribute is
+renamed to `contradiction_kind`, and a regression test runs the full planner
+into that path. The other changes are type annotations and one signature fix:
+`Source.read_url` now takes `mode` in the base class and every override, as
+core.py already assumed. RSS's `limit` moved after `mode`; its only caller passes
+it by keyword.
+
+**D-057 MCP errors distinguish caller mistakes.** A missing required argument or a
+malformed value now returns `invalid_input` (new `InvalidInputError`), not
+`internal_error`. `halfiralens --version` was added as a top-level flag. The
+`version` subcommand is kept.

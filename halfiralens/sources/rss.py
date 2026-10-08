@@ -49,7 +49,7 @@ class RSSSource(Source):
             raise ExtractionError("rss read requires 'url'")
         return self.read_url(url, context, limit=int(params.get("limit") or 20))
 
-    def read_url(self, url: str, context: "Context", limit: int = 20) -> Artifact:
+    def read_url(self, url: str, context: "Context", mode: str = "auto", limit: int = 20) -> Artifact:
         import feedparser
         import requests
 

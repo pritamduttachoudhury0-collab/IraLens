@@ -79,7 +79,7 @@ class XiaoHongShuSource(Source):
             hint="install the desktop browser bridge, or configure the xhs MCP server",
         )
 
-    def read_url(self, url: str, context: "Context") -> Artifact:
+    def read_url(self, url: str, context: "Context", mode: str = "auto") -> Artifact:
         result = self.fetch("note", {"url": url}, context)
         return result[0] if isinstance(result, list) and result else result
 

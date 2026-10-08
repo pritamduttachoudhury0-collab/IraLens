@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from . import __version__
 from .core import HalfIraLens
@@ -147,6 +147,15 @@ class MCPServer:
                 "content": [{"type": "text", "text": json.dumps(exc.to_dict(), ensure_ascii=False)}],
                 "isError": True,
             })
+        except (KeyError, ValueError, TypeError) as exc:
+            # Missing or malformed arguments are caller errors, not server faults.
+            message = (f"missing required argument: {exc.args[0]}" if isinstance(exc, KeyError)
+                       else public_message(exc)[:500])
+            return self._ok(msg_id, {
+                "content": [{"type": "text", "text": json.dumps(
+                    {"error": "invalid_input", "message": message[:500]}, ensure_ascii=False)}],
+                "isError": True,
+            })
         except Exception as exc:
             return self._ok(msg_id, {
                 "content": [{"type": "text", "text": json.dumps(
@@ -231,9 +240,10 @@ class MCPServer:
             "tab_switch": lambda: hil.tab_switch(args["tab_id"]),
             "tab_close": lambda: hil.tab_close(args["tab_id"]),
             "session_state": hil.session_state,
-            "session_reset": lambda: (hil.reset_session(), {"reset": True})[1],
-            "configure": lambda: (hil.configure(args["key"], args["value"]), {"configured": args["key"]})[1],
-            "close": lambda: (hil.close(), {"closed": True})[1],
+            "session_reset": lambda: _run_then(hil.reset_session, {"reset": True}),
+            "configure": lambda: _run_then(lambda: hil.configure(args["key"], args["value"]),
+                                           {"configured": args["key"]}),
+            "close": lambda: _run_then(hil.close, {"closed": True}),
         }
         handler = handlers.get(name)
         if handler is None:
@@ -251,6 +261,12 @@ class MCPServer:
     @staticmethod
     def _error(msg_id: Any, code: int, message: str) -> Dict[str, Any]:
         return {"jsonrpc": "2.0", "id": msg_id, "error": {"code": code, "message": message}}
+
+
+def _run_then(action: Callable[[], None], result: Dict[str, Any]) -> Dict[str, Any]:
+    """Run a facade action that returns nothing, then report a fixed result."""
+    action()
+    return result
 
 
 def main() -> None:

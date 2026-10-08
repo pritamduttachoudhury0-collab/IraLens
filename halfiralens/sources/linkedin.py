@@ -100,7 +100,7 @@ class LinkedInSource(Source):
             content_format="json", retrieval_method="mcp:linkedin",
         )
 
-    def read_url(self, url: str, context: "Context") -> Artifact:
+    def read_url(self, url: str, context: "Context", mode: str = "auto") -> Artifact:
         try:
             markdown = read_with_static_reader(url)
         except Exception as exc:

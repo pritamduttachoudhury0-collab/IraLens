@@ -133,7 +133,7 @@ class BilibiliSource(Source):
             )
         return super().fetch(op, params, context)
 
-    def read_url(self, url: str, context: "Context") -> Artifact:
+    def read_url(self, url: str, context: "Context", mode: str = "auto") -> Artifact:
         return self.fetch("video", {"id": url}, context)
 
     @staticmethod

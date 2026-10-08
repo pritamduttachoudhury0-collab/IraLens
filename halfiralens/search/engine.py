@@ -184,7 +184,7 @@ class SearchEngine:
 
     @staticmethod
     def _post_filter(hits: List[SearchHit], f: SearchFilters):
-        report = {"applied_post": [], "date_unknown_kept": 0, "dropped": 0}
+        report: Dict[str, Any] = {"applied_post": [], "date_unknown_kept": 0, "dropped": 0}
         if f.include_domains:
             report["applied_post"].append("include_domains")
         if f.exclude_domains:
@@ -228,7 +228,7 @@ class SearchEngine:
         for group in groups:
             hits = group.hits
             engines = sorted({h.engine for h in hits})
-            ranks = {}
+            ranks: Dict[str, int] = {}
             for h in hits:
                 ranks[h.engine] = min(h.position, ranks.get(h.engine, h.position))
             best_rank = min(ranks.values())

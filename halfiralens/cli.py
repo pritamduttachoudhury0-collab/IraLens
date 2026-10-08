@@ -62,6 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Half IraLens — one unified Internet-access system: search, read, browse, and specialized sources.",
     )
     parser.add_argument("--json", action="store_true", help="force JSON output")
+    parser.add_argument("--version", action="version", version=f"half-iralens {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("search", help="search the open web")

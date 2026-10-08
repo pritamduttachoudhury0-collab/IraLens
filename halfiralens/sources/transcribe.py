@@ -95,7 +95,7 @@ class TranscribeSource(Source):
             retrieval_method=f"api:{provider}-whisper",
         )
 
-    def read_url(self, url: str, context: "Context") -> Artifact:
+    def read_url(self, url: str, context: "Context", mode: str = "auto") -> Artifact:
         return self.fetch("transcribe", {"url": url}, context)
 
     # ------------------------------------------------------------- helpers

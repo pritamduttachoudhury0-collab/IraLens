@@ -378,3 +378,19 @@ def test_cli_and_mcp_expose_research_with_untrusted_tag():
     assert args.rounds == 2 and args.read_top == 0
     names = {t["name"] for t in TOOLS}
     assert "research" in names and "research" in _UNTRUSTED_TOOLS and "search_api" in _UNTRUSTED_TOOLS
+
+
+def test_contradiction_is_reported_end_to_end_without_crashing():
+    """Regression: a numeric mismatch made ProvenanceGraph.node() receive `kind`
+    twice and crash the whole research run."""
+    table = {"q1": [
+        rr("https://a.gov/x", "Solar panel efficiency", "Solar panel efficiency reached 22 percent in 2025 tests."),
+        rr("https://b.edu/y", "Solar panel efficiency", "Solar panel efficiency reached 18 percent in 2025 tests."),
+    ]}
+    report = planner(make_search(table), expander=Scripted([[{"text": "q1", "strategy": "x"}]])).run(
+        Q, ResearchOptions(max_rounds=1, min_sources=5))
+    assert [c["kind"] for c in report.contradictions] == ["numeric_mismatch"]
+    nodes = {n["id"]: n for n in report.provenance["nodes"]}
+    contra = [n for n in nodes.values() if n["kind"] == "contradiction"]
+    assert contra and contra[0]["contradiction_kind"] == "numeric_mismatch"
+    assert any(s["status"] == "contested" for s in report.statements)

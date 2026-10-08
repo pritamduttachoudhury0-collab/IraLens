@@ -254,7 +254,7 @@ class ResearchPlanner:
             )
         claims: List[Claim] = []
         for src in sources.values():
-            for item in extract_claims(question, src.content or src.snippet):
+            for item in extract_claims(question, src.content or src.snippet):  # type: Dict[str, Any]
                 text = str(item["text"])
                 claims.append(Claim(
                     id=f"c{len(claims) + 1}",
@@ -345,7 +345,7 @@ class ResearchPlanner:
             for cid in st.claim_ids:
                 g.edge(f"claim:{cid}", f"stmt:{st.id}", "supports")
         for x in contradictions:
-            g.node(f"x:{x.id}", "contradiction", kind=x.kind, explanation=x.explanation)
+            g.node(f"x:{x.id}", "contradiction", contradiction_kind=x.kind, explanation=x.explanation)
             for cid in x.claim_ids:
                 g.edge(f"claim:{cid}", f"x:{x.id}", "conflicts_with")
         return g

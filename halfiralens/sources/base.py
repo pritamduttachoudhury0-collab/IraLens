@@ -40,7 +40,7 @@ class SourceHealth:
         return data
 
 
-class Source(ABC):
+class Source(ABC):  # noqa: B024 - concrete defaults; subclasses override what they support
     """One specialized Internet source with unified operations.
 
     Subclasses declare identity and capability with plain class attributes
@@ -71,7 +71,7 @@ class Source(ABC):
             hint=f"supported: {', '.join(sorted(self.operations)) or 'none'}",
         )
 
-    def read_url(self, url: str, context: "Context") -> Artifact:
+    def read_url(self, url: str, context: "Context", mode: str = "auto") -> Artifact:
         raise OperationUnsupportedError(f"source '{self.name}' cannot read arbitrary URLs")
 
     # ------------------------------------------------------------- helpers

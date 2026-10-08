@@ -114,7 +114,7 @@ class V2EXSource(Source):
             )
         return super().fetch(op, params, context)
 
-    def read_url(self, url: str, context: "Context") -> Artifact:
+    def read_url(self, url: str, context: "Context", mode: str = "auto") -> Artifact:
         match = _TOPIC_RE.search(url)
         if not match:
             raise ExtractionError("only v2ex.com/t/<id> topic URLs can be read natively")

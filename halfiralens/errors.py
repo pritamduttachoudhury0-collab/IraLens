@@ -36,6 +36,12 @@ class HalfIraLensError(Exception):
         return text
 
 
+class InvalidInputError(HalfIraLensError):
+    """The caller supplied a missing or malformed argument."""
+
+    error_type = "invalid_input"
+
+
 class PageUnavailableError(HalfIraLensError):
     """The page could not be retrieved (404/403/network refused/empty)."""
 
@@ -110,6 +116,7 @@ def classify_error(
         "source_unavailable": SourceUnavailableError,
         "authentication_required": AuthRequiredError,
         "operation_unsupported": OperationUnsupportedError,
+        "invalid_input": InvalidInputError,
         "timeout": OperationTimeoutError,
         "extraction_failed": ExtractionError,
         "blocked_by_security_policy": SecurityBlockedError,

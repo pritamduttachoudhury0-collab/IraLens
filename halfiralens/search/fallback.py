@@ -12,6 +12,7 @@ not retried, because retrying them makes the block worse.
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping
 
@@ -39,6 +40,11 @@ class ChainResult:
     outcomes: List[EngineOutcome] = field(default_factory=list)
     fallbacks: List[Dict[str, str]] = field(default_factory=list)
     succeeded: List[str] = field(default_factory=list)
+
+
+def _run_backend(backend: SearchBackend, query: str, filters: SearchFilters, limit: int, context: Any) -> Any:
+    """One backend call; a named function so retries can be partially applied."""
+    return backend.search(backend.build_query(query, filters), filters, limit, context)
 
 
 def run_chain(
@@ -69,7 +75,7 @@ def run_chain(
             continue
         try:
             hits, attempts = call_with_retries(
-                lambda b=backend: b.search(backend.build_query(query, filters), filters, limit, context),
+                functools.partial(_run_backend, backend, query, filters, limit, context),
                 policy,
                 should_retry=is_transient,
                 **({"sleep": sleep} if sleep else {}),
