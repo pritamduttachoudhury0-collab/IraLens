@@ -36,6 +36,46 @@ halfiralens doctor              # see exactly what is available right now
 
 Plain `pip install -e .` also works. `./scripts/setup.sh --no-dev` skips the test tools.
 
+## For AI agents (Claude Code, Codex, OpenClaw, any terminal agent)
+
+Two ways to call IraLens. Both need the setup above. Use the absolute path to
+`.venv/bin/halfiralens` if the agent does not activate the venv.
+
+**1. Shell (works with any agent that can run commands).** Every command accepts
+`--json` (before or after the subcommand). Output is JSON on stdout. Untrusted-content
+notices go to stderr.
+
+```bash
+cd /path/to/IraLens
+.venv/bin/halfiralens --version
+.venv/bin/halfiralens --json doctor                                  # what works right now
+.venv/bin/halfiralens --json research "your question" --rounds 2     # cited report, stop_reason, trace
+.venv/bin/halfiralens --json search-api "your query" --cache bypass  # ranked results + per-engine outcomes
+.venv/bin/halfiralens --json fetch github search_repos query="headless browser" limit=5   # live GitHub data
+.venv/bin/halfiralens --json read https://example.com                # one page, static read
+```
+
+**2. MCP (any MCP client that supports stdio servers).** Generic configuration:
+
+```json
+{ "mcpServers": { "half-iralens": { "command": "/ABS/PATH/IraLens/.venv/bin/halfiralens", "args": ["mcp"] } } }
+```
+
+The server exposes 49 tools, including `research`, `search_api`, `search`, `read`,
+`source_fetch`, and `doctor`. Tool errors are JSON with an `error` type and a `message`.
+
+**Read the output correctly.** `research` returns leads, not verified answers. Check
+`stop_reason`, `limitations`, and each statement's `status` and `source_ids`. If the
+web search engines are unreachable, `stop_reason` is `search_failed` and the command
+still exits 0; read the JSON, do not assume success from the exit code.
+
+No platform-specific plugin or marketplace integration is provided. Any agent that can
+run a shell command or start an MCP stdio server can use IraLens; the two blocks above
+are the entire integration.
+
+**Verify an install in one command:** `.venv/bin/python scripts/verify_interfaces.py`
+(runs the CLI, Python, and MCP checks; needs `api.github.com` for the live checks).
+
 Optional capabilities unlock as their (free) tools appear — `yt-dlp` for
 YouTube, `gh` for private GitHub repos and code search, the desktop browser
 bridge for login-walled platforms, `mcporter`+Exa for semantic search.
@@ -154,6 +194,12 @@ pytest tests/          # unit tests run offline; live tests auto-skip
 
 `ARCHITECTURE.md` documents the internal fusion design; `NOTICE` carries the
 attributions and licenses of the incorporated open-source components.
+
+## License
+
+Apache License 2.0 (`LICENSE`). `NOTICE` carries the copyright line and the
+attributions for incorporated open-source components, including the MIT-licensed
+code adapted from Agent Reach. See `LICENSE_AUDIT.md` for the component audit.
 
 ## Scope boundary
 

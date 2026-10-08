@@ -40,7 +40,8 @@ Unknown option keys are rejected with the list of allowed keys.
    the planner controls the queries. Failures are recorded, not dropped.
 3. **Read.** The top unread sources are fetched with the static reader. Read
    failures fall back to snippets and are reported.
-4. **Analyze.** Claims are sentences that mention question terms. Contradiction
+4. **Analyze.** Page markup (HTML, markdown links, code, tables) is stripped first.
+   Claims are the remaining sentences that mention question terms. Contradiction
    candidates are compared across domains. Statements are built per subject cluster.
 5. **Stop.** One of the reasons below. The loop stops as soon as one applies.
 

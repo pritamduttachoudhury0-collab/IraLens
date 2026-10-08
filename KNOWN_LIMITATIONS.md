@@ -66,8 +66,8 @@ Ordered by how much they can mislead a user. Read this before relying on output.
 
 ## Packaging and project state
 
-19. **License is Apache-2.0** (DECISIONS D-051). `NOTICE` keeps the MIT attribution
-    for the adapted Agent Reach code.
+19. **License is Apache-2.0**, confirmed by the owner (DECISIONS D-051, D-061).
+    `NOTICE` keeps the MIT attribution for the adapted Agent Reach code.
 20. **`xiaoyuzhou` is not implemented.** `ARCHITECTURE.md` used to list it as a
     source. It has no module in this bundle.
 21. **Not pushed to `main`.** Work is on `arena/a44d3b38-iralens`, and a PR
@@ -86,5 +86,33 @@ Ordered by how much they can mislead a user. Read this before relying on output.
     Windows machine. `scripts/setup.sh` was run here (Linux, Python 3.11). See D-054.
 26. **Not published to PyPI.** Install from a checkout (README).
 27. **No CI workflow.** The offline checks run locally only (see README and AGENTS.md).
-28. **Packaging metadata warnings.** setuptools warns that the table form of
-    `project.license` is deprecated, with a 2027 cut-off. This is not a build failure.
+28. **Packaging metadata warnings: resolved** (D-061). The SPDX license form is
+    used and the build requires setuptools 77 or newer.
+
+## Found and verified at the release gate
+
+29. **Live research was verified only over GitHub content.** The sandbox cannot
+    reach web search engines or the web reader. Public `research` ran and reported
+    `search_failed` (zero sources). The real-data run used GitHub's public
+    operations (DECISIONS D-064). Contradiction candidates did not occur in any
+    live run. The contradiction path is covered by tests on constructed evidence,
+    not by live data.
+30. **GitHub corpus needs keyword queries.** Repository search requires every term
+    to match, so a long question returns no results (D-065).
+31. **`research` exits 0 when every search failed.** The failure is reported in
+    `stop_reason` (`search_failed`) and in `limitations`. Agents must read the JSON;
+    the exit code does not signal it.
+32. **Search failure still raises from `search()`.** `search()` raises
+    `SourceUnavailableError` when every engine fails, as the baseline did. Use
+    `search_api()` for structured outcomes.
+33. **Browser engine download is not checksum-verified.** The release asset is
+    fetched over HTTPS. This build does not verify a published checksum, because
+    none was checked here. The binary was not downloaded or run.
+34. **Tested on Python 3.11 only** (Debian-based sandbox). `requires-python` says
+    3.10 or newer; 3.10 has not been run.
+35. **Bandit findings reviewed, not fixed.** Low findings are `assert` statements,
+    `try/except/pass`, and `subprocess` calls with fixed arguments. The Medium
+    `urlopen` findings are covered in D-063.
+36. **Redirects are not re-checked.** A redirect from a public host to a private
+    address is followed; the private-address check is literal (item 17).
+37. **Windows setup is untested** (item 25 still applies).

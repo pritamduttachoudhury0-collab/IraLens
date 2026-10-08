@@ -19,7 +19,7 @@ through the sandbox proxy, but HTTPS requests to those hosts fail (curl returns 
 So the probe passed and these tests ran instead of skipping. This is a harness weakness
 to fix (probe with an HTTP request, not a TCP connect). Recorded here, not hidden.
 
-**D-001 License conflict (resolved by D-051).**
+**D-001 License conflict (resolved by D-051).**  *(Resolved by D-051 and D-061.)*
 The repo's `LICENSE` is MIT (`Copyright (c) 2026 Pritam Dutta Choudhury`). The
 bundle's `pyproject.toml`/`NOTICE` declare Apache-2.0. I kept the repo's MIT
 `LICENSE` file untouched and did not write the bundle's Apache text. The
@@ -242,3 +242,70 @@ it by keyword.
 malformed value now returns `invalid_input` (new `InvalidInputError`), not
 `internal_error`. `halfiralens --version` was added as a top-level flag. The
 `version` subcommand is kept.
+
+## Release gate (final verification before merge)
+
+**D-058 Claims are prose, not page markup.** The first live run over real GitHub
+READMEs produced claims such as `# [PhantomJS](...)`, `<p><strong>`, a `curl`
+command, and a table row. `split_sentences` now strips fenced code, HTML, image
+and link syntax (keeping link text), heading and list markers, emphasis, table
+rows, bare URLs, and shell-like lines, and drops fragments that are mostly symbols.
+Regression test: `test_claims_are_prose_not_markup`. The old extractor produced
+three markup-bearing sentences on that input; the new one produces none.
+
+**D-059 `--json` works before and after the subcommand.** Agents write
+`halfiralens research "q" --json`. That was an argparse error. Every subcommand now
+inherits the flag through a parent parser with `default=SUPPRESS`, so the
+top-level default still applies when the flag is absent.
+
+**D-060 JSON output serializes results as objects.** `fetch ... --json` (and any
+command returning Artifacts) printed Python reprs such as
+`"Artifact(title='...')"`, which agents cannot parse. JSON output now converts
+objects through `to_dict()` recursively. The untrusted-content notice goes to
+stderr so stdout stays pure JSON. Regression test: `test_json_output_serializes_artifacts_as_objects`.
+
+**D-061 License: Apache-2.0, confirmed by the owner.** At the release gate the
+owner confirmed Apache-2.0 as intentional. This resolves D-001. `LICENSE` is the
+full Apache-2.0 text. `pyproject.toml` uses the SPDX form
+`license = "Apache-2.0"` with `license-files` under `[project]`, which needs
+setuptools 77 or newer, so the build requirement is `setuptools>=77`. This removes
+the deprecation warnings from the earlier build. `NOTICE` keeps the copyright
+line and the MIT attribution for the adapted Agent Reach code. The owner decision
+is recorded in D-051.
+
+**D-062 Clean installs include the lint and type tools.** The `dev` extra had only
+pytest. A fresh `./scripts/setup.sh` therefore could not run the documented
+`ruff` and `mypy` commands. The extra now lists `ruff` and `mypy`. Verified: a
+fresh clone plus setup.sh gives working ruff and mypy.
+
+**D-063 Security scan: triage and one hardening change.** Bandit on
+`halfiralens/` (`-lll`) reported one High finding: `extractall` in the engine
+installer. The tar path already uses `filter="data"`. The zip path now validates
+every member name (`check_archive_member`) before extraction, and rejects
+absolute, traversing, or drive-qualified names. The remaining zip call carries
+`# nosec B202` with the reason. The five Medium findings are `urlopen` calls
+(`B310`). Each target is checked: web reads go through `normalize_public_http_url`
+(http and https only), V2EX is host- and scheme-checked, and the GitHub and
+opencli targets are constants. pip-audit reports no known vulnerabilities in the
+dependency set. Not done: the engine download has no checksum verification,
+because the release does not publish one that was checked here (KNOWN_LIMITATIONS).
+
+**D-064 Real-data verification uses public GitHub operations.** The sandbox can
+reach api.github.com and github.com, but not web search engines or the web reader.
+Public web research was therefore run as far as the network allowed: the CLI
+returned `stop_reason: search_failed` with zero sources, and the report says so.
+To exercise the research code on real content, `scripts/live_github_research.py`
+feeds the real planner with the public `fetch("github", "search_repos")` and
+`fetch("github", "readme")` operations. Everything after retrieval is the real
+research code, and the run is replayed offline to confirm the report reproduces.
+This is not a public-web test, and the docs do not describe it as one.
+
+**D-065 Keyword queries for the GitHub corpus.** GitHub repository search requires
+every term to match. A long natural-language question returns no repositories
+(verified: "headless browser AI agents" returned 2, "headless browser automation AI
+agents" returned 0). The planner does not split questions, so live GitHub runs
+need keyword questions. Recorded as a limitation; not changed in the planner.
+
+**D-066 Merge policy.** PR #1 is merged into `main` only after the gates pass. The
+merge is a GitHub merge of the session branch, not a direct push to `main`, and
+it is a merge commit. No force-push, no history rewrite, and the branch is kept.

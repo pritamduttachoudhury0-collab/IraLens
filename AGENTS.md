@@ -21,7 +21,13 @@ Full IraLens adds a deterministic research layer (`halfiralens/research/`).
 ```
 
 Run the offline suite before and after a change. At the release commit it gives
-163 passed, 15 skipped (live tests skip without HTTPS access).
+181 passed, 15 skipped (live tests skip without HTTPS access). Check the count
+yourself: `pytest -q`.
+
+To verify the public interfaces end to end (CLI, Python, MCP):
+`.venv/bin/python scripts/verify_interfaces.py`. To exercise the research code on
+real GitHub content: `.venv/bin/python scripts/live_github_research.py "headless browser"`.
+Neither proves web research works; see KNOWN_LIMITATIONS.md.
 
 ## Rules
 

@@ -394,3 +394,25 @@ def test_contradiction_is_reported_end_to_end_without_crashing():
     contra = [n for n in nodes.values() if n["kind"] == "contradiction"]
     assert contra and contra[0]["contradiction_kind"] == "numeric_mismatch"
     assert any(s["status"] == "contested" for s in report.statements)
+
+
+def test_claims_are_prose_not_markup():
+    """Regression: live READMEs produced claims such as '# [PhantomJS](...)',
+    '<p><strong>...', a curl command, and a table row. Claims must be prose."""
+    from halfiralens.research.evidence import split_sentences
+
+    text = (
+        "# [PhantomJS](http://phantomjs.org) - Scriptable Headless WebKit\n"
+        "<p><strong>Anti-detection browser server for AI agents, powered by Camoufox</strong></p>\n"
+        "curl -L -o lightpanda https://github.com/lightpanda-io/browser/releases/download/nightly/x && \\\n"
+        "| Metric | Lightpanda | Headless Chrome | Difference |\n"
+        "The headless browser runs in roughly forty megabytes of memory when it is idle.\n"
+        "- **Pure headless mode** lets the browser run on Linux servers without a display server.\n"
+        "![badge](https://img.shields.io/x.svg) Read the full docs at [the project site](https://example.com/docs) today.\n"
+    )
+    out = split_sentences(text)
+    assert all("<" not in s and "](" not in s and "**" not in s and "#" not in s for s in out)
+    assert not any("curl" in s or "|" in s for s in out)
+    assert any(s.startswith("The headless browser runs") for s in out)
+    assert any(s.startswith("Pure headless mode") for s in out)
+    assert any("the project site" in s and "http" not in s for s in out)

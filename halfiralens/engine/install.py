@@ -38,6 +38,21 @@ _PLATFORM_ASSETS = {
 }
 
 
+def check_archive_member(name: str) -> None:
+    """Refuse archive members that could write outside the extraction directory.
+
+    zipfile already strips absolute paths and '..', but relying on that is
+    implicit. Reject such names explicitly so the rule is visible and tested.
+    """
+    parts = Path(name.replace("\\", "/")).parts
+    if not name or name.startswith(("/", "\\")) or Path(name).is_absolute() \
+            or ".." in parts or (parts and ":" in parts[0]):
+        raise EngineUnavailableError(
+            "engine archive has an unsafe path; refusing to extract",
+            detail=name[:200],
+        )
+
+
 def _asset_name() -> str:
     machine = platform.machine()
     system = platform.system()
@@ -75,7 +90,11 @@ def install_engine(target_dir: Optional[Path] = None, version: str = ENGINE_VERS
         extracted: list[Path] = []
         if asset.endswith(".zip"):
             with zipfile.ZipFile(archive) as zf:
-                zf.extractall(tmp)
+                for name in zf.namelist():
+                    check_archive_member(name)
+                # nosec B202: every member name was validated by check_archive_member
+                # above. zipfile creates no symlinks, so this cannot escape `tmp`.
+                zf.extractall(tmp)  # nosec B202
             extracted = [Path(tmp) / n for n in zf.namelist()]
         else:
             with tarfile.open(archive, "r:gz") as tf:

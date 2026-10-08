@@ -28,9 +28,35 @@ from .model import Artifact
 from .security import UNTRUSTED_NOTICE, public_message
 
 
+def _jsonable(obj: Any) -> Any:
+    """Recursively turn result objects into plain JSON data.
+
+    Objects with a to_dict() method (Artifact, reports, responses) become dicts.
+    Without this, json.dumps(default=str) prints Python reprs, which agents
+    cannot parse.
+    """
+    if hasattr(obj, "to_dict") and callable(obj.to_dict):
+        return _jsonable(obj.to_dict())
+    if isinstance(obj, dict):
+        return {str(k): _jsonable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_jsonable(v) for v in obj]
+    return obj
+
+
+def _contains_artifact(obj: Any) -> bool:
+    if isinstance(obj, Artifact):
+        return True
+    if isinstance(obj, (list, tuple)):
+        return any(_contains_artifact(v) for v in obj)
+    return False
+
+
 def _out(data: Any, as_json: bool) -> None:
     if as_json:
-        print(json.dumps(data, ensure_ascii=False, indent=2, default=str))
+        print(json.dumps(_jsonable(data), ensure_ascii=False, indent=2, default=str))
+        if _contains_artifact(data):
+            print(UNTRUSTED_NOTICE, file=sys.stderr)
     elif isinstance(data, Artifact):
         print(data.to_json())
         print(UNTRUSTED_NOTICE, file=sys.stderr)
@@ -62,15 +88,20 @@ def build_parser() -> argparse.ArgumentParser:
         description="Half IraLens — one unified Internet-access system: search, read, browse, and specialized sources.",
     )
     parser.add_argument("--json", action="store_true", help="force JSON output")
+    # Accept --json after the subcommand too (agents often write it there).
+    # SUPPRESS keeps the top-level default when the flag is absent in that position.
+    json_flag = argparse.ArgumentParser(add_help=False)
+    json_flag.add_argument("--json", action="store_true", default=argparse.SUPPRESS,
+                           help="force JSON output")
     parser.add_argument("--version", action="version", version=f"half-iralens {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p = sub.add_parser("search", help="search the open web")
+    p = sub.add_parser(parents=[json_flag], name="search", help="search the open web")
     p.add_argument("query")
     p.add_argument("--limit", type=int, default=8)
     p.add_argument("--backend", default="", help="semantic-search | browser-search")
 
-    p = sub.add_parser("search-api", help="structured search: filters, engine outcomes, fallbacks, ranking")
+    p = sub.add_parser(parents=[json_flag], name="search-api", help="structured search: filters, engine outcomes, fallbacks, ranking")
     p.add_argument("query")
     p.add_argument("--limit", type=int, default=8)
     p.add_argument("--engine", action="append", default=[], help="repeatable; e.g. duckduckgo, bing, semantic-search")
@@ -84,41 +115,41 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-reformulate", action="store_true")
     p.add_argument("--cache", default="use", choices=["use", "bypass", "refresh"])
 
-    p = sub.add_parser("research", help="multi-round research: plan, search, read, evaluate, cite")
+    p = sub.add_parser(parents=[json_flag], name="research", help="multi-round research: plan, search, read, evaluate, cite")
     p.add_argument("question")
     p.add_argument("--rounds", type=int, default=None, help="max research rounds")
     p.add_argument("--max-queries", type=int, default=None)
     p.add_argument("--min-sources", type=int, default=None)
     p.add_argument("--read-top", type=int, default=None, help="pages to read per round")
 
-    p = sub.add_parser("open", help="open any URL (specialized source when applicable, else browser/reader)")
+    p = sub.add_parser(parents=[json_flag], name="open", help="open any URL (specialized source when applicable, else browser/reader)")
     p.add_argument("url")
     p.add_argument("--mode", default="auto", choices=["auto", "browser", "static", "source"])
     p.add_argument("--max-chars", type=int, default=20000)
 
-    p = sub.add_parser("read", help="fast static read of a URL")
+    p = sub.add_parser(parents=[json_flag], name="read", help="fast static read of a URL")
     p.add_argument("url")
     p.add_argument("--mode", default="static", choices=["auto", "static", "browser"])
 
-    p = sub.add_parser("scrape", help="bulk-read many URLs (failures don't abort the batch)")
+    p = sub.add_parser(parents=[json_flag], name="scrape", help="bulk-read many URLs (failures don't abort the batch)")
     p.add_argument("urls", nargs="+")
     p.add_argument("--mode", default="static", choices=["auto", "static", "browser"])
 
-    p = sub.add_parser("fetch", help="run a specialized source operation")
+    p = sub.add_parser(parents=[json_flag], name="fetch", help="run a specialized source operation")
     p.add_argument("source")
     p.add_argument("op")
     p.add_argument("params", nargs="*", help="key=value pairs")
 
-    sub.add_parser("sources", help="list sources and operations")
-    sub.add_parser("doctor", help="health of every capability")
-    sub.add_parser("session", help="show unified session state")
+    sub.add_parser(parents=[json_flag], name="sources", help="list sources and operations")
+    sub.add_parser(parents=[json_flag], name="doctor", help="health of every capability")
+    sub.add_parser(parents=[json_flag], name="session", help="show unified session state")
 
-    p = sub.add_parser("session-reset", help="clear session history/discoveries/browser state")
+    p = sub.add_parser(parents=[json_flag], name="session-reset", help="clear session history/discoveries/browser state")
 
-    p = sub.add_parser("configure", help="set a config value (tokens, keys, engine path…)")
+    p = sub.add_parser(parents=[json_flag], name="configure", help="set a config value (tokens, keys, engine path…)")
     p.add_argument("pairs", nargs="+", help="key=value")
 
-    p = sub.add_parser("navigate", help="browser: navigate to URL")
+    p = sub.add_parser(parents=[json_flag], name="navigate", help="browser: navigate to URL")
     p.add_argument("url")
     p.add_argument("--wait-until", default="load")
 
@@ -138,63 +169,63 @@ def build_parser() -> argparse.ArgumentParser:
         ("storage-state", "browser: export session storage state"),
         ("tab-list", "browser: list tabs"),
     ):
-        sub.add_parser(name, help=help_text)
+        sub.add_parser(parents=[json_flag], name=name, help=help_text)
 
-    p = sub.add_parser("click", help="browser: click selector or ref=<id>")
+    p = sub.add_parser(parents=[json_flag], name="click", help="browser: click selector or ref=<id>")
     p.add_argument("selector")
-    p = sub.add_parser("fill", help="browser: set input value")
+    p = sub.add_parser(parents=[json_flag], name="fill", help="browser: set input value")
     p.add_argument("selector")
     p.add_argument("value")
-    p = sub.add_parser("type", help="browser: append text")
+    p = sub.add_parser(parents=[json_flag], name="type", help="browser: append text")
     p.add_argument("text")
     p.add_argument("--selector", default=None)
-    p = sub.add_parser("press", help="browser: press a key")
+    p = sub.add_parser(parents=[json_flag], name="press", help="browser: press a key")
     p.add_argument("key")
     p.add_argument("--selector", default=None)
-    p = sub.add_parser("select", help="browser: select option value")
+    p = sub.add_parser(parents=[json_flag], name="select", help="browser: select option value")
     p.add_argument("selector")
     p.add_argument("value")
-    p = sub.add_parser("scroll", help="browser: scroll")
+    p = sub.add_parser(parents=[json_flag], name="scroll", help="browser: scroll")
     p.add_argument("--direction", default="down")
     p.add_argument("--amount", type=int, default=None)
-    p = sub.add_parser("eval", help="browser: evaluate JavaScript")
+    p = sub.add_parser(parents=[json_flag], name="eval", help="browser: evaluate JavaScript")
     p.add_argument("expression")
-    p = sub.add_parser("wait-for", help="browser: wait for selector")
+    p = sub.add_parser(parents=[json_flag], name="wait-for", help="browser: wait for selector")
     p.add_argument("selector")
     p.add_argument("--timeout", type=int, default=30)
-    p = sub.add_parser("wait-for-text", help="browser: wait for text")
+    p = sub.add_parser(parents=[json_flag], name="wait-for-text", help="browser: wait for text")
     p.add_argument("text")
     p.add_argument("--timeout", type=int, default=30)
-    p = sub.add_parser("find", help="browser: find text in page")
+    p = sub.add_parser(parents=[json_flag], name="find", help="browser: find text in page")
     p.add_argument("query")
-    p = sub.add_parser("extract", help='browser: extract {"field": "css[@attr]"} JSON')
+    p = sub.add_parser(parents=[json_flag], name="extract", help='browser: extract {"field": "css[@attr]"} JSON')
     p.add_argument("schema_json")
-    p = sub.add_parser("count", help="browser: count elements")
+    p = sub.add_parser(parents=[json_flag], name="count", help="browser: count elements")
     p.add_argument("selector")
-    p = sub.add_parser("attribute", help="browser: read element attribute")
+    p = sub.add_parser(parents=[json_flag], name="attribute", help="browser: read element attribute")
     p.add_argument("selector")
     p.add_argument("name")
-    p = sub.add_parser("forms-fill", help='browser: fill form {"selector": "value"} JSON')
+    p = sub.add_parser(parents=[json_flag], name="forms-fill", help='browser: fill form {"selector": "value"} JSON')
     p.add_argument("values_json")
-    p = sub.add_parser("screenshot", help="browser: save PNG screenshot")
+    p = sub.add_parser(parents=[json_flag], name="screenshot", help="browser: save PNG screenshot")
     p.add_argument("path")
-    p = sub.add_parser("pdf", help="browser: save page PDF")
+    p = sub.add_parser(parents=[json_flag], name="pdf", help="browser: save page PDF")
     p.add_argument("path")
-    p = sub.add_parser("cookies-set", help="browser: set a cookie")
+    p = sub.add_parser(parents=[json_flag], name="cookies-set", help="browser: set a cookie")
     p.add_argument("name")
     p.add_argument("value")
     p.add_argument("--domain", default="")
-    p = sub.add_parser("tab-new", help="browser: open new tab")
+    p = sub.add_parser(parents=[json_flag], name="tab-new", help="browser: open new tab")
     p.add_argument("url", nargs="?", default=None)
-    p = sub.add_parser("tab-switch", help="browser: switch tab")
+    p = sub.add_parser(parents=[json_flag], name="tab-switch", help="browser: switch tab")
     p.add_argument("tab_id")
-    p = sub.add_parser("tab-close", help="browser: close tab")
+    p = sub.add_parser(parents=[json_flag], name="tab-close", help="browser: close tab")
     p.add_argument("tab_id")
-    p = sub.add_parser("close", help="close the browser engine (persists session state)")
+    p = sub.add_parser(parents=[json_flag], name="close", help="close the browser engine (persists session state)")
 
-    sub.add_parser("mcp", help="run the Half IraLens MCP server (stdio)")
-    sub.add_parser("install-engine", help="download the browser engine binary")
-    sub.add_parser("version", help="print version")
+    sub.add_parser(parents=[json_flag], name="mcp", help="run the Half IraLens MCP server (stdio)")
+    sub.add_parser(parents=[json_flag], name="install-engine", help="download the browser engine binary")
+    sub.add_parser(parents=[json_flag], name="version", help="print version")
     return parser
 
 

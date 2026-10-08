@@ -3,7 +3,8 @@ name = "half-iralens"
 version = "0.1.0"
 description = "Half IraLens — one unified Internet-access system: search, read, browse, and specialized source access behind a single interface."
 readme = "README.md"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.10"
 keywords = ["ai-agent", "internet-access", "browser", "web-search", "mcp", "scraping"]
 classifiers = [
@@ -20,17 +21,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "ruff>=0.5", "mypy>=1.10"]
 
 [project.scripts]
 halfiralens = "halfiralens.cli:main"
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
-license-files = ["LICENSE", "NOTICE"]
 
 [tool.setuptools.packages.find]
 include = ["halfiralens*"]

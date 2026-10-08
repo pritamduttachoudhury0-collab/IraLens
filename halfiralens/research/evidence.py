@@ -80,14 +80,48 @@ def score_source(
     return score, breakdown
 
 
+_FENCE = re.compile(r"```.*?```", re.DOTALL)
+_HTML_TAG = re.compile(r"<[^>]+>")
+_MD_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+_MD_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+_BARE_URL = re.compile(r"https?://\S+")
+_MD_LINE_PREFIX = re.compile(r"^\s{0,3}(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+|>\s*)")
+_MD_EMPHASIS = re.compile(r"\*\*|__|`")
+_SHELLISH = re.compile(r"&&|\\\s*$|^\s*\$\s|^\s*(?:curl|wget|pip|npm|docker)\s", re.IGNORECASE)
+
+
+def clean_markup(text: str) -> str:
+    """Strip markdown and HTML so claims read as prose, not page markup.
+
+    Fenced code blocks, table rows, and shell-like lines are dropped. Link text
+    is kept; link targets and bare URLs are removed.
+    """
+    text = _FENCE.sub("\n", text or "")
+    text = _HTML_TAG.sub(" ", text)
+    text = _MD_IMAGE.sub(" ", text)
+    text = _MD_LINK.sub(r"\1", text)
+    lines = []
+    for line in text.splitlines():
+        if line.count("|") >= 2 or _SHELLISH.search(line):
+            continue
+        line = _MD_LINE_PREFIX.sub("", line)
+        line = _MD_EMPHASIS.sub("", line)
+        lines.append(_BARE_URL.sub(" ", line))
+    return "\n".join(lines)
+
+
 def split_sentences(text: str) -> List[str]:
-    parts = re.split(r"(?<=[.!?])\s+|\n+", text or "")
+    parts = re.split(r"(?<=[.!?])\s+|\n+", clean_markup(text))
     out = []
     for part in parts:
-        part = part.strip()
+        part = " ".join(part.split())
         words = part.split()
-        if 6 <= len(words) <= 40:
-            out.append(part)
+        if not (6 <= len(words) <= 40):
+            continue
+        letters = sum(ch.isalpha() for ch in part)
+        if letters / max(1, len(part)) < 0.6:
+            continue  # mostly symbols or numbers: a table, a code fragment, a badge
+        out.append(part)
     return out
 
 
