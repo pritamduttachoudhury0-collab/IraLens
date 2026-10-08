@@ -63,8 +63,8 @@ Ordered by how much they can mislead a user. Read this before relying on output.
 
 ## Packaging and project state
 
-19. **License conflict is unresolved.** `LICENSE` is MIT. `pyproject.toml` and
-    `NOTICE` declare Apache-2.0. The owner must choose (DECISIONS D-001).
+19. **License is Apache-2.0** (DECISIONS D-051). `NOTICE` keeps the MIT attribution
+    for the adapted Agent Reach code.
 20. **`xiaoyuzhou` is not implemented.** `ARCHITECTURE.md` used to list it as a
     source. It has no module in this bundle.
 21. **No GitHub PR or push to `main`.** Work is on `arena/a44d3b38-iralens`

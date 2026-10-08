@@ -13,7 +13,7 @@ file tree. No license was assumed from a parent project or from memory.
 | Item | Finding |
 |---|---|
 | Declared license | Apache-2.0 (`pyproject.toml`) |
-| LICENSE file | Repo already has an MIT `LICENSE` (“Copyright (c) 2026 Pritam Dutta Choudhury”). **Kept unchanged.** The bundle’s Apache-2.0 text was not written. See DECISIONS.md D-001. |
+| LICENSE file | **Apache-2.0** full text (owner decision, D-051). The former MIT text was replaced; the owner copyright line moved to NOTICE. |
 | NOTICE file | Present; **expanded in this audit** (full MIT text of the adapted upstream code, engine terms) |
 | Code provenance | Original code except the Agent Reach–derived portions listed in §3.1 |
 | Bundled binaries | **None.** `file(1)` over the whole distributable tree: pure text. The browser engine binary is downloaded at runtime from upstream releases into a gitignored cache (`tools/engine/`, `~/.cache/half-iralens/engine`) and is never committed or redistributed. |

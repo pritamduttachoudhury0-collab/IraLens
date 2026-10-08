@@ -19,7 +19,7 @@ through the sandbox proxy, but HTTPS requests to those hosts fail (curl returns 
 So the probe passed and these tests ran instead of skipping. This is a harness weakness
 to fix (probe with an HTTP request, not a TCP connect). Recorded here, not hidden.
 
-**D-001 License conflict, not resolved silently.**
+**D-001 License conflict (resolved by D-051).**
 The repo's `LICENSE` is MIT (`Copyright (c) 2026 Pritam Dutta Choudhury`). The
 bundle's `pyproject.toml`/`NOTICE` declare Apache-2.0. I kept the repo's MIT
 `LICENSE` file untouched and did not write the bundle's Apache text. The
@@ -189,3 +189,14 @@ this commit. README and CAPABILITY_MAP were updated to match. The earlier
 **D-050 Scope cut.** Not built in this pass: a LLM facade hook, a persisted
 circuit breaker, a second-language reader, and Bing live verification. Each is
 in KNOWN_LIMITATIONS.md.
+
+## Licensing (owner decision)
+
+**D-051 License set to Apache-2.0.** On the owner's instruction, `LICENSE` now holds
+the full Apache-2.0 text, fetched from GitHub's license API (`/licenses/apache-2.0`).
+This matches `pyproject.toml` and `NOTICE`. The former MIT text is replaced. Reason:
+it was the owner's explicit choice from the options offered. The copyright line
+"Copyright (c) 2026 Pritam Dutta Choudhury" moved from the MIT file into `NOTICE`.
+The MIT attribution for the adapted Agent Reach code is kept in `NOTICE`, as its
+terms require.
+
