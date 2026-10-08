@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Disk cache with TTL for search responses and static page reads.
 
-Policy (documented in docs/CACHING.md):
+Policy (documented in docs/RELIABILITY.md):
   - Keys hash a namespace plus the full request: query, filters, options and
     the engine chain. Different filters or engines never share an entry.
   - Entries expire after a TTL taken from `Settings`. `get()` reports age and

@@ -16,7 +16,8 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from .. import content_guard
 from ..cache import ResponseCache
-from ..reliability import ConcurrencyGate, RetryPolicy
+from ..reliability import CircuitBreaker, ConcurrencyGate, RetryPolicy
+from ..security import normalize_public_http_url
 from ..settings import Settings
 from .dedup import dedup
 from .engines import LEGACY_ALIASES, build_backends
@@ -40,6 +41,7 @@ class SearchEngine:
         backends: Optional[Dict[str, SearchBackend]] = None,
         cache: Optional[ResponseCache] = None,
         gate: Optional[ConcurrencyGate] = None,
+        breaker: Optional[CircuitBreaker] = None,
         synonyms: Optional[Dict[str, List[str]]] = None,
     ) -> None:
         self.settings = settings
@@ -49,6 +51,8 @@ class SearchEngine:
         self.synonyms = synonyms
         self.policy = RetryPolicy(settings.retry_max_attempts, settings.retry_base_delay_seconds,
                                   settings.retry_max_delay_seconds)
+        self.breaker = breaker or CircuitBreaker(settings.breaker_failure_threshold,
+                                                 settings.breaker_cooldown_seconds)
 
     # ------------------------------------------------------------ public
     def search(self, question: str, *, filters: Optional[SearchFilters] = None,
@@ -115,6 +119,7 @@ class SearchEngine:
             chain_result = run_chain(
                 q["text"], filters, options.max_results, chain, self.backends, context,
                 min_engines=self.settings.search_min_engines, policy=self.policy,
+                breaker=self.breaker,
             )
             all_hits.extend(chain_result.hits)
             outcomes.extend(chain_result.outcomes)
@@ -126,7 +131,9 @@ class SearchEngine:
             if len(unique_urls) >= options.max_results:
                 break
 
-        filtered, filter_report = self._post_filter(all_hits, filters)
+        public_hits, rejected = self._public_only(all_hits)
+        filtered, filter_report = self._post_filter(public_hits, filters)
+        filter_report["non_public_dropped"] = rejected
         for hit in filtered:
             # Scan the raw text first: sanitizing strips invisible characters,
             # which is itself a signal worth reporting.
@@ -138,7 +145,7 @@ class SearchEngine:
         results = self._rank(question, groups, options.max_results)
 
         flags = sorted({f for r in results for f in r.security_flags})
-        any_failed = any(o.status == "failed" for o in outcomes)
+        any_failed = any(o.status in ("failed", "skipped") for o in outcomes)
         if results:
             reason = "none"
         elif any_failed:
@@ -159,6 +166,22 @@ class SearchEngine:
         )
 
     # --------------------------------------------------------- filtering
+    @staticmethod
+    def _public_only(hits: List[SearchHit]):
+        """Drop hits whose URL is not a public http(s) target (localhost, private
+        IPs, credentials, odd schemes). A SERP can be hostile; these must never
+        reach the agent's next step as 'results'."""
+        kept: List[SearchHit] = []
+        rejected = 0
+        for hit in hits:
+            try:
+                hit.url = normalize_public_http_url(hit.url)
+            except ValueError:
+                rejected += 1
+                continue
+            kept.append(hit)
+        return kept, rejected
+
     @staticmethod
     def _post_filter(hits: List[SearchHit], f: SearchFilters):
         report = {"applied_post": [], "date_unknown_kept": 0, "dropped": 0}

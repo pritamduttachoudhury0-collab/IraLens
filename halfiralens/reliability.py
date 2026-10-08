@@ -99,6 +99,61 @@ def call_with_retries(
             sleep(policy.delay(attempt))
 
 
+class CircuitBreaker:
+    """Skip an engine after repeated consecutive failures; probe again after a cooldown.
+
+    States per key: closed (normal) -> open after `threshold` consecutive failures
+    -> half_open once `cooldown` seconds pass (one probe allowed) -> closed on
+    success, or back to open on failure. Thread-safe. `clock` is injectable so
+    tests do not sleep.
+    """
+
+    def __init__(self, threshold: int, cooldown: float, clock: Callable[[], float] = time.monotonic) -> None:
+        self.threshold = max(1, int(threshold))
+        self.cooldown = float(cooldown)
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._failures: dict = {}
+        self._opened_at: dict = {}
+        self._probing: set = set()
+
+    def state(self, key: str) -> str:
+        with self._lock:
+            return self._state_locked(key)
+
+    def _state_locked(self, key: str) -> str:
+        opened = self._opened_at.get(key)
+        if opened is None:
+            return "closed"
+        if self._clock() - opened >= self.cooldown:
+            return "half_open"
+        return "open"
+
+    def allow(self, key: str) -> bool:
+        with self._lock:
+            state = self._state_locked(key)
+            if state == "closed":
+                return True
+            if state == "half_open" and key not in self._probing:
+                self._probing.add(key)   # exactly one probe at a time
+                return True
+            return False
+
+    def record_success(self, key: str) -> None:
+        with self._lock:
+            self._failures.pop(key, None)
+            self._opened_at.pop(key, None)
+            self._probing.discard(key)
+
+    def record_failure(self, key: str) -> None:
+        with self._lock:
+            self._probing.discard(key)
+            count = self._failures.get(key, 0) + 1
+            self._failures[key] = count
+            if count >= self.threshold or key in self._opened_at:
+                self._opened_at[key] = self._clock()
+
+
 class ConcurrencyGate:
     """Bounded concurrency for the shared browser engine with timeouts.
 

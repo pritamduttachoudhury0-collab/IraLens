@@ -43,6 +43,9 @@ class Settings:
     retry_max_attempts: int = 3
     retry_base_delay_seconds: float = 1.0
     retry_max_delay_seconds: float = 8.0
+    # --- circuit breaker (per engine, per SearchEngine instance) ---------------
+    breaker_failure_threshold: int = 3     # consecutive failures before an engine is skipped
+    breaker_cooldown_seconds: float = 300.0
     # --- caching ---------------------------------------------------------------
     cache_enabled: bool = True
     cache_search_ttl_seconds: int = 900

@@ -101,7 +101,39 @@ non-empty, so existing JSON consumers see no change.
 even on error.
 
 ## Phase 2 — Reliability, caching, security, resources
-(see sections below as they are added)
+
+**D-030 Failure taxonomy shared across layers.** `captcha`, `rate_limited`,
+`layout_changed`, `transient`, `unavailable`, `empty`, `circuit_open` (see
+docs/RELIABILITY.md). Only transient failures are retried. Blocks are never
+retried.
+
+**D-031 Circuit breaker per engine, in memory.** Opens after 3 consecutive
+failures and skips the engine for 300 s. One half-open probe. Not persisted, so
+one bad outage cannot lock an engine out across restarts.
+
+**D-032 Degraded searches are not cached.** A failed or skipped engine means the
+response is not stored, so the next call retries live. Empty but healthy
+responses are also not cached (`cacheable` requires results). Reason: an empty
+result from a transient block must not stick for 15 minutes.
+
+**D-033 Page cache covers static reads only.** Browser reads are never cached,
+because the browser can hold session state. Static reads are public. The cache
+TTL is 3600 s. This is a conservative choice. The brief asked for cached page
+fetches; this covers the static reader and not browser pages.
+
+**D-034 Content guard flags, does not rewrite.** Page content is returned as
+fetched. Flags are attached to provenance. Only search titles and snippets get
+invisible-character stripping and length caps, because they are short and
+rendered into result lists.
+
+**D-035 Non-public result URLs are dropped.** `normalize_public_http_url` is
+applied to every hit before ranking. It is a literal-URL check only; DNS
+rebinding and private redirects are not covered (see docs/THREAT_MODEL.md).
+
+**D-036 Breaker state lives on the SearchEngine, which the source keeps as a
+singleton.** A new facade instance shares it through the source. This was a
+choice for the single-process CLI and MCP servers. Multi-process use would need
+a shared store, and that is not built.
 
 ## Phase 3 — Research intelligence
 (see sections below as they are added)

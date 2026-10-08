@@ -16,9 +16,12 @@ from __future__ import annotations
 import urllib.request
 from typing import Any, Dict, TYPE_CHECKING
 
+from .. import content_guard
+from ..cache import ResponseCache
 from ..errors import ExtractionError, PageUnavailableError
 from ..model import Artifact
 from ..security import normalize_public_http_url
+from ..settings import Settings
 from .base import Source, SourceHealth
 
 if TYPE_CHECKING:
@@ -103,20 +106,24 @@ class WebSource(Source):
 
     def read_url(self, url: str, context: "Context", mode: str = "auto") -> Artifact:
         safe_url = normalize_public_http_url(url)
+        settings = Settings.from_config(context.config)
+        cache = ResponseCache(enabled=settings.cache_enabled)
 
         if mode in ("auto", "static"):
             try:
+                cached = cache.get(_PAGE_NS, {"url": safe_url}, settings.cache_page_ttl_seconds)
+                if cached is not None:
+                    value, age = cached
+                    return _static_artifact(
+                        safe_url, value["markdown"], cache={"status": "hit", "age_seconds": round(age, 1)},
+                        flags=content_guard.scan(value["markdown"]),
+                    )
                 markdown = read_with_static_reader(safe_url)
-                title = _title_from_markdown(markdown) or safe_url
-                return Artifact(
-                    title=title,
-                    url=safe_url,
-                    source="web",
-                    kind="page",
-                    content=markdown,
-                    content_format="markdown",
-                    retrieval_method="static-reader",
-                )
+                flags = content_guard.scan(markdown)
+                # Only successful reads are cached; a flagged page is still cacheable
+                # because it is public, and the flags travel with it.
+                cache.put(_PAGE_NS, {"url": safe_url}, {"markdown": markdown}, cacheable=bool(markdown.strip()))
+                return _static_artifact(safe_url, markdown, cache={"status": "miss"}, flags=flags)
             except PageUnavailableError:
                 if mode == "static":
                     raise
@@ -125,6 +132,7 @@ class WebSource(Source):
                     raise
 
         # Browser backend (also the only path for mode="browser").
+        # Browser reads are never cached: the browser may hold session state.
         engine = context.engine()
         engine.navigate(safe_url)
         markdown = engine.markdown(max_chars=20000)
@@ -138,7 +146,24 @@ class WebSource(Source):
             content=content,
             content_format="markdown",
             retrieval_method="browser",
+            provenance={"security_flags": content_guard.scan(content), "cache": {"status": "bypass"}},
         )
+
+
+_PAGE_NS = "page.v1"
+
+
+def _static_artifact(url: str, markdown: str, *, cache: dict, flags=None) -> Artifact:
+    return Artifact(
+        title=_title_from_markdown(markdown) or url,
+        url=url,
+        source="web",
+        kind="page",
+        content=markdown,
+        content_format="markdown",
+        retrieval_method="static-reader",
+        provenance={"security_flags": list(flags or []), "cache": cache},
+    )
 
 
 def _title_from_markdown(markdown: str) -> str:

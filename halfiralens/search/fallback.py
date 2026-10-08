@@ -18,13 +18,19 @@ from typing import Any, Dict, List, Mapping
 from ..reliability import (
     KIND_EMPTY,
     KIND_OK,
+    CircuitBreaker,
     RetryPolicy,
     call_with_retries,
     failure_kind,
     is_transient,
 )
+from typing import Optional
+
 from .engines.base import SearchBackend
 from .schema import EngineOutcome, SearchFilters, SearchHit
+
+
+KIND_CIRCUIT_OPEN = "circuit_open"
 
 
 @dataclass
@@ -45,6 +51,7 @@ def run_chain(
     *,
     min_engines: int,
     policy: RetryPolicy,
+    breaker: Optional[CircuitBreaker] = None,
     sleep=None,
 ) -> ChainResult:
     result = ChainResult()
@@ -53,6 +60,13 @@ def run_chain(
         name = pending.pop(0)
         backend = backends[name]
         modes = backend.filter_modes(filters)
+        if breaker is not None and not breaker.allow(name):
+            result.outcomes.append(EngineOutcome(
+                engine=name, status="skipped", kind=KIND_CIRCUIT_OPEN, filter_modes=modes,
+                detail="engine skipped after repeated failures; retrying after cooldown",
+            ))
+            _record_switch(result, name, pending, KIND_CIRCUIT_OPEN)
+            continue
         try:
             hits, attempts = call_with_retries(
                 lambda b=backend: b.search(backend.build_query(query, filters), filters, limit, context),
@@ -62,6 +76,8 @@ def run_chain(
             )
         except Exception as exc:  # classified below; the chain must keep going
             kind = failure_kind(exc)
+            if breaker is not None:
+                breaker.record_failure(name)
             detail = str(getattr(exc, "detail", "") or getattr(exc, "message", "") or exc)[:300]
             result.outcomes.append(EngineOutcome(
                 engine=name, status="failed", kind=kind, detail=detail,
@@ -71,6 +87,8 @@ def run_chain(
             _record_switch(result, name, pending, kind)
             continue
 
+        if breaker is not None:
+            breaker.record_success(name)   # an empty page still means the engine responded
         if not hits:
             result.outcomes.append(EngineOutcome(
                 engine=name, status="empty", kind=KIND_EMPTY, filter_modes=modes, attempts=attempts,

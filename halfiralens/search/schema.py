@@ -139,7 +139,7 @@ class RankedResult:
 @dataclass
 class EngineOutcome:
     engine: str
-    status: str                         # results | empty | failed
+    status: str                         # results | empty | failed | skipped
     kind: str                           # ok | empty | captcha | rate_limited | layout_changed | transient | unavailable
     count: int = 0
     detail: str = ""
@@ -180,7 +180,7 @@ class SearchResponse:
 
     @property
     def degraded(self) -> bool:
-        return any(o.status == "failed" for o in self.outcomes)
+        return any(o.status in ("failed", "skipped") for o in self.outcomes)
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
