@@ -16,6 +16,7 @@ from . import errors
 from .config import Config
 from .engine.native import BrowserEngine
 from .model import Artifact
+from .search.schema import SearchFilters, SearchOptions, SearchResponse
 from .security import normalize_public_http_url, public_message
 from .session import Session
 from .sources import ALL_SOURCES, get_source, route_url
@@ -72,6 +73,42 @@ class HalfIraLens:
                 found_via=f"search:{query}",
             )
         return results
+
+    def search_api(
+        self,
+        query: str,
+        filters: Optional[Union[Dict[str, Any], "SearchFilters"]] = None,
+        options: Optional[Union[Dict[str, Any], "SearchOptions"]] = None,
+    ) -> "SearchResponse":
+        """Structured search: ranked results, per-engine outcomes, fallbacks,
+        filter report, dedup log, cache status. `search()` stays the simple form.
+
+        filters: date_from, date_to (yyyy-mm-dd), include_domains, exclude_domains,
+                 file_type, language, region.
+        options: max_results, engines, reformulate, cache (use|bypass|refresh).
+        """
+        from .search.schema import SearchFilters as _Filters, SearchOptions as _Options
+
+        f = filters if isinstance(filters, _Filters) else _Filters.build(**(filters or {}))
+        o = options if isinstance(options, _Options) else _Options(**{
+            "max_results": 8, **(options or {}),
+            "engines": tuple((options or {}).get("engines") or ()),
+        })
+        engine = self._search_engine()
+        response = engine.search(query, filters=f, options=o, context=self._context)
+        self.session.last_query = query
+        from .search import to_artifacts as _to_artifacts
+        for artifact in _to_artifacts(response, query):
+            self.session.record_discovery(
+                artifact.url, title=artifact.title, source=artifact.source,
+                found_via=f"search:{query}",
+            )
+        return response
+
+    def _search_engine(self):
+        source = get_source("web-search")
+        assert source is not None
+        return source.search_engine(self._context)
 
     def open(
         self,

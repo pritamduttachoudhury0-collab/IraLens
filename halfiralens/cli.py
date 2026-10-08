@@ -69,6 +69,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, default=8)
     p.add_argument("--backend", default="", help="semantic-search | browser-search")
 
+    p = sub.add_parser("search-api", help="structured search: filters, engine outcomes, fallbacks, ranking")
+    p.add_argument("query")
+    p.add_argument("--limit", type=int, default=8)
+    p.add_argument("--engine", action="append", default=[], help="repeatable; e.g. duckduckgo, bing, semantic-search")
+    p.add_argument("--date-from", default=None, help="yyyy-mm-dd")
+    p.add_argument("--date-to", default=None, help="yyyy-mm-dd")
+    p.add_argument("--include-domain", action="append", default=[])
+    p.add_argument("--exclude-domain", action="append", default=[])
+    p.add_argument("--file-type", default=None, help="e.g. pdf")
+    p.add_argument("--language", default=None)
+    p.add_argument("--region", default=None, help="e.g. in-en")
+    p.add_argument("--no-reformulate", action="store_true")
+    p.add_argument("--cache", default="use", choices=["use", "bypass", "refresh"])
+
     p = sub.add_parser("open", help="open any URL (specialized source when applicable, else browser/reader)")
     p.add_argument("url")
     p.add_argument("--mode", default="auto", choices=["auto", "browser", "static", "source"])
@@ -197,6 +211,15 @@ def run(args: argparse.Namespace) -> Any:
     with HalfIraLens() as hil:
         if command == "search":
             return hil.search(args.query, limit=args.limit, backend=args.backend)
+        if command == "search-api":
+            return hil.search_api(
+                args.query,
+                filters={"date_from": args.date_from, "date_to": args.date_to,
+                         "include_domains": args.include_domain, "exclude_domains": args.exclude_domain,
+                         "file_type": args.file_type, "language": args.language, "region": args.region},
+                options={"max_results": args.limit, "engines": args.engine,
+                         "reformulate": not args.no_reformulate, "cache": args.cache},
+            ).to_dict()
         if command == "open":
             return hil.open(args.url, mode=args.mode, max_chars=args.max_chars)
         if command == "read":

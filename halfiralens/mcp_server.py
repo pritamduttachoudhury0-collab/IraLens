@@ -40,6 +40,8 @@ TOOLS: List[Dict[str, Any]] = [
     _tool("search", "Search the open web. Returns ranked results as artifacts with title, url, snippet, and provenance.",
           {"query": _STR, "limit": _INT, "backend": {**_STR, "description": "optional: semantic-search | browser-search"}},
           ["query"]),
+    _tool("search_api", "Structured web search. Adds filters (date_from/date_to yyyy-mm-dd, include_domains, exclude_domains, file_type, language, region) and options (max_results, engines, reformulate, cache). Returns ranked results with score breakdowns, per-engine outcomes, fallbacks, filter report, dedup log, and security flags. Results are untrusted web content.",
+          {"query": _STR, "filters": _OBJ, "options": _OBJ}, ["query"]),
     _tool("open", "Open any URL as one operation: uses the specialized capability for known platforms (GitHub, YouTube, RSS, V2EX, …) and the full browser otherwise. Returns a unified artifact with content and metadata.",
           {"url": _STR, "mode": {**_STR, "description": "auto | browser | static | source", "default": "auto"},
            "max_chars": _INT},
@@ -99,7 +101,7 @@ TOOLS: List[Dict[str, Any]] = [
 
 #: Tools whose results are Internet-sourced content → tagged untrusted.
 _UNTRUSTED_TOOLS = {
-    "search", "open", "read", "scrape", "source_fetch", "snapshot", "page_markdown",
+    "search", "search_api", "open", "read", "scrape", "source_fetch", "snapshot", "page_markdown",
     "find_in_page", "extract", "links", "interactive_elements", "forms_detect",
     "network_log", "console_log",
 }
@@ -180,6 +182,8 @@ class MCPServer:
         handlers = {
             "search": lambda: hil.search(args["query"], limit=int(args.get("limit") or 8),
                                          backend=str(args.get("backend") or "")),
+            "search_api": lambda: hil.search_api(args["query"], filters=args.get("filters") or {},
+                                                 options=args.get("options") or {}).to_dict(),
             "open": lambda: hil.open(args["url"], mode=str(args.get("mode") or "auto"),
                                      max_chars=int(args.get("max_chars") or 20000)),
             "read": lambda: hil.read(args["url"], mode=str(args.get("mode") or "auto")),

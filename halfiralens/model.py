@@ -47,6 +47,9 @@ class Artifact:
     retrieved_at: str = field(default_factory=utc_now_iso)
     discovered_from: Optional[str] = None   # "search:<query>" or the parent page URL
     untrusted: bool = True
+    # Optional structured provenance (engines, ranks, dedup, security flags).
+    # Emitted by to_dict() only when non-empty, so existing consumers see no change.
+    provenance: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         data: Dict[str, Any] = {
@@ -63,6 +66,8 @@ class Artifact:
         }
         if self.discovered_from:
             data["discovered_from"] = self.discovered_from
+        if self.provenance:
+            data["provenance"] = self.provenance
         return data
 
     def to_json(self, indent: Optional[int] = 2) -> str:
