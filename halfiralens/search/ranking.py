@@ -18,7 +18,6 @@ import re
 from datetime import date, datetime, timezone
 from typing import Dict, Mapping, Optional, Tuple
 
-from ..search.schema import SearchHit
 from .urls import domain_of
 
 _TERM_RE = re.compile(r"\w+", re.UNICODE)

@@ -55,6 +55,17 @@ class Settings:
     research_max_queries: int = 12
     research_min_sources: int = 3
     research_coverage_threshold: float = 0.7
+    research_read_top_n: int = 3           # pages read (not just snippets) per round
+    research_page_chars: int = 4000        # page text kept in the replay trace
+    evidence_weight_relevance: float = 0.5
+    evidence_weight_quality: float = 0.3
+    evidence_weight_recency: float = 0.2
+    injection_penalty: float = 0.2         # subtracted from a source score when flagged
+    claim_subject_similarity: float = 0.5  # Jaccard to cluster claims into one statement
+    contradiction_similarity: float = 0.6  # Jaccard needed before two claims are compared
+    confidence_base: float = 0.3
+    confidence_per_domain: float = 0.2
+    contested_penalty: float = 0.3
 
     @classmethod
     def from_config(cls, config: Any = None) -> "Settings":

@@ -83,6 +83,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-reformulate", action="store_true")
     p.add_argument("--cache", default="use", choices=["use", "bypass", "refresh"])
 
+    p = sub.add_parser("research", help="multi-round research: plan, search, read, evaluate, cite")
+    p.add_argument("question")
+    p.add_argument("--rounds", type=int, default=None, help="max research rounds")
+    p.add_argument("--max-queries", type=int, default=None)
+    p.add_argument("--min-sources", type=int, default=None)
+    p.add_argument("--read-top", type=int, default=None, help="pages to read per round")
+
     p = sub.add_parser("open", help="open any URL (specialized source when applicable, else browser/reader)")
     p.add_argument("url")
     p.add_argument("--mode", default="auto", choices=["auto", "browser", "static", "source"])
@@ -211,6 +218,11 @@ def run(args: argparse.Namespace) -> Any:
     with HalfIraLens() as hil:
         if command == "search":
             return hil.search(args.query, limit=args.limit, backend=args.backend)
+        if command == "research":
+            opts = {"max_rounds": args.rounds, "max_queries": args.max_queries,
+                    "min_sources": args.min_sources, "read_top_n": args.read_top}
+            report = hil.research(args.question, options={k: v for k, v in opts.items() if v is not None})
+            return report.to_dict() if getattr(args, "json", False) else report.render_text()
         if command == "search-api":
             return hil.search_api(
                 args.query,

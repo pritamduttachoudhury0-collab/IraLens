@@ -10,13 +10,16 @@ and their backends are internal implementation details.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from . import errors
 from .config import Config
 from .engine.native import BrowserEngine
 from .model import Artifact
 from .search.schema import SearchFilters, SearchOptions, SearchResponse
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .research.schema import ResearchReport
 from .security import normalize_public_http_url, public_message
 from .session import Session
 from .sources import ALL_SOURCES, get_source, route_url
@@ -104,6 +107,46 @@ class HalfIraLens:
                 found_via=f"search:{query}",
             )
         return response
+
+    def research(self, question: str, options: Optional[Dict[str, Any]] = None) -> "ResearchReport":
+        """Multi-round research with a cited report.
+
+        Plans queries, searches, reads the top sources (static reader, so each
+        URL is sent to the reader service), evaluates evidence, flags possible
+        contradictions, and returns statements that cite sources. Options:
+        max_rounds, max_queries, min_sources, max_results, read_top_n.
+        """
+        from .research import ResearchPlanner
+        from .research.schema import ResearchOptions
+        from .settings import Settings
+
+        settings = Settings.from_config(self.config)
+        opts = ResearchOptions.build(
+            options,
+            max_rounds=settings.research_max_rounds,
+            max_queries=settings.research_max_queries,
+            min_sources=settings.research_min_sources,
+            max_results=settings.search_max_results,
+            read_top_n=settings.research_read_top_n,
+        )
+        engine = self._search_engine()
+
+        def search(text: str) -> SearchResponse:
+            return engine.search(text, options=SearchOptions(max_results=opts.max_results, reformulate=False),
+                                 context=self._context)
+
+        web = get_source("web")
+        assert web is not None
+
+        def reader(url: str) -> str:
+            return web.read_url(url, self._context, mode="static").content
+
+        report = ResearchPlanner(settings, search, reader=reader).run(question, opts)
+        self.session.last_query = question
+        for src in report.sources:
+            self.session.record_discovery(src["url"], title=src["title"], source="web-search",
+                                          found_via=f"research:{question}")
+        return report
 
     def _search_engine(self):
         source = get_source("web-search")

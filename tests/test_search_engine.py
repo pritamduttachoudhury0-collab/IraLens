@@ -10,7 +10,7 @@ from halfiralens.errors import ExtractionError, OperationTimeoutError, SourceUna
 from halfiralens.cache import ResponseCache
 from halfiralens.reliability import ConcurrencyGate
 from halfiralens.search import SearchEngine, to_artifacts
-from halfiralens.search.engines.base import EMULATED, NATIVE, POST, UNSUPPORTED, SearchBackend
+from halfiralens.search.engines.base import NATIVE, POST, UNSUPPORTED, SearchBackend
 from halfiralens.search.schema import FilterError, SearchFilters, SearchHit, SearchOptions
 from halfiralens.settings import Settings
 

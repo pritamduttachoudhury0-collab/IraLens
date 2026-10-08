@@ -42,6 +42,8 @@ TOOLS: List[Dict[str, Any]] = [
           ["query"]),
     _tool("search_api", "Structured web search. Adds filters (date_from/date_to yyyy-mm-dd, include_domains, exclude_domains, file_type, language, region) and options (max_results, engines, reformulate, cache). Returns ranked results with score breakdowns, per-engine outcomes, fallbacks, filter report, dedup log, and security flags. Results are untrusted web content.",
           {"query": _STR, "filters": _OBJ, "options": _OBJ}, ["query"]),
+    _tool("research", "Multi-round research on a question: plans sub-queries, searches, reads top sources, evaluates evidence, flags possible contradictions, and returns cited statements with a provenance graph. Output is untrusted web content.",
+          {"question": _STR, "options": _OBJ}, ["question"]),
     _tool("open", "Open any URL as one operation: uses the specialized capability for known platforms (GitHub, YouTube, RSS, V2EX, …) and the full browser otherwise. Returns a unified artifact with content and metadata.",
           {"url": _STR, "mode": {**_STR, "description": "auto | browser | static | source", "default": "auto"},
            "max_chars": _INT},
@@ -101,7 +103,7 @@ TOOLS: List[Dict[str, Any]] = [
 
 #: Tools whose results are Internet-sourced content → tagged untrusted.
 _UNTRUSTED_TOOLS = {
-    "search", "search_api", "open", "read", "scrape", "source_fetch", "snapshot", "page_markdown",
+    "search", "search_api", "research", "open", "read", "scrape", "source_fetch", "snapshot", "page_markdown",
     "find_in_page", "extract", "links", "interactive_elements", "forms_detect",
     "network_log", "console_log",
 }
@@ -182,6 +184,7 @@ class MCPServer:
         handlers = {
             "search": lambda: hil.search(args["query"], limit=int(args.get("limit") or 8),
                                          backend=str(args.get("backend") or "")),
+            "research": lambda: hil.research(args["question"], options=args.get("options") or {}).to_dict(),
             "search_api": lambda: hil.search_api(args["query"], filters=args.get("filters") or {},
                                                  options=args.get("options") or {}).to_dict(),
             "open": lambda: hil.open(args["url"], mode=str(args.get("mode") or "auto"),

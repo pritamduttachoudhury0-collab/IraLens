@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import shutil
 import threading
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ..errors import ExtractionError, SourceUnavailableError
 from ..search import SearchEngine, to_artifacts
