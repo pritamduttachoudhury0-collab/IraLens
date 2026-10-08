@@ -1,0 +1,8 @@
+include LICENSE
+include NOTICE
+include README.md
+include ARCHITECTURE.md
+include LICENSE_AUDIT.md
+include docs/CAPABILITY_MAP.md
+include tools/install_engine.py
+recursive-include tests *.py
