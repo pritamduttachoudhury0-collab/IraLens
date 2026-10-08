@@ -13,7 +13,7 @@ file tree. No license was assumed from a parent project or from memory.
 | Item | Finding |
 |---|---|
 | Declared license | Apache-2.0 (`pyproject.toml`) |
-| LICENSE file | **Was missing — added in this audit** (standard Apache-2.0 text + copyright line, 11,369 bytes) |
+| LICENSE file | Repo already has an MIT `LICENSE` (“Copyright (c) 2026 Pritam Dutta Choudhury”). **Kept unchanged.** The bundle’s Apache-2.0 text was not written. See DECISIONS.md D-001. |
 | NOTICE file | Present; **expanded in this audit** (full MIT text of the adapted upstream code, engine terms) |
 | Code provenance | Original code except the Agent Reach–derived portions listed in §3.1 |
 | Bundled binaries | **None.** `file(1)` over the whole distributable tree: pure text. The browser engine binary is downloaded at runtime from upstream releases into a gitignored cache (`tools/engine/`, `~/.cache/half-iralens/engine`) and is never committed or redistributed. |
@@ -123,8 +123,11 @@ artifact.
 
 ## 9. Actions taken in this audit
 
-1. **Added `LICENSE`** (full Apache-2.0 text) — the declared license had no
-   text file; required before any redistribution. *(Fixed.)*
+1. **LICENSE file — corrected.** An earlier draft of this audit said LICENSE
+   was "added". That was wrong. The repo's existing MIT `LICENSE` was kept
+   unchanged, and no Apache-2.0 text was written. The unresolved conflict
+   is recorded in DECISIONS.md D-001: `pyproject.toml` and `NOTICE` declare
+   Apache-2.0, while the LICENSE file is MIT. The owner must pick one. *(Open.)*
 2. **Expanded `NOTICE`** to reproduce the complete MIT license text and
    copyright notice for the adapted Agent Reach code (MIT's inclusion
    requirement), and to state the Obscura engine terms precisely. *(Fixed.)*

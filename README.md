@@ -85,9 +85,20 @@ halfiralens mcp                                    # start the MCP server
 { "mcpServers": { "half-iralens": { "command": "halfiralens", "args": ["mcp"] } } }
 ```
 
-46 tools, all capability-shaped: `search`, `open`, `read`, `source_fetch`,
+49 tools (the `TOOLS` list in `halfiralens/mcp_server.py`), all capability-shaped: `search`, `open`, `read`, `source_fetch`,
 `navigate`, `click`, `fill`, `extract`, `screenshot`, `pdf`, `cookies_*`,
 `storage_state`, `tab_*`, `session_state`, `doctor`, …
+
+## Full IraLens: search, reliability, research
+
+- `search_api(query, filters, options)` returns ranked results with per-engine
+  outcomes, fallbacks, filter report, dedup log, cache status, and security flags.
+  `search()` is unchanged. See `docs/SEARCH.md`.
+- `research(question, options)` runs a bounded multi-round loop. It reads top
+  sources, flags possible contradictions, and returns cited statements with a
+  provenance graph and a replayable trace. See `docs/RESEARCH.md`.
+- Reliability, caching, and content-security policy: `docs/RELIABILITY.md`,
+  `docs/THREAT_MODEL.md`. Known gaps: `KNOWN_LIMITATIONS.md`. Decisions: `DECISIONS.md`.
 
 ## Capabilities
 

@@ -136,4 +136,56 @@ choice for the single-process CLI and MCP servers. Multi-process use would need
 a shared store, and that is not built.
 
 ## Phase 3 — Research intelligence
-(see sections below as they are added)
+
+**D-040 Deterministic core; LLM is an optional adapter.** The planner, claim
+extraction, contradiction detection, synthesis, and confidence formula are all
+deterministic and inspectable. `research/llm.py` takes any `complete(prompt)`
+callable. The facade does not take one yet. Reason: HalfIraLens ships no model
+and no key, and an LLM must not be a hidden dependency of the core result.
+
+**D-041 Replayable trace.** The trace records every search response, every
+expander decision, every page read, and the date used. `ResearchPlanner.replay`
+rebuilds the report from it with no network access. Reason: research output
+has to be auditable after the fact. Replay reuses recorded decisions, so it does
+not depend on whatever expander the replaying caller has.
+
+**D-042 Stop reasons are explicit.** `coverage_reached`, `budget_exhausted`,
+`no_new_sources`, `search_failed`, `max_rounds`. `search_failed` is separate, so
+"every engine was blocked" is not reported as "nothing new to find".
+
+**D-043 Claims are sentences; years are not measurements.** Sentences that share
+a term with the question become claims. Four-digit years are excluded from the
+number comparison. Otherwise any two sources citing different years would look
+like a numeric contradiction.
+
+**D-044 Contradictions are candidates only.** Each one is labeled
+`confidence: "heuristic"`. The report and the docs state that they are not verdicts.
+
+**D-045 Statement scoring is shared by the deterministic and LLM paths.** The
+LLM may propose wording and grouping. `make_statement` computes status and
+confidence either way. An LLM proposal that cites an unknown claim id is
+rejected as a whole, and the deterministic statements are kept.
+
+**D-046 Research reads only static pages.** It does not drive the browser. This
+avoids session state and keeps reads cacheable. It also means it sends each top
+URL to `r.jina.ai` (the existing static reader). This was not a decision the
+user made explicitly; it inherits the existing reader's behavior. Recorded here
+because it is a privacy-relevant data flow. Use `read()` in browser mode for a
+URL you do not want shared.
+
+**D-047 Confidence and authority are transparent heuristics.** The formulas and
+constants are in `Settings` and `research/synthesis.py`. They are not calibrated
+against ground truth, and the docs say so.
+
+**D-048 Engine download URL verified, binary not run.** `engine/install.py` points
+at `h4ckf0r0day/obscura` release `v0.2.4`. The GitHub API confirms the release exists, and
+that the Linux, macOS, and Windows asset names match the ones the installer requests.
+The binary itself was not downloaded or executed in this environment.
+
+**D-049 Tool counts come from code.** MCP tool count is `len(TOOLS)` = 49 at
+this commit. README and CAPABILITY_MAP were updated to match. The earlier
+"46/47" figures were wrong.
+
+**D-050 Scope cut.** Not built in this pass: a LLM facade hook, a persisted
+circuit breaker, a second-language reader, and Bing live verification. Each is
+in KNOWN_LIMITATIONS.md.

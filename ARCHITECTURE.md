@@ -79,7 +79,7 @@ halfiralens/
                    JSON-RPC over stdio; error classification; state export)
   sources/         specialized source modules (web, search, github, youtube,
                    bilibili, reddit, rss, v2ex, twitter, xiaohongshu, linkedin,
-                   boss, xueqiu, xiaoyuzhou, facebook, instagram, transcribe)
+                   boss, xueqiu, facebook, instagram, transcribe; xiaoyuzhou is planned and not implemented in this bundle)
   cli.py           `halfiralens` command
   mcp_server.py    Half IraLens MCP server (own unified tool surface)
 ```
@@ -133,3 +133,23 @@ No source-quality/credibility ranking, no research planning/synthesis, no
 custom search index, no vector DBs or background services. Half IraLens is the
 Internet-access foundation; a future intelligence layer can sit above the
 facade without knowing anything below it.
+
+## Full IraLens layers (added on top of HalfIraLens)
+
+```
+HalfIraLens facade (core.py) — search(), search_api(), research(), open(), …
+ ├── search/            Phase 1: schemas, reformulation, fallback chain, filters,
+ │                      dedup, ranking, engines (duckduckgo, bing, exa)
+ ├── reliability.py     Phase 2: failure taxonomy, retries, circuit breaker, gate
+ ├── cache.py           Phase 2: TTL disk cache (search responses, static pages)
+ ├── content_guard.py   Phase 2: injection / invisible-character flags
+ ├── settings.py        all tunables (config.yaml or HIL_* env)
+ └── research/          Phase 3: planner loop, evidence, contradictions,
+                        synthesis, provenance graph, replay, LLM adapters
+```
+
+Data flow for `research()`: question → expander → `search_api` per query →
+top sources read (static reader) → claims → contradiction candidates →
+statements (cited) → provenance graph and trace. Every stage is deterministic
+except the optional LLM adapters, and the trace replays the whole run.
+

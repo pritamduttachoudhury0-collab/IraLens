@@ -65,7 +65,7 @@ status reports honestly).
 | SSRF URL normalization | `security.normalize_public_http_url` | ✅ security suite (15 hostile URLs) |
 | credential scrubbing (userinfo + query secrets) | `security.scrub_url_credentials` (+ free-text secrets) | ✅ security suite |
 | cookie import helpers | config keys for per-platform tokens; browser cookies via engine `cookies_set`/`storage_state` | ✅ mechanism present |
-| MCP server (`get_status` only) | replaced by the full Half IraLens MCP server (47 tools) | ✅ live handshake + calls |
+| MCP server (`get_status` only) | replaced by the full Half IraLens MCP server (49 tools at Full IraLens Phase 3) | ✅ live handshake + calls |
 | installer/setup wizard, skill registration, update checker | intentionally not carried: scaffolding identity conflicts with the unified system; `install-engine` + `doctor` hints cover setup | intentional |
 
 ## Deliberate non-goals (spec §17)
