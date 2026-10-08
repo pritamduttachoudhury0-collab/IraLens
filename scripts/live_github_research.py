@@ -91,7 +91,7 @@ def main() -> int:
         "stop_reason": data["stop_reason"],
         "rounds_run": data["rounds_run"],
         "queries": list(data["queries"]),
-        "sources": [{"url": s["url"], "read_status": s["read_status"], "score": s["score"]}
+        "sources": [{"id": s["id"], "url": s["url"], "read_status": s["read_status"], "score": s["score"]}
                     for s in data["sources"]],
         "claims": len(data["claims"]),
         "contradictions": data["contradictions"],
