@@ -18,9 +18,14 @@ Threat model:
 
 from __future__ import annotations
 
+import functools
+import http.client
 import ipaddress
 import re
 import socket
+import ssl
+import urllib.request
+from typing import Dict, List, Optional
 from urllib.parse import urlsplit
 
 # ---------------------------------------------------------------------------
@@ -98,6 +103,178 @@ def normalize_public_http_url(url: str) -> str:
         raise ValueError("only public HTTP(S) URLs are allowed")
 
     return parsed.geturl()
+
+
+# ---------------------------------------------------------------------------
+# Redirect validation, DNS pinning, and a hardened urlopen
+# ---------------------------------------------------------------------------
+#
+# `normalize_public_http_url` inspects URL *text* only. Two attacks need more:
+#   - redirect-to-private-target: a public host answers 302 -> http://169.254.
+#     169.254/... ; following it naively defeats the literal check.
+#   - DNS rebinding: the hostname resolves to a public IP while the URL is
+#     validated and to a private IP when the connection is made.
+# The fetch helpers below re-validate every hop and pin the resolved address:
+# the exact IPs that were validated are the ones the socket connects to.
+
+#: Maximum redirects followed for one fetch.
+MAX_REDIRECTS = 5
+
+
+def is_public_address(address: str) -> bool:
+    """True when one resolved IP address is acceptable as a fetch target."""
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    return ip.is_global
+
+
+def resolve_public_addresses(host: str, port: int) -> List[str]:
+    """Resolve *host* and return its addresses, refusing non-public ones.
+
+    Raises SecurityBlockedError when the name resolves (only or also) to
+    private/loopback/link-local addresses, and ValueError when it does not
+    resolve at all. Every returned address passed the check, so the caller
+    may connect to any of them directly (DNS pinning).
+    """
+    from .errors import SecurityBlockedError
+
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise ValueError(f"could not resolve host: {host}") from exc
+    addresses = sorted({str(info[4][0]) for info in infos})
+    rejected = [a for a in addresses if not is_public_address(a)]
+    allowed = [a for a in addresses if a not in rejected]
+    if rejected and not allowed:
+        raise SecurityBlockedError(
+            "host resolves only to private/internal addresses",
+            detail=f"resolved: {', '.join(rejected)}",
+        )
+    # Mixed answers are a rebinding signature; never connect to any of them.
+    if rejected:
+        raise SecurityBlockedError(
+            "host resolves to a mix of public and private addresses",
+            detail=f"private: {', '.join(rejected)}",
+        )
+    return allowed
+
+
+class _PinnedHTTPConnection(http.client.HTTPConnection):
+    """HTTPConnection that connects to a pre-validated IP address."""
+
+    def __init__(self, host: str, port: Optional[int] = None, *, timeout=None,
+                 pinned_address: Optional[str] = None, **kwargs) -> None:
+        super().__init__(host, port, timeout=timeout, **kwargs)
+        self._pinned = pinned_address
+
+    def connect(self) -> None:
+        target = self._pinned or self.host
+        self.sock = socket.create_connection((target, self.port), self.timeout)
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """HTTPSConnection that connects to a pre-validated IP address but keeps
+    the original hostname for SNI and certificate verification."""
+
+    def __init__(self, host: str, port: Optional[int] = None, *, timeout=None,
+                 pinned_address: Optional[str] = None, context=None, **kwargs) -> None:
+        super().__init__(host, port, timeout=timeout, context=context, **kwargs)
+        self._pinned = pinned_address
+        self._ssl_context = context
+
+    def connect(self) -> None:
+        target = self._pinned or self.host
+        raw = socket.create_connection((target, self.port), self.timeout)
+        try:
+            context = self._ssl_context or ssl.create_default_context()
+            self.sock = context.wrap_socket(raw, server_hostname=self.host)
+        except Exception:
+            raw.close()
+            raise
+
+
+def _request_host_port(req, default: int):
+    """Clean (hostname, port) of a request, independent of urllib internals."""
+    parts = urlsplit(req.get_full_url())
+    return parts.hostname, (parts.port or default)
+
+
+class _PinnedHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req):  # type: ignore[override]
+        from .errors import SecurityBlockedError
+
+        host, port = _request_host_port(req, 80)
+        if not host:
+            raise SecurityBlockedError("request has no host")
+        addresses = resolve_public_addresses(host, port)
+        conn = functools.partial(_PinnedHTTPConnection, pinned_address=addresses[0])
+        return self.do_open(conn, req)
+
+
+class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):  # type: ignore[override]
+        from .errors import SecurityBlockedError
+
+        host, port = _request_host_port(req, 443)
+        if not host:
+            raise SecurityBlockedError("request has no host")
+        addresses = resolve_public_addresses(host, port)
+        conn = functools.partial(
+            _PinnedHTTPSConnection, pinned_address=addresses[0], context=self._context
+        )
+        return self.do_open(conn, req)
+
+
+class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Re-validates every redirect hop against the public-URL policy.
+
+    A hop is rejected when it is not a clean public http(s) URL, when it
+    downgrades https to http, or when the chain is longer than MAX_REDIRECTS.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        from .errors import SecurityBlockedError
+
+        try:
+            normalize_public_http_url(newurl)
+        except ValueError as exc:
+            raise SecurityBlockedError(
+                "redirect target rejected by the security policy",
+                detail=f"code={code} target not public http(s)",
+            ) from exc
+        origin = req.get_full_url()
+        if origin.lower().startswith("https://") and newurl.lower().startswith("http://"):
+            raise SecurityBlockedError("redirect downgrades https to http",
+                                       detail=f"code={code}")
+        # redirect_dict maps each hop URL to how often it was visited; the
+        # chain length is the total, not the number of distinct URLs.
+        hops = sum((getattr(req, "redirect_dict", {}) or {}).values())
+        if hops >= MAX_REDIRECTS:
+            raise SecurityBlockedError(f"too many redirects (> {MAX_REDIRECTS})")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def build_safe_opener() -> urllib.request.OpenerDirector:
+    """An opener with redirect re-validation and DNS-pinned connections."""
+    return urllib.request.build_opener(
+        SafeRedirectHandler(), _PinnedHTTPHandler(), _PinnedHTTPSHandler()
+    )
+
+
+def safe_urlopen(url: str, *, timeout: float = 30,
+                 headers: Optional[Dict[str, str]] = None):
+    """urlopen replacement enforcing the SSRF policy end-to-end.
+
+    The URL is normalized, every redirect hop is re-normalized, and each
+    connection goes straight to an address that was validated after
+    resolution. Raises SecurityBlockedError for policy violations, and the
+    usual urllib errors (URLError/HTTPError) for ordinary failures.
+    """
+    safe_url = normalize_public_http_url(url)
+    request = urllib.request.Request(safe_url, headers=headers or {})
+    return build_safe_opener().open(request, timeout=timeout)
 
 
 def domain_matches(host: str, *domains: str) -> bool:

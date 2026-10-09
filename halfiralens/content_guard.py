@@ -58,3 +58,22 @@ def sanitize(text: str, max_chars: int = 2000) -> str:
     if max_chars and len(cleaned) > max_chars:
         cleaned = cleaned[: max_chars - 1].rstrip() + "…"
     return cleaned
+
+
+def strip_control_chars(text: str) -> str:
+    """Remove control and invisible characters without touching anything else."""
+    cleaned = _INVISIBLE_RE.sub("", str(text or ""))
+    return _CONTROL_RE.sub("", cleaned)
+
+
+def truncate_text(text: str, max_chars: int) -> Tuple[str, bool]:
+    """Enforce a hard character budget on retrieved content.
+
+    Returns ``(text, truncated)``. Truncation is explicit: the tail is cut at
+    the budget and a marker says how many characters were omitted, so the
+    consumer knows the content is partial instead of assuming it is complete.
+    """
+    text = str(text or "")
+    if not max_chars or len(text) <= max_chars:
+        return text, False
+    return text[:max_chars].rstrip() + f"\n\n…[truncated {len(text) - max_chars} chars]", True

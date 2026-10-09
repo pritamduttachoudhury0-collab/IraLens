@@ -130,6 +130,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser(parents=[json_flag], name="read", help="fast static read of a URL")
     p.add_argument("url")
     p.add_argument("--mode", default="static", choices=["auto", "static", "browser"])
+    p.add_argument("--max-chars", type=int, default=20000,
+                   help="content budget in characters (default 20000)")
 
     p = sub.add_parser(parents=[json_flag], name="scrape", help="bulk-read many URLs (failures don't abort the batch)")
     p.add_argument("urls", nargs="+")
@@ -224,7 +226,15 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser(parents=[json_flag], name="close", help="close the browser engine (persists session state)")
 
     sub.add_parser(parents=[json_flag], name="mcp", help="run the Half IraLens MCP server (stdio)")
-    sub.add_parser(parents=[json_flag], name="install-engine", help="download the browser engine binary")
+    p = sub.add_parser(parents=[json_flag], name="install-engine",
+                       help="download and verify the browser engine binary")
+    p.add_argument("--status", action="store_true",
+                   help="report the current installation state; install nothing")
+    p.add_argument("--force", action="store_true",
+                   help="reinstall even if a working engine is already installed")
+    p.add_argument("--checksum", default=None, metavar="SHA256",
+                   help="expected SHA-256 of the archive; aborts on mismatch "
+                        "(also: HIL_ENGINE_SHA256 environment variable)")
     sub.add_parser(parents=[json_flag], name="version", help="print version")
     return parser
 
@@ -236,10 +246,17 @@ def run(args: argparse.Namespace) -> Any:
         return {"system": "half-iralens", "version": __version__}
 
     if command == "install-engine":
-        from .engine.install import install_engine
+        from .engine.install import engine_status, install_engine
 
-        path = install_engine()
-        return {"installed": str(path)}
+        if getattr(args, "status", False):
+            return {"engine": engine_status()}
+        install_report: dict = {}
+        path = install_engine(force=getattr(args, "force", False),
+                              expected_sha256=getattr(args, "checksum", None),
+                              report=install_report)
+        return {"installed": str(path),
+                "already_installed": bool(install_report.get("already_installed")),
+                "checksum_verified": bool(install_report.get("checksum_verified"))}
 
     if command == "mcp":
         from .mcp_server import main as mcp_main
@@ -267,7 +284,7 @@ def run(args: argparse.Namespace) -> Any:
         if command == "open":
             return hil.open(args.url, mode=args.mode, max_chars=args.max_chars)
         if command == "read":
-            return hil.read(args.url, mode=args.mode)
+            return hil.read(args.url, mode=args.mode, max_chars=args.max_chars)
         if command == "scrape":
             return hil.scrape(args.urls, mode=args.mode)
         if command == "fetch":
@@ -368,6 +385,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         result = run(args)
     except HalfIraLensError as exc:
         print(json.dumps(exc.to_dict(), ensure_ascii=False, indent=2), file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        # Malformed arguments and rejected filters/queries are caller errors
+        # (FilterError is a ValueError), not internal faults — same mapping MCP uses.
+        print(json.dumps({"error": "invalid_input", "message": public_message(exc)[:500]},
+                         ensure_ascii=False, indent=2), file=sys.stderr)
         return 2
     except KeyboardInterrupt:
         return 130

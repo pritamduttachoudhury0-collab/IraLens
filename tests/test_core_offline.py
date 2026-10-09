@@ -79,7 +79,7 @@ def test_open_falls_through_when_source_unavailable(hil, monkeypatch):
     def broken_read_url(self, url, context):
         raise SourceUnavailableError("backend missing")
 
-    def fake_web_read(self, url, context, mode="auto"):
+    def fake_web_read(self, url, context, mode="auto", max_chars=20000):
         return Artifact(title="page", url=url, source="web", kind="page",
                         content="body", retrieval_method="browser")
 
@@ -103,7 +103,7 @@ def test_open_source_mode_requires_source(hil, monkeypatch):
 
 
 def test_discovered_from_propagates(hil, monkeypatch):
-    def fake_web_read(self, url, context, mode="auto"):
+    def fake_web_read(self, url, context, mode="auto", max_chars=20000):
         return Artifact(title="page", url=url, source="web", kind="page",
                         content="body", retrieval_method="browser")
 
@@ -126,3 +126,27 @@ def test_sources_catalog_is_pure(hil):
     catalog = json.dumps(hil.sources(), ensure_ascii=False).lower()
     assert "obscura" not in catalog
     assert "agent-reach" not in catalog and "agent_reach" not in catalog
+
+
+def test_open_enforces_max_chars_end_to_end(hil, monkeypatch, tmp_path):
+    from halfiralens.sources import web as web_mod
+    from halfiralens.cache import ResponseCache
+    import io as _io
+
+    body = ("# Big page\n\n" + ("lorem ipsum dolor sit amet " * 400)).encode()
+
+    class FakeResp(_io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(web_mod, "safe_urlopen",
+                        lambda url, *, timeout=30, headers=None: FakeResp(body))
+    monkeypatch.setattr(web_mod, "ResponseCache",
+                        lambda enabled=True: ResponseCache(tmp_path / "pages"))
+    art = hil.open("https://example.org/big", mode="static", max_chars=300)
+    assert len(art.content) <= 360
+    assert art.metadata.get("truncated") is True
+    assert art.retrieval_method == "static-reader"

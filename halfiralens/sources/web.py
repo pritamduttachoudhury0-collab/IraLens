@@ -4,23 +4,27 @@
 One capability, ordered backends:
   1. static-reader — a remote markdown reader service (fast, no JS).
      Adapted from the capability-layer source's reader implementation,
-     including anti-bot challenge detection and response caps.
+     extended with redirect-validated fetching (SSRF-safe), an overall read
+     deadline (slow-drip protection), a response size cap, HTTP status
+     classification, and soft-404 detection.
   2. browser — the shared engine renders the page (full JS, local).
 
 `read()` walks the chain; anti-bot walls or fetch failures fall through to
-the engine automatically.
+the engine automatically. `max_chars` is enforced on both backends, and the
+artifact says when its content was truncated.
 """
 
 from __future__ import annotations
 
-import urllib.request
-from typing import Any, Dict, TYPE_CHECKING
+import time
+import urllib.error
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from .. import content_guard
 from ..cache import ResponseCache
-from ..errors import ExtractionError, PageUnavailableError
+from ..errors import ExtractionError, OperationTimeoutError, PageUnavailableError
 from ..model import Artifact
-from ..security import normalize_public_http_url
+from ..security import normalize_public_http_url, safe_urlopen
 from ..settings import Settings
 from .base import Source, SourceHealth
 
@@ -28,9 +32,16 @@ if TYPE_CHECKING:
     from ..core import Context
 
 _UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-_MAX_RESPONSE_BYTES = 5 * 1024 * 1024
+_DEFAULT_MAX_BYTES = 5 * 1024 * 1024
+_DEFAULT_DEADLINE_SECONDS = 60
+_READ_CHUNK = 64 * 1024
 _ANTIBOT_SCAN_BYTES = 4096
 _READER_BASE = "https://r.jina.ai/"
+
+#: Soft-404 heuristic: a *short* body whose head looks like a not-found page.
+#: The length bound keeps real articles that merely mention "404" intact.
+_SOFT_404_MARKERS = ("404 not found", "page not found", "error 404", "does not exist")
+_SOFT_404_MAX_LEN = 2000
 
 
 def _is_antibot_page(body: bytes) -> bool:
@@ -51,26 +62,130 @@ def _is_antibot_page(body: bytes) -> bool:
     return (captcha_warning and challenge_structure) or cloudflare_block
 
 
-def read_with_static_reader(url: str, timeout: int = 30) -> str:
-    """Fetch markdown for *url* through the remote reader service."""
+def _is_soft_404(text: str) -> bool:
+    if len(text) > _SOFT_404_MAX_LEN:
+        return False
+    head = text[:1024].casefold()
+    return any(marker in head for marker in _SOFT_404_MARKERS)
+
+
+def _read_body_with_deadline(resp, max_bytes: int, deadline: float) -> bytes:
+    """Stream a response in chunks under an overall time budget and size cap.
+
+    The socket timeout bounds any single blocking read; the deadline bounds
+    the whole transfer, which defeats slow-drip responses that send data just
+    fast enough to never trip a per-read timeout.
+    """
+    chunks = []
+    total = 0
+    while True:
+        if time.monotonic() > deadline:
+            raise OperationTimeoutError(
+                "page read exceeded its total time budget",
+                hint="the server may be trickle-feeding data; retry later",
+                detail="slow_response_deadline",
+            )
+        chunk = resp.read(_READ_CHUNK)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise ExtractionError(
+                f"page response exceeded the {max_bytes // (1024 * 1024)} MB cap",
+                detail="response_too_large",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def read_with_static_reader(
+    url: str,
+    timeout: int = 30,
+    *,
+    max_bytes: Optional[int] = None,
+    deadline_seconds: Optional[float] = None,
+) -> str:
+    """Fetch markdown for *url* through the remote reader service.
+
+    The fetch goes through `safe_urlopen`: every redirect hop is re-checked
+    against the public-URL policy and connections are pinned to validated
+    addresses. HTTP failures are classified by status code instead of being
+    collapsed into one generic error.
+    """
     safe_url = normalize_public_http_url(url)
-    req = urllib.request.Request(
-        _READER_BASE + safe_url,
-        headers={"User-Agent": _UA, "Accept": "text/plain"},
-    )
+    limit = max_bytes or _DEFAULT_MAX_BYTES
+    deadline = time.monotonic() + (deadline_seconds if deadline_seconds else _DEFAULT_DEADLINE_SECONDS)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            body = resp.read(_MAX_RESPONSE_BYTES + 1)
+        with safe_urlopen(_READER_BASE + safe_url, timeout=timeout,
+                          headers={"User-Agent": _UA, "Accept": "text/plain"}) as resp:
+            body = _read_body_with_deadline(resp, limit, deadline)
+    except urllib.error.HTTPError as exc:
+        raise _classify_http_error(exc) from exc
+    except (OperationTimeoutError, ExtractionError):
+        raise
     except Exception as exc:
-        raise PageUnavailableError("static reader could not fetch the page", detail=str(exc)) from exc
-    if len(body) > _MAX_RESPONSE_BYTES:
-        raise ExtractionError("reader response exceeded the 5 MB cap")
+        from ..errors import SecurityBlockedError
+
+        if isinstance(exc, SecurityBlockedError):
+            raise
+        raise PageUnavailableError(
+            "static reader could not fetch the page", detail=str(exc)
+        ) from exc
     if _is_antibot_page(body):
         raise PageUnavailableError(
             "the site served an anti-bot challenge to the static reader",
             hint="retry with the browser backend (open with mode=browser)",
+            detail="antibot_challenge",
         )
-    return body.decode("utf-8", errors="replace")
+    text = body.decode("utf-8", errors="replace")
+    if not text.strip():
+        raise PageUnavailableError("the reader returned an empty page",
+                                   detail="empty_response")
+    if _is_soft_404(text):
+        raise PageUnavailableError(
+            "the page appears not to exist (soft 404)",
+            hint="the server answered 200 but served a not-found page",
+            detail="soft_404",
+        )
+    return text
+
+
+def _classify_http_error(exc: urllib.error.HTTPError) -> PageUnavailableError:
+    """Map an HTTP status from the reader onto a specific, honest error."""
+    status = exc.code
+    if status in (301, 302, 303, 307, 308):
+        # A redirect status only surfaces as an error when the redirect
+        # machinery gave up (e.g. a single-URL loop hit its repeat cap).
+        return PageUnavailableError(
+            "too many redirects (redirect loop suspected)",
+            hint="the page keeps redirecting; try a different URL",
+            detail="redirect_loop",
+        )
+    if status == 404:
+        return PageUnavailableError(
+            "page not found (404)", hint="check the URL for typos", detail="http_404"
+        )
+    if status in (401, 403):
+        return PageUnavailableError(
+            f"the site denied anonymous access (HTTP {status}); likely a bot check "
+            "or login wall",
+            hint="retry with mode=browser",
+            detail=f"http_{status}",
+        )
+    if status == 429:
+        return PageUnavailableError(
+            "the reader service is rate-limited (429)",
+            hint="wait a moment and retry, or use mode=browser",
+            detail="http_429",
+        )
+    if 500 <= status <= 599:
+        return PageUnavailableError(
+            f"the reader service failed (HTTP {status})",
+            hint="temporary; retry shortly",
+            detail=f"http_{status}",
+        )
+    return PageUnavailableError(f"the reader returned HTTP {status}",
+                                detail=f"http_{status}")
 
 
 class WebSource(Source):
@@ -81,7 +196,8 @@ class WebSource(Source):
     operations = {
         "read": {
             "description": "Read any public URL as markdown/text",
-            "params": {"url": "page URL", "mode": "auto|static|browser (default auto)"},
+            "params": {"url": "page URL", "mode": "auto|static|browser (default auto)",
+                       "max_chars": "content budget in characters (default 20000)"},
         }
     }
 
@@ -102,9 +218,12 @@ class WebSource(Source):
         url = params.get("url")
         if not url:
             raise ExtractionError("web read requires 'url'")
-        return self.read_url(url, context, mode=params.get("mode", "auto"))
+        max_chars = int(params.get("max_chars") or 20000)
+        return self.read_url(url, context, mode=params.get("mode", "auto"),
+                             max_chars=max_chars)
 
-    def read_url(self, url: str, context: "Context", mode: str = "auto") -> Artifact:
+    def read_url(self, url: str, context: "Context", mode: str = "auto",
+                 max_chars: int = 20000) -> Artifact:
         safe_url = normalize_public_http_url(url)
         settings = Settings.from_config(context.config)
         cache = ResponseCache(enabled=settings.cache_enabled)
@@ -114,16 +233,26 @@ class WebSource(Source):
                 cached = cache.get(_PAGE_NS, {"url": safe_url}, settings.cache_page_ttl_seconds)
                 if cached is not None:
                     value, age = cached
-                    return _static_artifact(
-                        safe_url, value["markdown"], cache={"status": "hit", "age_seconds": round(age, 1)},
-                        flags=content_guard.scan(value["markdown"]),
+                    markdown = value["markdown"]
+                    cache_info = {"status": "hit", "age_seconds": round(age, 1)}
+                else:
+                    markdown = read_with_static_reader(
+                        safe_url,
+                        max_bytes=settings.read_max_bytes,
+                        deadline_seconds=settings.read_total_timeout_seconds,
                     )
-                markdown = read_with_static_reader(safe_url)
+                    cache_info = {"status": "miss"}
+                    # Only successful reads are cached; a flagged page is still
+                    # cacheable because it is public, and the flags travel with it.
+                    cache.put(_PAGE_NS, {"url": safe_url}, {"markdown": markdown},
+                              cacheable=bool(markdown.strip()))
                 flags = content_guard.scan(markdown)
-                # Only successful reads are cached; a flagged page is still cacheable
-                # because it is public, and the flags travel with it.
-                cache.put(_PAGE_NS, {"url": safe_url}, {"markdown": markdown}, cacheable=bool(markdown.strip()))
-                return _static_artifact(safe_url, markdown, cache={"status": "miss"}, flags=flags)
+                # The cache keeps the full text; the budget is enforced when
+                # serving, so different max_chars values share one entry.
+                content, truncated = content_guard.truncate_text(markdown, max_chars)
+                return _static_artifact(safe_url, content, cache=cache_info, flags=flags,
+                                        truncated=truncated, total_chars=len(markdown),
+                                        max_chars=max_chars)
             except PageUnavailableError:
                 if mode == "static":
                     raise
@@ -135,7 +264,7 @@ class WebSource(Source):
         # Browser reads are never cached: the browser may hold session state.
         engine = context.engine()
         engine.navigate(safe_url)
-        markdown = engine.markdown(max_chars=20000)
+        markdown = engine.markdown(max_chars=max_chars)
         current = engine.current_url_title()
         content = markdown if isinstance(markdown, str) else str(markdown)
         return Artifact(
@@ -146,6 +275,8 @@ class WebSource(Source):
             content=content,
             content_format="markdown",
             retrieval_method="browser",
+            metadata={"max_chars": max_chars,
+                      "truncated": max_chars > 0 and len(content) >= max_chars},
             provenance={"security_flags": content_guard.scan(content), "cache": {"status": "bypass"}},
         )
 
@@ -153,7 +284,14 @@ class WebSource(Source):
 _PAGE_NS = "page.v1"
 
 
-def _static_artifact(url: str, markdown: str, *, cache: dict, flags=None) -> Artifact:
+def _static_artifact(url: str, markdown: str, *, cache: dict, flags=None,
+                     truncated: bool = False, total_chars: int = 0,
+                     max_chars: int = 0) -> Artifact:
+    metadata: Dict[str, Any] = {"truncated": truncated}
+    if max_chars:
+        metadata["max_chars"] = max_chars
+    if truncated and total_chars:
+        metadata["total_chars"] = total_chars
     return Artifact(
         title=_title_from_markdown(markdown) or url,
         url=url,
@@ -162,6 +300,7 @@ def _static_artifact(url: str, markdown: str, *, cache: dict, flags=None) -> Art
         content=markdown,
         content_format="markdown",
         retrieval_method="static-reader",
+        metadata=metadata,
         provenance={"security_flags": list(flags or []), "cache": cache},
     )
 

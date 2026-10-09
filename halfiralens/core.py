@@ -23,6 +23,7 @@ if TYPE_CHECKING:  # pragma: no cover
 from .security import normalize_public_http_url, public_message
 from .session import Session
 from .sources import ALL_SOURCES, get_source, route_url
+from .sources.web import WebSource
 
 
 class Context:
@@ -136,10 +137,13 @@ class HalfIraLens:
                                  context=self._context)
 
         web = get_source("web")
-        assert web is not None
+        assert isinstance(web, WebSource)
 
         def reader(url: str) -> str:
-            return web.read_url(url, self._context, mode="static").content
+            # Bound what the reader returns; the planner trims further for
+            # the replay trace. This keeps a huge page out of memory.
+            return web.read_url(url, self._context, mode="static",
+                                max_chars=settings.research_page_chars * 4).content
 
         report = ResearchPlanner(settings, search, reader=reader).run(question, opts)
         self.session.last_query = question
@@ -196,9 +200,10 @@ class HalfIraLens:
 
         if artifact is None:
             web = get_source("web")
-            assert web is not None
+            assert isinstance(web, WebSource)
             web_mode = "browser" if mode == "browser" else ("static" if mode == "static" else "auto")
-            artifact = web.read_url(safe_url, self._context, mode=web_mode)
+            artifact = web.read_url(safe_url, self._context, mode=web_mode,
+                                    max_chars=max(1, int(max_chars)))
 
         if discovered_from:
             artifact.discovered_from = discovered_from

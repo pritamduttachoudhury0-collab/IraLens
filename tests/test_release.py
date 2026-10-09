@@ -107,3 +107,22 @@ def test_engine_archive_accepts_normal_member_names(good):
     from halfiralens.engine.install import check_archive_member
 
     check_archive_member(good)  # must not raise
+
+
+def test_cli_overlong_query_is_invalid_input_not_internal_error():
+    out = subprocess.run([sys.executable, "-m", "halfiralens.cli", "--json",
+                          "search-api", "word " * 120],
+                         capture_output=True, text=True, timeout=120)
+    assert out.returncode == 2
+    body = json.loads(out.stderr)
+    assert body["error"] == "invalid_input"
+    assert "too long" in body["message"]
+
+
+def test_cli_ssrf_targets_are_blocked_by_security_policy():
+    out = subprocess.run([sys.executable, "-m", "halfiralens.cli", "--json",
+                          "read", "http://169.254.169.254/latest/meta-data/"],
+                         capture_output=True, text=True, timeout=120)
+    assert out.returncode == 2
+    body = json.loads(out.stderr)
+    assert body["error"] == "blocked_by_security_policy"
