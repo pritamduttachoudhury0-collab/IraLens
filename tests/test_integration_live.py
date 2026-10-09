@@ -10,9 +10,9 @@ import subprocess
 
 import pytest
 
-from halfiralens import HalfIraLens
-from halfiralens.errors import (
-    HalfIraLensError,
+from iralens import IraLens
+from iralens.errors import (
+    IraLensError,
     PageUnavailableError,
     SessionStateError,
 )
@@ -22,7 +22,7 @@ from .conftest import browser, live
 
 @pytest.fixture
 def hil(isolated_home):
-    instance = HalfIraLens()
+    instance = IraLens()
     yield instance
     instance.close()
 
@@ -130,7 +130,7 @@ def test_e_session_state_retained(hil):
     hil.close()  # persists storage state
 
     # Fresh facade in the same home → browser state is restored.
-    hil2 = HalfIraLens()
+    hil2 = IraLens()
     try:
         state = hil2.session_state()
         assert state["browser_state_persisted"] is True
@@ -145,7 +145,7 @@ def test_e_session_state_retained(hil):
 # ------------------------------------------------- Test F — failure recovery
 @browser
 def test_f_failure_recovery(hil):
-    with pytest.raises(HalfIraLensError) as exc_info:
+    with pytest.raises(IraLensError) as exc_info:
         hil.open("https://this-host-does-not-exist-zzz123.example")
     assert isinstance(exc_info.value, PageUnavailableError)
     payload = exc_info.value.to_dict()
@@ -169,9 +169,9 @@ def test_f_bad_tab_recovers(hil):
 # ------------------------------------------- Test G — interface purity
 @live
 def test_g_mcp_surface_is_pure():
-    from halfiralens.mcp_server import TOOLS, _SERVER_INFO
+    from iralens.mcp_server import TOOLS, _SERVER_INFO
 
-    assert _SERVER_INFO["name"] == "half-iralens"
+    assert _SERVER_INFO["name"] == "iralens"
     blob = json.dumps(TOOLS, ensure_ascii=False).lower()
     for term in ("obscura", "agent-reach", "agent_reach", "agentreach"):
         assert term not in blob, f"implementation ancestry leaked into MCP surface: {term}"
@@ -181,7 +181,7 @@ def test_g_mcp_surface_is_pure():
 
 @live
 def test_g_cli_help_is_pure():
-    out = subprocess.run(["halfiralens", "--help"], capture_output=True, text=True, timeout=30)
+    out = subprocess.run(["iralens", "--help"], capture_output=True, text=True, timeout=30)
     blob = (out.stdout + out.stderr).lower()
     for term in ("obscura", "agent-reach", "agent_reach"):
         assert term not in blob

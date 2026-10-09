@@ -6,13 +6,13 @@ no-op so retry backoff does not slow the suite.
 
 import pytest
 
-from halfiralens.errors import ExtractionError, OperationTimeoutError, SourceUnavailableError
-from halfiralens.cache import ResponseCache
-from halfiralens.reliability import ConcurrencyGate
-from halfiralens.search import SearchEngine, to_artifacts
-from halfiralens.search.engines.base import NATIVE, POST, UNSUPPORTED, SearchBackend
-from halfiralens.search.schema import FilterError, SearchFilters, SearchHit, SearchOptions
-from halfiralens.settings import Settings
+from iralens.errors import ExtractionError, OperationTimeoutError, SourceUnavailableError
+from iralens.cache import ResponseCache
+from iralens.reliability import ConcurrencyGate
+from iralens.search import SearchEngine, to_artifacts
+from iralens.search.engines.base import NATIVE, POST, UNSUPPORTED, SearchBackend
+from iralens.search.schema import FilterError, SearchFilters, SearchHit, SearchOptions
+from iralens.settings import Settings
 
 
 class FakeBackend(SearchBackend):
@@ -223,32 +223,35 @@ def test_gate_releases_on_exception():
 
 # ------------------------------------------------ facade + CLI/MCP wiring
 def test_facade_search_api_returns_structured_response(tmp_path, monkeypatch):
-    from halfiralens import HalfIraLens
-    from halfiralens.sources import get_source
+    from iralens import IraLens
+    from iralens.sources import get_source
 
     fake = FakeBackend("duckduckgo", hits=GOOD)
     settings = Settings(search_engines=("duckduckgo",), search_min_engines=1, retry_base_delay_seconds=0.0)
     engine = SearchEngine(settings, backends={"duckduckgo": fake},
                           cache=ResponseCache(tmp_path / "c"), gate=ConcurrencyGate(1, 1.0))
     monkeypatch.setattr(get_source("web-search"), "_engine", engine)
-    hil = HalfIraLens()
+    hil = IraLens()
     resp = hil.search_api("solar", filters={"file_type": "pdf"}, options={"reformulate": False})
-    assert resp.query == "solar" and resp.results == [] and resp.no_results_reason == "no_results"
+    # Hits existed but the pdf filter removed all of them: the response must
+    # say "filtered_out", not claim the web has no results.
+    assert resp.query == "solar" and resp.results == [] and resp.no_results_reason == "filtered_out"
+    assert "filtering" in resp.summary
     resp = hil.search_api("solar", options={"reformulate": False, "cache": "bypass"})
     assert [r.url for r in resp.results] == [h[1] for h in GOOD]
 
 
 def test_legacy_search_still_returns_artifacts_and_unchanged_signature():
     import inspect
-    from halfiralens import HalfIraLens
-    sig = inspect.signature(HalfIraLens.search)
+    from iralens import IraLens
+    sig = inspect.signature(IraLens.search)
     assert list(sig.parameters) == ["self", "query", "limit", "backend"]
     assert sig.parameters["limit"].default == 8 and sig.parameters["backend"].default == ""
 
 
 def test_cli_and_mcp_expose_search_api():
-    from halfiralens.cli import build_parser
-    from halfiralens.mcp_server import TOOLS
+    from iralens.cli import build_parser
+    from iralens.mcp_server import TOOLS
     args = build_parser().parse_args(["search-api", "q", "--include-domain", "a.com", "--engine", "bing"])
     assert args.include_domain == ["a.com"] and args.engine == ["bing"] and args.cache == "use"
     names = {t["name"] for t in TOOLS}

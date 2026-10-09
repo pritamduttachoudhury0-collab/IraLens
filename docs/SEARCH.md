@@ -1,22 +1,22 @@
-# Search: usage guide (Full IraLens, Phase 1)
+# Search: usage guide (IraLens, Phase 1)
 
 ## Three ways to call it
 
 ```bash
 # 1. Simple (unchanged): ranked artifacts
-halfiralens search "solar cell efficiency" --limit 5
+iralens search "solar cell efficiency" --limit 5
 
 # 2. Structured: filters, engine choice, provenance
-halfiralens search-api "solar cell efficiency" --limit 5 \
+iralens search-api "solar cell efficiency" --limit 5 \
     --date-from 2024-01-01 --include-domain nrel.gov --file-type pdf \
     --engine duckduckgo --engine bing --cache use
 ```
 
 ```python
-from halfiralens import HalfIraLens
-with HalfIraLens() as hil:
-    artifacts = hil.search("solar cell efficiency", limit=5)            # List[Artifact]
-    resp = hil.search_api(
+from iralens import IraLens
+with IraLens() as lens:
+    artifacts = lens.search("solar cell efficiency", limit=5)            # List[Artifact]
+    resp = lens.search_api(
         "solar cell efficiency",
         filters={"date_from": "2024-01-01", "include_domains": ["nrel.gov"]},
         options={"max_results": 5, "engines": ["duckduckgo", "bing"], "cache": "use"},
@@ -55,5 +55,5 @@ the same keys.
 
 ## Configuration
 
-Every knob is in `halfiralens/settings.py` and reads from `config.yaml` or
-`HIL_<KEY>` env vars, for example `HIL_SEARCH_ENGINES=duckduckgo,bing`.
+Every knob is in `iralens/settings.py` and reads from `config.yaml` or
+`IRALENS_<KEY>` env vars, for example `IRALENS_SEARCH_ENGINES=duckduckgo,bing`.

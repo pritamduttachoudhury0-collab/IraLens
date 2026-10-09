@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from halfiralens import __version__
-from halfiralens.mcp_server import MCPServer
+from iralens import __version__
+from iralens.mcp_server import MCPServer
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -45,7 +45,7 @@ def test_unknown_tool_is_reported_not_crashed(server):
 
 
 def test_cli_version_flag_prints_package_version():
-    out = subprocess.run([sys.executable, "-m", "halfiralens.cli", "--version"],
+    out = subprocess.run([sys.executable, "-m", "iralens.cli", "--version"],
                          capture_output=True, text=True, timeout=60)
     assert out.returncode == 0
     assert __version__ in out.stdout
@@ -61,7 +61,7 @@ def test_setup_scripts_are_present_and_posix_script_parses():
 
 
 def test_json_flag_works_before_and_after_subcommand():
-    from halfiralens.cli import build_parser
+    from iralens.cli import build_parser
 
     parser = build_parser()
     assert parser.parse_args(["--json", "research", "q"]).json is True
@@ -75,8 +75,8 @@ def test_json_output_serializes_artifacts_as_objects(capsys):
     agents could not parse. Artifacts must come out as JSON objects."""
     import json as _json
 
-    from halfiralens.cli import _out
-    from halfiralens.model import Artifact
+    from iralens.cli import _out
+    from iralens.model import Artifact
 
     art = Artifact(title="owner/repo", url="https://github.com/owner/repo", source="github",
                    content="A headless browser", kind="repo", metadata={"stars": 3})
@@ -86,7 +86,7 @@ def test_json_output_serializes_artifacts_as_objects(capsys):
     assert isinstance(data, list) and data[0]["url"] == "https://github.com/owner/repo"
     assert data[0]["metadata"]["stars"] == 3
     assert "Artifact(" not in captured.out
-    from halfiralens.security import UNTRUSTED_NOTICE
+    from iralens.security import UNTRUSTED_NOTICE
     assert UNTRUSTED_NOTICE in captured.err      # the notice goes to stderr
     assert UNTRUSTED_NOTICE not in captured.out  # stdout stays pure JSON
 
@@ -95,8 +95,8 @@ def test_json_output_serializes_artifacts_as_objects(capsys):
 def test_engine_archive_rejects_unsafe_member_names(bad):
     """Regression for the bandit High finding (zip extraction): unsafe member
     names must be refused before extraction, not left to zipfile's defaults."""
-    from halfiralens.engine.install import check_archive_member
-    from halfiralens.errors import EngineUnavailableError
+    from iralens.engine.install import check_archive_member
+    from iralens.errors import EngineUnavailableError
 
     with pytest.raises(EngineUnavailableError):
         check_archive_member(bad)
@@ -104,6 +104,25 @@ def test_engine_archive_rejects_unsafe_member_names(bad):
 
 @pytest.mark.parametrize("good", ["obscura", "bin/obscura", "obscura.exe", "dir/sub/file.txt"])
 def test_engine_archive_accepts_normal_member_names(good):
-    from halfiralens.engine.install import check_archive_member
+    from iralens.engine.install import check_archive_member
 
     check_archive_member(good)  # must not raise
+
+
+def test_cli_overlong_query_is_invalid_input_not_internal_error():
+    out = subprocess.run([sys.executable, "-m", "iralens.cli", "--json",
+                          "search-api", "word " * 120],
+                         capture_output=True, text=True, timeout=120)
+    assert out.returncode == 2
+    body = json.loads(out.stderr)
+    assert body["error"] == "invalid_input"
+    assert "too long" in body["message"]
+
+
+def test_cli_ssrf_targets_are_blocked_by_security_policy():
+    out = subprocess.run([sys.executable, "-m", "iralens.cli", "--json",
+                          "read", "http://169.254.169.254/latest/meta-data/"],
+                         capture_output=True, text=True, timeout=120)
+    assert out.returncode == 2
+    body = json.loads(out.stderr)
+    assert body["error"] == "blocked_by_security_policy"

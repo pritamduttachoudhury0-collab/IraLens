@@ -3,11 +3,11 @@
 
 import json
 
-from halfiralens.errors import (
+from iralens.errors import (
     AuthRequiredError,
     EngineUnavailableError,
     ExtractionError,
-    HalfIraLensError,
+    IraLensError,
     NavigationError,
     OperationTimeoutError,
     OperationUnsupportedError,
@@ -17,7 +17,7 @@ from halfiralens.errors import (
     SourceUnavailableError,
     classify_error,
 )
-from halfiralens.model import Artifact, SearchResult
+from iralens.model import Artifact, SearchResult
 
 
 def test_artifact_roundtrip():
@@ -62,7 +62,7 @@ def test_error_taxonomy_types():
     }
     for cls, name in cases.items():
         err = cls("m", hint="h")
-        assert isinstance(err, HalfIraLensError)
+        assert isinstance(err, IraLensError)
         assert err.error_type == name
         assert err.to_dict() == {"error": name, "message": "m", "hint": "h"}
 

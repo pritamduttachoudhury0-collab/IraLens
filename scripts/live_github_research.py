@@ -21,14 +21,14 @@ import argparse
 import json
 import sys
 
-from halfiralens import HalfIraLens
-from halfiralens.research import ResearchPlanner
-from halfiralens.research.schema import ResearchOptions
-from halfiralens.search.schema import RankedResult, SearchResponse
-from halfiralens.settings import Settings
+from iralens import IraLens
+from iralens.research import ResearchPlanner
+from iralens.research.schema import ResearchOptions
+from iralens.search.schema import RankedResult, SearchResponse
+from iralens.settings import Settings
 
 
-def _search_fn(hil: HalfIraLens, limit: int):
+def _search_fn(hil: IraLens, limit: int):
     def search(text: str) -> SearchResponse:
         hits = hil.fetch("github", "search_repos", query=text, limit=limit)
         hits = hits if isinstance(hits, list) else [hits]
@@ -51,7 +51,7 @@ def _search_fn(hil: HalfIraLens, limit: int):
     return search
 
 
-def _reader_fn(hil: HalfIraLens):
+def _reader_fn(hil: IraLens):
     def read(url: str) -> str:
         repo = url.split("github.com/", 1)[1].strip("/")
         art = hil.fetch("github", "readme", repo=repo)
@@ -69,7 +69,7 @@ def main() -> int:
     ap.add_argument("--out", default="")
     args = ap.parse_args()
 
-    with HalfIraLens() as hil:
+    with IraLens() as hil:
         settings = Settings.from_config(hil.config)
         opts = ResearchOptions.build(
             {"max_rounds": args.rounds, "min_sources": args.min_sources,

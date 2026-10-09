@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Install the Half IraLens browser engine binary (prebuilt release).
+"""Install the IraLens browser engine binary (prebuilt release).
 
 Usage:
-    python tools/install_engine.py            # into ~/.cache/half-iralens/engine
+    python tools/install_engine.py            # into ~/.cache/iralens/engine
     python tools/install_engine.py --dir DIR  # into a specific directory
 """
 
@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from halfiralens.engine.install import install_engine  # noqa: E402
+from iralens.engine.install import install_engine  # noqa: E402
 
 
 def main() -> int:

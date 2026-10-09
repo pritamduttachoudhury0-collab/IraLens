@@ -5,14 +5,14 @@ from pathlib import Path
 import pytest
 
 # Isolate config/session for every test session.
-_TEST_HOME = Path("/tmp/half-iralens-test-home")
+_TEST_HOME = Path("/tmp/iralens-test-home")
 
 
 @pytest.fixture(autouse=True)
 def isolated_home(tmp_path, monkeypatch):
-    home = tmp_path / "hil-home"
+    home = tmp_path / "iralens-home"
     home.mkdir()
-    monkeypatch.setenv("HALF_IRALENS_HOME", str(home))
+    monkeypatch.setenv("IRALENS_HOME", str(home))
     yield home
 
 
@@ -30,7 +30,7 @@ def _has_network() -> bool:
 
 
 def _has_engine() -> bool:
-    from halfiralens.engine.locate import find_engine
+    from iralens.engine.locate import find_engine
 
     return find_engine() is not None
 

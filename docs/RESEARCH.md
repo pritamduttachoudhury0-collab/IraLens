@@ -1,17 +1,17 @@
-# Research: usage guide (Full IraLens, Phase 3)
+# Research: usage guide (IraLens, Phase 3)
 
 ## Call it
 
 ```bash
-halfiralens research "What efficiency did solar panels reach in 2025?" \
+iralens research "What efficiency did solar panels reach in 2025?" \
     --rounds 3 --min-sources 3 --read-top 3
-halfiralens --json research "..."        # full report as JSON, including trace
+iralens --json research "..."        # full report as JSON, including trace
 ```
 
 ```python
-from halfiralens import HalfIraLens
-with HalfIraLens() as hil:
-    report = hil.research("What efficiency did solar panels reach in 2025?",
+from iralens import IraLens
+with IraLens() as lens:
+    report = lens.research("What efficiency did solar panels reach in 2025?",
                           options={"max_rounds": 3, "min_sources": 3, "read_top_n": 3})
     print(report.render_text())
     for st in report.statements:
@@ -82,7 +82,7 @@ contradictions, and stop reason. The test suite checks this.
 ## Optional LLM adapters
 
 `research/llm.py` provides `LLMExpander` and `LLMSynthesizer`. Both take a plain
-`complete(prompt) -> str` callable. HalfIraLens ships no model and no key.
+`complete(prompt) -> str` callable. IraLens ships no model and no key.
 - The expander falls back to the deterministic one on bad JSON or no usable queries.
 - The synthesizer's proposal is rejected if it cites any claim id that does not
   exist. Scoring stays deterministic.

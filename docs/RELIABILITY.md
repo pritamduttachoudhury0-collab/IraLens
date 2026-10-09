@@ -2,7 +2,7 @@
 
 ## Failure taxonomy
 
-Every failed engine attempt is classified (`halfiralens/reliability.py`):
+Every failed engine attempt is classified (`iralens/reliability.py`):
 
 | kind | meaning | retried? | counts toward breaker? |
 |---|---|---|---|
@@ -44,6 +44,15 @@ Per engine, per `SearchEngine` instance:
   `search_acquire_timeout_seconds` with a clear `OperationTimeoutError`. The slot
   is always released, even when the guarded code raises.
 - Each engine navigation has a timeout (`search_timeout_seconds`, 45).
+- Static page reads are bounded three ways: a response size cap
+  (`read_max_bytes`, default 5 MB), an overall read deadline
+  (`read_total_timeout_seconds`, default 60) that defeats slow-drip responses,
+  and the per-operation socket timeout. `max_chars` is then enforced when the
+  content is served (both static and browser backends), and the artifact's
+  metadata says `truncated: true` when it was cut.
+- Search queries are sanitized before any engine sees them: control and
+  invisible characters are stripped and queries longer than
+  `search_max_query_chars` (400) are rejected with a clear message.
 - Result counts are bounded: `search_max_results` (default 8, max 50) and
   `max_results * 2` raw hits per engine page. Snippets are capped at 400
   characters and titles at 200.
@@ -52,7 +61,7 @@ Per engine, per `SearchEngine` instance:
 
 ## Caching
 
-`halfiralens/cache.py`. Files are JSON in `~/.half-iralens/state/cache/`, one file
+`iralens/cache.py`. Files are JSON in `~/.iralens/state/cache/`, one file
 per key. The directory is outside the repository.
 
 | What | Namespace | TTL setting | Cached? |
@@ -71,4 +80,4 @@ or `refresh` (write only). Responses report `cache.status` (`hit` / `miss` /
 Caching never hides failures: a degraded search (any engine failed or was
 skipped) is not stored, so the next call retries live.
 
-Disable everything with `HIL_CACHE_ENABLED=false`.
+Disable everything with `IRALENS_CACHE_ENABLED=false`.
