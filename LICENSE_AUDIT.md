@@ -27,8 +27,8 @@ All runtime dependencies are declared in `pyproject.toml` and fetched from
 PyPI by the installer — **no third-party source or binary is vendored,
 bundled, or mirrored**. Consequently:
 
-- Dependency licenses impose no redistribution obligations on the Half
-  IraLens artifacts themselves; they matter for *compatibility* and for
+- Dependency licenses impose no redistribution obligations on the IraLens
+  artifacts themselves; they matter for *compatibility* and for
   users assembling a deployment.
 - The only obligations that attach to our distribution are the attribution
   duties for **adapted upstream code** (§3.1) — satisfied via NOTICE.

@@ -8,7 +8,7 @@ system is IraLens only.**
 ```
 AI
  ↓
-HALF IRALENS          ← one interface: CLI + Python API + MCP server
+IRALENS               ← one interface: CLI + Python API + MCP server
  ↓
 Unified Internet capabilities
  ├── web search        ├── specialized source access
