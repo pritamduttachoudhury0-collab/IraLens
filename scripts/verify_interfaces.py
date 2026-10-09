@@ -23,7 +23,7 @@ import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PY = sys.executable
-BIN = os.path.join(os.path.dirname(PY), "halfiralens")
+BIN = os.path.join(os.path.dirname(PY), "iralens")
 results = []   # (name, verdict) with verdict in {"PASS", "FAIL", "BLOCKED"}
 
 
@@ -58,7 +58,7 @@ def run(args, timeout=300):
 
 # ---------------- CLI (local wiring: no network needed)
 rc, out, _ = run(["--version"])
-check("cli --version", rc == 0 and "half-iralens" in out, out.strip())
+check("cli --version", rc == 0 and "iralens" in out, out.strip())
 
 rc, out, _ = run(["--json", "doctor"])
 doc = json.loads(out) if rc == 0 else {}
@@ -101,14 +101,14 @@ check("cli research found web sources (LIVE)", rr.get("stop_reason") not in ("se
 # ---------------- Python facade (run in a child process with the venv)
 py_code = r'''
 import json
-from halfiralens import HalfIraLens
-from halfiralens.errors import HalfIraLensError
+from iralens import IraLens
+from iralens.errors import IraLensError
 out = {}
-with HalfIraLens() as h:
+with IraLens() as h:
     try:
         r = h.search("solar panel efficiency", limit=3)
         out["search"] = ["list", len(r)]
-    except HalfIraLensError as e:
+    except IraLensError as e:
         out["search"] = ["raised", e.error_type]
     sa = h.search_api("solar panel efficiency", options={"cache": "bypass"})
     out["search_api"] = ["SearchResponse", len(sa.results), [o.status for o in sa.outcomes], sa.summary]
@@ -156,7 +156,7 @@ def rpc(msg, wait=240):
 init = rpc({"jsonrpc": "2.0", "id": 1, "method": "initialize",
             "params": {"protocolVersion": "2024-11-05", "capabilities": {},
                        "clientInfo": {"name": "gate", "version": "1"}}})
-check("mcp initialize", bool(init and init.get("result", {}).get("serverInfo", {}).get("name") == "half-iralens"))
+check("mcp initialize", bool(init and init.get("result", {}).get("serverInfo", {}).get("name") == "iralens"))
 rpc({"jsonrpc": "2.0", "method": "notifications/initialized"})
 tl = rpc({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
 names = [t["name"] for t in tl["result"]["tools"]]

@@ -1,4 +1,4 @@
-# Known limitations — Full IraLens
+# Known limitations — IraLens
 
 Ordered by how much they can mislead a user. Read this before relying on output.
 
@@ -113,7 +113,7 @@ Ordered by how much they can mislead a user. Read this before relying on output.
     `search_api()` for structured outcomes.
 33. **Browser engine download: optional checksum, still none published upstream.**
     The installer verifies a SHA-256 when one is supplied (`install-engine
-    --checksum` or `HIL_ENGINE_SHA256`) and aborts on mismatch. The v0.2.4
+    --checksum` or `IRALENS_ENGINE_SHA256`) and aborts on mismatch. The v0.2.4
     release publishes no checksum asset (checked via the GitHub API), so by
     default integrity rests on HTTPS plus the startup probe — and the install
     report says `checksum_verified: false` rather than claiming otherwise.

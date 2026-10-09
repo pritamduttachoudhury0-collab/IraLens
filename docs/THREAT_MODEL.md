@@ -1,6 +1,6 @@
 # Threat model: Internet content in an AI agent
 
-Scope: the Full IraLens search, reading, and research paths. The controlling AI
+Scope: the IraLens search, reading, and research paths. The controlling AI
 is trusted to decide what to do. Web content, search snippets, and page text are
 **untrusted data**. They can try to steer the agent (prompt injection), leak
 data, or point the agent at internal targets.
@@ -43,7 +43,7 @@ data, or point the agent at internal targets.
   constant) validate the literal URL but do not pin resolved addresses; the
   GitHub/API targets are constants, and feed URLs are operator-supplied.
 - The browser-engine release publishes no checksum; unless the operator supplies
-  one (`HIL_ENGINE_SHA256` or `install-engine --checksum`), install integrity
+  one (`IRALENS_ENGINE_SHA256` or `install-engine --checksum`), install integrity
   rests on HTTPS plus the startup probe. The install never claims a verified
   checksum it did not verify.
 - Soft-404 detection is a heuristic (short body + not-found markers) and can

@@ -13,7 +13,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), os.pardir, "scripts"))
 
 from ranking_benchmark import CASES, legacy_relevance, metrics  # noqa: E402
-from halfiralens.search.ranking import relevance as new_relevance  # noqa: E402
+from iralens.search.ranking import relevance as new_relevance  # noqa: E402
 
 
 def test_benchmark_has_twenty_cases():

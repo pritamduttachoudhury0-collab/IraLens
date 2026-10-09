@@ -2,11 +2,11 @@
 
 from datetime import date
 
-from halfiralens.search.dedup import dedup, title_similarity
-from halfiralens.search.ranking import authority, combine, freshness, relevance
-from halfiralens.search.reformulate import reformulate
-from halfiralens.search.schema import SearchHit
-from halfiralens.search.urls import canonical_url, domain_matches, registrable_host
+from iralens.search.dedup import dedup, title_similarity
+from iralens.search.ranking import authority, combine, freshness, relevance
+from iralens.search.reformulate import reformulate
+from iralens.search.schema import SearchHit
+from iralens.search.urls import canonical_url, domain_matches, registrable_host
 
 
 def hit(title, url, engine="duckduckgo", pos=1, snippet="", published=None):
@@ -153,7 +153,7 @@ def test_dedup_still_merges_unversioned_near_duplicates():
 
 
 def test_version_segments():
-    from halfiralens.search.dedup import version_segments
+    from iralens.search.dedup import version_segments
     assert version_segments("https://d.org/3.10/library/") == ("3.10",)
     assert version_segments("https://d.org/v2/api") == ("v2",)
     assert version_segments("https://d.org/docs/intro") == ()

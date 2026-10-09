@@ -34,7 +34,7 @@ from typing import Dict, List
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from halfiralens.search.ranking import relevance as new_relevance  # noqa: E402
+from iralens.search.ranking import relevance as new_relevance  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Legacy scorer: verbatim copy of the pre-change relevance implementation,

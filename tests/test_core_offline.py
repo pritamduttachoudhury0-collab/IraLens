@@ -3,15 +3,15 @@
 
 import pytest
 
-from halfiralens import HalfIraLens
-from halfiralens.errors import OperationUnsupportedError, SecurityBlockedError
-from halfiralens.model import Artifact
-from halfiralens.sources import get_source
+from iralens import IraLens
+from iralens.errors import OperationUnsupportedError, SecurityBlockedError
+from iralens.model import Artifact
+from iralens.sources import get_source
 
 
 @pytest.fixture
 def hil(isolated_home):
-    instance = HalfIraLens()
+    instance = IraLens()
     yield instance
     instance.close()
 
@@ -74,7 +74,7 @@ def test_open_uses_specialized_source_first(hil, monkeypatch):
 
 
 def test_open_falls_through_when_source_unavailable(hil, monkeypatch):
-    from halfiralens.errors import SourceUnavailableError
+    from iralens.errors import SourceUnavailableError
 
     def broken_read_url(self, url, context):
         raise SourceUnavailableError("backend missing")
@@ -92,7 +92,7 @@ def test_open_falls_through_when_source_unavailable(hil, monkeypatch):
 
 
 def test_open_source_mode_requires_source(hil, monkeypatch):
-    from halfiralens.errors import SourceUnavailableError
+    from iralens.errors import SourceUnavailableError
 
     def broken_read_url(self, url, context):
         raise SourceUnavailableError("backend missing")
@@ -129,8 +129,8 @@ def test_sources_catalog_is_pure(hil):
 
 
 def test_open_enforces_max_chars_end_to_end(hil, monkeypatch, tmp_path):
-    from halfiralens.sources import web as web_mod
-    from halfiralens.cache import ResponseCache
+    from iralens.sources import web as web_mod
+    from iralens.cache import ResponseCache
     import io as _io
 
     body = ("# Big page\n\n" + ("lorem ipsum dolor sit amet " * 400)).encode()

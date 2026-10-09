@@ -1,7 +1,7 @@
 [project]
-name = "half-iralens"
+name = "iralens"
 version = "0.1.0"
-description = "Half IraLens — one unified Internet-access system: search, read, browse, and specialized source access behind a single interface."
+description = "IraLens — one unified Internet-access system: search, read, browse, and specialized source access behind a single interface."
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
@@ -24,14 +24,14 @@ dependencies = [
 dev = ["pytest>=8.0", "ruff>=0.5", "mypy>=1.10"]
 
 [project.scripts]
-halfiralens = "halfiralens.cli:main"
+iralens = "iralens.cli:main"
 
 [build-system]
 requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["halfiralens*"]
+include = ["iralens*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

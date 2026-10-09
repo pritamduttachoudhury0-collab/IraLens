@@ -3,7 +3,7 @@
 
 import pytest
 
-from halfiralens.security import (
+from iralens.security import (
     UNTRUSTED_NOTICE,
     host_matches,
     normalize_public_http_url,

@@ -10,15 +10,15 @@ from pathlib import Path
 
 import pytest
 
-from halfiralens.engine import install as install_mod
-from halfiralens.engine.install import (
+from iralens.engine import install as install_mod
+from iralens.engine.install import (
     _download,
     _sha256_of,
     engine_status,
     install_engine,
 )
-from halfiralens.errors import EngineUnavailableError
-from halfiralens.proc import ProbeResult
+from iralens.errors import EngineUnavailableError
+from iralens.proc import ProbeResult
 
 
 def _make_archive(tmp_path: Path, binary_body: bytes = b"#!/bin/sh\necho 0.2.4\n") -> bytes:

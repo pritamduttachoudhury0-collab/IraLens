@@ -1,13 +1,13 @@
 """Phase 2 behavior through the search pipeline: breaker, public-URL guard,
 and the web page cache policy."""
 
-from halfiralens.cache import ResponseCache
-from halfiralens.reliability import CircuitBreaker, ConcurrencyGate
-from halfiralens.errors import SourceUnavailableError
-from halfiralens.search import SearchEngine
-from halfiralens.search.engines.base import SearchBackend
-from halfiralens.search.schema import SearchOptions, SearchHit
-from halfiralens.settings import Settings
+from iralens.cache import ResponseCache
+from iralens.reliability import CircuitBreaker, ConcurrencyGate
+from iralens.errors import SourceUnavailableError
+from iralens.search import SearchEngine
+from iralens.search.engines.base import SearchBackend
+from iralens.search.schema import SearchOptions, SearchHit
+from iralens.settings import Settings
 
 
 class Counting(SearchBackend):
@@ -71,7 +71,7 @@ def test_breaker_is_per_engine_not_global(tmp_path):
 
 # ------------------------------------------------------ web page cache policy
 def test_static_reads_are_cached_and_browser_reads_are_not(tmp_path, monkeypatch):
-    from halfiralens.sources import web as web_mod
+    from iralens.sources import web as web_mod
 
     calls = {"static": 0, "browser": 0}
 
@@ -132,7 +132,7 @@ def test_query_control_chars_stripped_before_any_engine(tmp_path):
 def test_overlong_query_is_rejected_with_a_useful_message(tmp_path):
     eng = engine(tmp_path, [])
     import pytest as _pytest
-    from halfiralens.search.schema import FilterError
+    from iralens.search.schema import FilterError
     with _pytest.raises(FilterError) as exc:
         eng.search("word " * 200, options=SearchOptions(reformulate=False, cache="bypass"))
     assert "too long" in str(exc.value)
@@ -141,7 +141,7 @@ def test_overlong_query_is_rejected_with_a_useful_message(tmp_path):
 def test_empty_and_invisible_only_queries_rejected(tmp_path):
     eng = engine(tmp_path, [])
     import pytest as _pytest
-    from halfiralens.search.schema import FilterError
+    from iralens.search.schema import FilterError
     for bad in ("", "   ", "\u200b\u200b"):
         with _pytest.raises(FilterError):
             eng.search(bad, options=SearchOptions(reformulate=False, cache="bypass"))
@@ -164,10 +164,10 @@ def test_parallel_variants_merge_and_dedup(tmp_path):
                           snippet="s", engine=self.name, position=2, query=query),
             ]
 
-    from halfiralens.settings import Settings
-    from halfiralens.search import SearchEngine
-    from halfiralens.cache import ResponseCache
-    from halfiralens.reliability import ConcurrencyGate
+    from iralens.settings import Settings
+    from iralens.search import SearchEngine
+    from iralens.cache import ResponseCache
+    from iralens.reliability import ConcurrencyGate
     s = Settings(search_engines=("duckduckgo",), search_min_engines=1,
                  retry_base_delay_seconds=0.0, search_parallel_queries=True,
                  search_max_concurrent=2, reformulate_max_queries=3)
@@ -189,10 +189,10 @@ def test_parallel_and_sequential_give_same_results(tmp_path):
             return [SearchHit(title=f"About {query}", url=f"https://x.example.org/{abs(hash(query)) % 9999}",
                               snippet="s", engine=self.name, position=1, query=query)]
 
-    from halfiralens.settings import Settings
-    from halfiralens.search import SearchEngine
-    from halfiralens.cache import ResponseCache
-    from halfiralens.reliability import ConcurrencyGate
+    from iralens.settings import Settings
+    from iralens.search import SearchEngine
+    from iralens.cache import ResponseCache
+    from iralens.reliability import ConcurrencyGate
     outs = []
     for parallel in (True, False):
         s = Settings(search_engines=("duckduckgo",), search_min_engines=1,
@@ -210,7 +210,7 @@ def test_parallel_and_sequential_give_same_results(tmp_path):
 def test_fetch_rendered_html_serializes_navigations():
     import threading
     import time as _time
-    from halfiralens.search.engines.base import fetch_rendered_html
+    from iralens.search.engines.base import fetch_rendered_html
 
     active = {"n": 0, "max": 0}
     lock = threading.Lock()

@@ -1,10 +1,10 @@
-Half IraLens
-Copyright 2026 Half IraLens contributors
+IraLens
+Copyright 2026 IraLens contributors
 Copyright (c) 2026 Pritam Dutta Choudhury (repository owner; original MIT LICENSE holder)
 
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 
-Half IraLens is a unified Internet-access system. It incorporates code and
+IraLens is a unified Internet-access system. It incorporates code and
 components from two permissively licensed open-source projects, which are
 implementation details of this system and are not exposed as separate
 runtime identities. Neither project endorses this derivative system.
@@ -15,11 +15,11 @@ runtime identities. Neither project endorses this derivative system.
 
 Portions of this software are adapted from Agent Reach
 (https://github.com/Panniantong/Agent-Reach), specifically the URL/SSRF
-hardening and credential-scrubbing helpers (halfiralens/security.py), the
-command-probing and subprocess helpers (halfiralens/proc.py), the private
-configuration mechanism (halfiralens/config.py), the reader-based web
-fetching with anti-bot detection (halfiralens/sources/web.py), and
-per-platform access semantics in halfiralens/sources/.
+hardening and credential-scrubbing helpers (iralens/security.py), the
+command-probing and subprocess helpers (iralens/proc.py), the private
+configuration mechanism (iralens/config.py), the reader-based web
+fetching with anti-bot detection (iralens/sources/web.py), and
+per-platform access semantics in iralens/sources/.
 
 MIT License
 
@@ -47,13 +47,13 @@ SOFTWARE.
 2. Obscura — browser engine (Apache License 2.0)
 =========================================================================
 
-Half IraLens uses the Obscura headless browser engine
+IraLens uses the Obscura headless browser engine
 (https://github.com/h4ckf0r0day/obscura, Apache License 2.0, Copyright its
 respective authors) as its internal browser engine.
 
 No Obscura source code is copied into this repository. The engine is a
-prebuilt binary that `halfiralens install-engine` downloads at runtime
-directly from the upstream project's official GitHub releases; Half IraLens
+prebuilt binary that `iralens install-engine` downloads at runtime
+directly from the upstream project's official GitHub releases; IraLens
 does not mirror, bundle, or redistribute the binary. The upstream project
 ships no NOTICE file, so no additional upstream notices are due. If you
 choose to redistribute the engine binary yourself, you must do so under the

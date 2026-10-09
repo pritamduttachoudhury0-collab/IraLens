@@ -1,4 +1,4 @@
-# One-command setup for Half IraLens on Windows (PowerShell).
+# One-command setup for IraLens on Windows (PowerShell).
 #
 #   .\scripts\setup.ps1              # runtime + dev tools into .\.venv
 #   .\scripts\setup.ps1 -NoDev       # runtime only
@@ -27,16 +27,16 @@ if (-not (Test-Path "$VenvDir\Scripts\python.exe")) {
 }
 
 $target = if ($NoDev) { "." } else { ".[dev]" }
-Write-Host "==> installing half-iralens ($target) in editable mode"
+Write-Host "==> installing iralens ($target) in editable mode"
 & "$VenvDir\Scripts\python.exe" -m pip install --upgrade pip | Out-Null
 & "$VenvDir\Scripts\python.exe" -m pip install -e $target
 
 Write-Host "==> health check"
-& "$VenvDir\Scripts\halfiralens.exe" --version
-& "$VenvDir\Scripts\halfiralens.exe" --json doctor | Out-Null
+& "$VenvDir\Scripts\iralens.exe" --version
+& "$VenvDir\Scripts\iralens.exe" --json doctor | Out-Null
 Write-Host "doctor: ok"
 
 Write-Host ""
 Write-Host "Setup complete. Activate with: $VenvDir\Scripts\Activate.ps1"
-Write-Host "Try it:  halfiralens search `"solar panel efficiency`""
-Write-Host "Browser engine (optional): halfiralens install-engine"
+Write-Host "Try it:  iralens search `"solar panel efficiency`""
+Write-Host "Browser engine (optional): iralens install-engine"

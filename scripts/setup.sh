@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# One-command setup for Half IraLens (Linux and macOS).
+# One-command setup for IraLens (Linux and macOS).
 #
 #   ./scripts/setup.sh              # runtime + dev tools into ./.venv
 #   ./scripts/setup.sh --no-dev     # runtime only
 #   VENV_DIR=/some/path ./scripts/setup.sh
 #
 # Installs the package in editable mode, then runs a health check. It does not
-# download the browser engine; run `halfiralens install-engine` for that (optional).
+# download the browser engine; run `iralens install-engine` for that (optional).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -33,22 +33,22 @@ fi
 
 TARGET="."
 [ -n "$EXTRAS" ] && TARGET=".[$EXTRAS]"
-echo "==> installing half-iralens ($TARGET) in editable mode"
+echo "==> installing iralens ($TARGET) in editable mode"
 "$VENV_DIR/bin/python" -m pip install --upgrade pip >/dev/null
 "$VENV_DIR/bin/python" -m pip install -e "$TARGET"
 
 echo "==> health check"
-"$VENV_DIR/bin/halfiralens" --version
-"$VENV_DIR/bin/halfiralens" --json doctor >/dev/null && echo "doctor: ok"
+"$VENV_DIR/bin/iralens" --version
+"$VENV_DIR/bin/iralens" --json doctor >/dev/null && echo "doctor: ok"
 
 cat <<MSG
 
 Setup complete.
 
   activate:        source $VENV_DIR/bin/activate
-  try it:          halfiralens search "solar panel efficiency"
-  research:        halfiralens --json research "your question"
-  MCP server:      halfiralens mcp
+  try it:          iralens search "solar panel efficiency"
+  research:        iralens --json research "your question"
+  MCP server:      iralens mcp
   tests (offline): $VENV_DIR/bin/python -m pytest -q
-  browser engine:  halfiralens install-engine   (optional, downloads a binary)
+  browser engine:  iralens install-engine   (optional, downloads a binary)
 MSG

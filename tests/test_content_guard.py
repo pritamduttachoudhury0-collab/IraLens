@@ -2,7 +2,7 @@
 
 import pytest
 
-from halfiralens import content_guard
+from iralens import content_guard
 
 
 @pytest.mark.parametrize("text, flag", [

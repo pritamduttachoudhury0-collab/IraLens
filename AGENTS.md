@@ -6,18 +6,18 @@ way they are. Check it before changing a design choice.
 
 ## What this is
 
-Half IraLens (`halfiralens`) is a Python access layer: web search, page reading,
+IraLens (`iralens`) is a Python access layer: web search, page reading,
 browser control, and specialized sources (GitHub, YouTube, RSS, …), exposed as a
-Python facade (`HalfIraLens`), a CLI (`halfiralens`), and an MCP stdio server.
-Full IraLens adds a deterministic research layer (`halfiralens/research/`).
+Python facade (`IraLens`), a CLI (`iralens`), and an MCP stdio server.
+It includes a deterministic research layer (`iralens/research/`).
 
 ## Setup and checks
 
 ```bash
 ./scripts/setup.sh                       # venv in .venv, editable install, health check
 .venv/bin/python -m pytest -q            # offline suite; live tests skip without network
-.venv/bin/ruff check --select E9,F,B halfiralens tests   # must pass
-.venv/bin/mypy halfiralens --ignore-missing-imports      # must pass
+.venv/bin/ruff check --select E9,F,B iralens tests   # must pass
+.venv/bin/mypy iralens --ignore-missing-imports      # must pass
 ```
 
 Run the offline suite before and after a change. At the release commit it gives
@@ -31,11 +31,11 @@ Neither proves web research works; see KNOWN_LIMITATIONS.md.
 
 ## Rules
 
-- **Backward compatibility.** `HalfIraLens.search(query, limit, backend)` returns
+- **Backward compatibility.** `IraLens.search(query, limit, backend)` returns
   `List[Artifact]` and must keep doing so. The CLI and the MCP tool names are public.
   Changes are additive unless DECISIONS records a reason.
 - **Do not invent interfaces.** Check that a method, flag, or operation exists
-  (`grep`, `halfiralens --json sources`, `TOOLS` in `mcp_server.py`) before you
+  (`grep`, `iralens --json sources`, `TOOLS` in `mcp_server.py`) before you
   document or call it. Docs must match code; `len(TOOLS)` is the MCP tool count.
 - **Verify before claiming.** Say "tested" only for what you ran. Network-dependent
   behavior (live engines, live sources, the browser engine) is not verified here
@@ -59,13 +59,13 @@ Neither proves web research works; see KNOWN_LIMITATIONS.md.
 
 | Path | Contents |
 |---|---|
-| `halfiralens/core.py` | `HalfIraLens` facade (the public Python API) |
-| `halfiralens/cli.py`, `mcp_server.py` | CLI and MCP stdio server |
-| `halfiralens/search/` | search engines, fallback, ranking, dedup, filters |
-| `halfiralens/research/` | planner, evidence, contradictions, synthesis, provenance, LLM adapter |
-| `halfiralens/sources/` | specialized source modules (`Source` base class) |
-| `halfiralens/engine/` | browser engine client and locator |
-| `halfiralens/reliability.py`, `cache.py`, `security.py`, `content_guard.py` | retries, breaker, cache, URL and content guards |
+| `iralens/core.py` | `IraLens` facade (the public Python API) |
+| `iralens/cli.py`, `mcp_server.py` | CLI and MCP stdio server |
+| `iralens/search/` | search engines, fallback, ranking, dedup, filters |
+| `iralens/research/` | planner, evidence, contradictions, synthesis, provenance, LLM adapter |
+| `iralens/sources/` | specialized source modules (`Source` base class) |
+| `iralens/engine/` | browser engine client and locator |
+| `iralens/reliability.py`, `cache.py`, `security.py`, `content_guard.py` | retries, breaker, cache, URL and content guards |
 | `tests/` | offline unit and integration tests; `test_integration_live.py` is live |
 | `docs/` | SEARCH, RELIABILITY, RESEARCH, THREAT_MODEL, CAPABILITY_MAP |
 | `scripts/` | `setup.sh` (tested on Linux), `setup.ps1` (untested) |

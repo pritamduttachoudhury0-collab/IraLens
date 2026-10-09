@@ -10,13 +10,13 @@ import urllib.error
 
 import pytest
 
-from halfiralens import content_guard
-from halfiralens.errors import (
+from iralens import content_guard
+from iralens.errors import (
     ExtractionError,
     OperationTimeoutError,
     PageUnavailableError,
 )
-from halfiralens.sources import web as web_mod
+from iralens.sources import web as web_mod
 
 
 class FakeResponse:
@@ -105,7 +105,7 @@ def test_generic_network_error_stays_page_unavailable(monkeypatch):
 
 
 def test_security_blocked_error_propagates(monkeypatch):
-    from halfiralens.errors import SecurityBlockedError
+    from iralens.errors import SecurityBlockedError
 
     _patch_urlopen(monkeypatch, error=SecurityBlockedError("redirect to private target"))
     with pytest.raises(SecurityBlockedError):
@@ -191,7 +191,7 @@ class Ctx:
 
 
 def _src(monkeypatch, tmp_path, body="# Deep page\n\n" + ("content line\n" * 500)):
-    from halfiralens.cache import ResponseCache
+    from iralens.cache import ResponseCache
 
     _patch_urlopen(monkeypatch, response=FakeResponse(body.encode()))
     monkeypatch.setattr(web_mod, "ResponseCache",

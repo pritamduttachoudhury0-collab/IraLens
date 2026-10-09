@@ -6,16 +6,16 @@ from datetime import date
 
 import pytest
 
-from halfiralens.errors import PageUnavailableError
-from halfiralens.research import ResearchPlanner
-from halfiralens.research.contradictions import detect
-from halfiralens.research.evidence import content_terms, extract_claims, relevance, score_source
-from halfiralens.research.llm import LLMExpander, LLMSynthesizer
-from halfiralens.research.provenance import ProvenanceGraph
-from halfiralens.research.schema import Claim, EvidenceSource, ResearchOptions
-from halfiralens.research.synthesis import build_statements, cluster
-from halfiralens.search.schema import FilterError, RankedResult, SearchResponse
-from halfiralens.settings import Settings
+from iralens.errors import PageUnavailableError
+from iralens.research import ResearchPlanner
+from iralens.research.contradictions import detect
+from iralens.research.evidence import content_terms, extract_claims, relevance, score_source
+from iralens.research.llm import LLMExpander, LLMSynthesizer
+from iralens.research.provenance import ProvenanceGraph
+from iralens.research.schema import Claim, EvidenceSource, ResearchOptions
+from iralens.research.synthesis import build_statements, cluster
+from iralens.search.schema import FilterError, RankedResult, SearchResponse
+from iralens.settings import Settings
 
 TODAY = date(2026, 10, 8)
 Q = "solar panel efficiency 2025"
@@ -302,7 +302,7 @@ def test_empty_question_rejected():
 # -------------------------------------------------------------- LLM adapters
 def test_llm_expander_uses_valid_json_and_rejects_bad_output():
     s = Settings(reformulate_max_queries=2)
-    from halfiralens.research.planner import DeterministicExpander
+    from iralens.research.planner import DeterministicExpander
     good = LLMExpander(lambda p: '{"queries": ["solar efficiency lab tests", "q", "solar efficiency lab tests"]}',
                        DeterministicExpander(s), s)
     out = good.expand(Q, 1, [], [])
@@ -332,13 +332,13 @@ def test_llm_synthesizer_valid_output_is_used_and_scored_deterministically():
 
 # ------------------------------------------------------------------ facade
 def test_facade_research_end_to_end(tmp_path, monkeypatch):
-    from halfiralens import HalfIraLens
-    from halfiralens.cache import ResponseCache
-    from halfiralens.reliability import ConcurrencyGate
-    from halfiralens.search import SearchEngine
-    from halfiralens.search.engines.base import SearchBackend
-    from halfiralens.search.schema import SearchHit
-    from halfiralens.sources import get_source
+    from iralens import IraLens
+    from iralens.cache import ResponseCache
+    from iralens.reliability import ConcurrencyGate
+    from iralens.search import SearchEngine
+    from iralens.search.engines.base import SearchBackend
+    from iralens.search.schema import SearchHit
+    from iralens.sources import get_source
 
     class Table(SearchBackend):
         name = "duckduckgo"
@@ -354,10 +354,10 @@ def test_facade_research_end_to_end(tmp_path, monkeypatch):
     web = get_source("web")
     monkeypatch.setattr(web, "read_url", lambda url, ctx, mode="static": (_ for _ in ()).throw(
         PageUnavailableError("offline test")))
-    monkeypatch.setattr("halfiralens.research.planner.DeterministicExpander.expand",
+    monkeypatch.setattr("iralens.research.planner.DeterministicExpander.expand",
                         lambda self, question, round_no, used, contested:
                         [{"text": "q1", "strategy": "x"}] if round_no == 1 else [])
-    report = HalfIraLens().research(Q, options={"min_sources": 3, "read_top_n": 0})
+    report = IraLens().research(Q, options={"min_sources": 3, "read_top_n": 0})
     assert report.stop_reason == "coverage_reached"
     assert report.to_dict()["untrusted"] is True
 
@@ -372,8 +372,8 @@ def test_all_searches_failing_reports_search_failed_not_no_new_sources():
 
 
 def test_cli_and_mcp_expose_research_with_untrusted_tag():
-    from halfiralens.cli import build_parser
-    from halfiralens.mcp_server import TOOLS, _UNTRUSTED_TOOLS
+    from iralens.cli import build_parser
+    from iralens.mcp_server import TOOLS, _UNTRUSTED_TOOLS
     args = build_parser().parse_args(["research", "q?", "--rounds", "2", "--read-top", "0"])
     assert args.rounds == 2 and args.read_top == 0
     names = {t["name"] for t in TOOLS}
@@ -399,7 +399,7 @@ def test_contradiction_is_reported_end_to_end_without_crashing():
 def test_claims_are_prose_not_markup():
     """Regression: live READMEs produced claims such as '# [PhantomJS](...)',
     '<p><strong>...', a curl command, and a table row. Claims must be prose."""
-    from halfiralens.research.evidence import split_sentences
+    from iralens.research.evidence import split_sentences
 
     text = (
         "# [PhantomJS](http://phantomjs.org) - Scriptable Headless WebKit\n"

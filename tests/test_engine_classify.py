@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """Engine error classification — unified taxonomy, sanitized messages."""
 
-from halfiralens.engine.native import classify_engine_error
-from halfiralens.errors import (
+from iralens.engine.native import classify_engine_error
+from iralens.errors import (
     AuthRequiredError,
     ExtractionError,
-    HalfIraLensError,
+    IraLensError,
     OperationTimeoutError,
     PageUnavailableError,
     SecurityBlockedError,
@@ -59,5 +59,5 @@ def test_messages_are_sanitized():
 
 def test_unknown_text_still_yields_base_error():
     err = classify_engine_error("something strange happened")
-    assert isinstance(err, HalfIraLensError)
+    assert isinstance(err, IraLensError)
     assert err.error_type == "error"

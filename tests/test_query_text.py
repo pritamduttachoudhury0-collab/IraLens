@@ -3,14 +3,14 @@
 
 import pytest
 
-from halfiralens.search.querytext import (
+from iralens.search.querytext import (
     quoted_phrases,
     sanitize_query,
     strip_phrase_quotes,
     term_set,
     tokenize,
 )
-from halfiralens.search.reformulate import reformulate, _keywords
+from iralens.search.reformulate import reformulate, _keywords
 
 
 # --------------------------------------------------------------- tokenizing

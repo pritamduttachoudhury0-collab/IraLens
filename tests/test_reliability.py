@@ -2,8 +2,8 @@
 
 import pytest
 
-from halfiralens.errors import OperationTimeoutError, SourceUnavailableError
-from halfiralens.reliability import (
+from iralens.errors import OperationTimeoutError, SourceUnavailableError
+from iralens.reliability import (
     KIND_CAPTCHA, KIND_LAYOUT_CHANGED, KIND_RATE_LIMITED, KIND_TRANSIENT, KIND_UNAVAILABLE,
     CircuitBreaker, RetryPolicy, call_with_retries, classify_block, failure_kind, is_transient,
 )
@@ -28,7 +28,7 @@ def test_failure_kind_mapping():
     assert failure_kind(SourceUnavailableError("request timed out")) == KIND_TRANSIENT
     assert failure_kind(OperationTimeoutError("slow")) == KIND_TRANSIENT
     assert failure_kind(SourceUnavailableError("nope")) == KIND_UNAVAILABLE
-    from halfiralens.errors import ExtractionError
+    from iralens.errors import ExtractionError
     assert failure_kind(ExtractionError("x", detail="layout_changed")) == KIND_LAYOUT_CHANGED
 
 

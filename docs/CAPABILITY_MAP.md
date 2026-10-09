@@ -1,4 +1,4 @@
-# Capability Map — inventory of both implementation sources → Half IraLens
+# Capability Map — inventory of both implementation sources → IraLens
 
 Required regression accounting: every capability found in the two sources is
 listed with where it lives now and how it was verified. ✅ = verified by
@@ -8,7 +8,7 @@ status reports honestly).
 
 ## From the browser-engine source (all 37 engine tools + CLI modes)
 
-| Engine capability | Half IraLens surface | Status |
+| Engine capability | IraLens surface | Status |
 |---|---|---|
 | browser_navigate | `navigate` / `open(mode=browser)` | ✅ tests C, D, E |
 | browser_snapshot | `snapshot` | ✅ tests C, F |
@@ -39,7 +39,7 @@ status reports honestly).
 
 ## From the capability-layer source (all 16 channels + mechanisms)
 
-| Channel / mechanism | Half IraLens surface | Status |
+| Channel / mechanism | IraLens surface | Status |
 |---|---|---|
 | web (Jina reader + anti-bot detection + 5 MB cap) | `web` source, static-reader backend of `read/open` | ✅ tests A, F |
 | exa_search (mcporter + Exa) | `web-search` source, semantic-search backend | ◻ bridge absent here; browser-search backend ✅ test A |
@@ -65,7 +65,7 @@ status reports honestly).
 | SSRF URL normalization | `security.normalize_public_http_url` | ✅ security suite (15 hostile URLs) |
 | credential scrubbing (userinfo + query secrets) | `security.scrub_url_credentials` (+ free-text secrets) | ✅ security suite |
 | cookie import helpers | config keys for per-platform tokens; browser cookies via engine `cookies_set`/`storage_state` | ✅ mechanism present |
-| MCP server (`get_status` only) | replaced by the full Half IraLens MCP server (49 tools at Full IraLens Phase 3) | ✅ live handshake + calls |
+| MCP server (`get_status` only) | replaced by the IraLens MCP server (49 tools, Phase 3) | ✅ live handshake + calls |
 | installer/setup wizard, skill registration, update checker | intentionally not carried: scaffolding identity conflicts with the unified system; `install-engine` + `doctor` hints cover setup | intentional |
 
 ## Deliberate non-goals (spec §17)

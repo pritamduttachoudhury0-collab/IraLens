@@ -2,7 +2,7 @@
 
 ## Failure taxonomy
 
-Every failed engine attempt is classified (`halfiralens/reliability.py`):
+Every failed engine attempt is classified (`iralens/reliability.py`):
 
 | kind | meaning | retried? | counts toward breaker? |
 |---|---|---|---|
@@ -61,7 +61,7 @@ Per engine, per `SearchEngine` instance:
 
 ## Caching
 
-`halfiralens/cache.py`. Files are JSON in `~/.half-iralens/state/cache/`, one file
+`iralens/cache.py`. Files are JSON in `~/.iralens/state/cache/`, one file
 per key. The directory is outside the repository.
 
 | What | Namespace | TTL setting | Cached? |
@@ -80,4 +80,4 @@ or `refresh` (write only). Responses report `cache.status` (`hit` / `miss` /
 Caching never hides failures: a degraded search (any engine failed or was
 skipped) is not stored, so the next call retries live.
 
-Disable everything with `HIL_CACHE_ENABLED=false`.
+Disable everything with `IRALENS_CACHE_ENABLED=false`.

@@ -2,7 +2,7 @@
 
 import json
 
-from halfiralens.cache import ResponseCache
+from iralens.cache import ResponseCache
 
 
 class Clock:

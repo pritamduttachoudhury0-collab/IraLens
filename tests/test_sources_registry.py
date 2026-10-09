@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Source registry, URL routing, and capability-catalog invariants."""
 
-from halfiralens.sources import ALL_SOURCES, get_source, route_url, source_names
-from halfiralens.sources.base import SourceHealth
+from iralens.sources import ALL_SOURCES, get_source, route_url, source_names
+from iralens.sources.base import SourceHealth
 
 
 def test_registry_shape():
@@ -47,10 +47,10 @@ def test_url_routing():
 
 def test_health_contract(isolated_home):
     """Every source answers health() with a well-formed SourceHealth."""
-    from halfiralens.config import Config
-    from halfiralens.core import Context
-    from halfiralens.engine.native import BrowserEngine
-    from halfiralens.session import Session
+    from iralens.config import Config
+    from iralens.core import Context
+    from iralens.engine.native import BrowserEngine
+    from iralens.session import Session
 
     context = Context(Config(), Session(), lambda: BrowserEngine())
     for source in ALL_SOURCES:

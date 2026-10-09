@@ -2,7 +2,7 @@
 
 import pytest
 
-from halfiralens.search.schema import (
+from iralens.search.schema import (
     EngineOutcome, FilterError, RankedResult, SearchFilters, SearchOptions, SearchResponse, normalize_domain,
 )
 

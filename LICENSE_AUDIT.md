@@ -1,6 +1,6 @@
-# Half IraLens — Dependency License Audit
+# IraLens — Dependency License Audit
 
-**Date:** 2026-10-07 · **Audited release:** half-iralens 0.1.0
+**Date:** 2026-10-07 · **Audited release:** iralens 0.1.0
 **Method:** Every license below was read from a primary source in this
 workspace — the installed distribution metadata (`importlib.metadata`), the
 license files of the actual cloned upstream repositories, and the shipped
@@ -8,7 +8,7 @@ file tree. No license was assumed from a parent project or from memory.
 
 ---
 
-## 1. Half IraLens itself
+## 1. IraLens itself
 
 | Item | Finding |
 |---|---|
@@ -16,7 +16,7 @@ file tree. No license was assumed from a parent project or from memory.
 | LICENSE file | **Apache-2.0** full text (owner decision, D-051). The former MIT text was replaced; the owner copyright line moved to NOTICE. |
 | NOTICE file | Present; **expanded in this audit** (full MIT text of the adapted upstream code, engine terms) |
 | Code provenance | Original code except the Agent Reach–derived portions listed in §3.1 |
-| Bundled binaries | **None.** `file(1)` over the whole distributable tree: pure text. The browser engine binary is downloaded at runtime from upstream releases into a gitignored cache (`tools/engine/`, `~/.cache/half-iralens/engine`) and is never committed or redistributed. |
+| Bundled binaries | **None.** `file(1)` over the whole distributable tree: pure text. The browser engine binary is downloaded at runtime from upstream releases into a gitignored cache (`tools/engine/`, `~/.cache/iralens/engine`) and is never committed or redistributed. |
 
 ## 2. Redistribution model (decides which obligations apply)
 
@@ -41,8 +41,8 @@ bundled, or mirrored**. Consequently:
 |---|---|
 | Project | https://github.com/Panniantong/Agent-Reach |
 | License | **MIT** — verified from the repo's LICENSE: “Copyright (c) 2025 Agent Eyes” |
-| How incorporated | Source code **adapted** into: `halfiralens/security.py` (SSRF URL normalization, credential scrubbing — substantially verbatim), `halfiralens/proc.py` (probe framework), `halfiralens/config.py` (atomic owner-only config), `halfiralens/sources/web.py` (reader fetch + anti-bot detection), plus adapted semantics/knowledge in `sources/base.py`, `v2ex.py`, `youtube.py`, `twitter.py`, `reddit.py`, `_mcporter.py` |
-| Redistributed by Half IraLens | **Yes** (as modified source) |
+| How incorporated | Source code **adapted** into: `iralens/security.py` (SSRF URL normalization, credential scrubbing — substantially verbatim), `iralens/proc.py` (probe framework), `iralens/config.py` (atomic owner-only config), `iralens/sources/web.py` (reader fetch + anti-bot detection), plus adapted semantics/knowledge in `sources/base.py`, `v2ex.py`, `youtube.py`, `twitter.py`, `reddit.py`, `_mcporter.py` |
+| Redistributed by IraLens | **Yes** (as modified source) |
 | Obligation | MIT: include the copyright notice and permission notice in copies/substantial portions |
 | Status | **Satisfied** — full MIT text now reproduced in `NOTICE`; per-file docstrings record the adaptation |
 | Compatibility with Apache-2.0 | **Compatible.** MIT is permissive and one-way compatible: MIT code may be incorporated into an Apache-2.0 work; the MIT attribution survives, no copyleft. Modification is expressly permitted. |
@@ -53,11 +53,11 @@ bundled, or mirrored**. Consequently:
 |---|---|
 | Project | https://github.com/h4ckf0r0day/obscura |
 | License | **Apache-2.0** — verified from the repo's LICENSE (standard 11,324-byte text) and `Cargo.toml` (`license = "Apache-2.0"`) |
-| How incorporated | **No source code copied.** The engine is consumed as a prebuilt binary (pinned v0.2.4) that `halfiralens install-engine` downloads **directly from the upstream project's official GitHub releases** at runtime |
-| Redistributed by Half IraLens | **No** — not vendored, not mirrored, gitignored |
+| How incorporated | **No source code copied.** The engine is consumed as a prebuilt binary (pinned v0.2.4) that `iralens install-engine` downloads **directly from the upstream project's official GitHub releases** at runtime |
+| Redistributed by IraLens | **No** — not vendored, not mirrored, gitignored |
 | Upstream NOTICE file | **None exists** (verified) → nothing to propagate under Apache-2.0 §4(d) |
 | Obligations on us | None for the binary (we don't distribute it). Attribution retained in NOTICE as good practice. |
-| Compatibility | Same license as Half IraLens — zero friction even if a downstream user redistributes the binary under Apache-2.0 terms |
+| Compatibility | Same license as IraLens — zero friction even if a downstream user redistributes the binary under Apache-2.0 terms |
 | Note for downstream | Anyone who *does* bundle the engine binary must honor its Apache-2.0 terms and the third-party notices published with the upstream distribution (the Rust binary statically links third-party crates; those obligations sit with the engine's own distribution). |
 
 ## 4. Runtime dependencies (declared, pip-installed — not redistributed by us)
@@ -93,7 +93,7 @@ artifact.
 
 - **certifi — MPL-2.0** (the only copyleft in the closure). File-scoped
   copyleft: obligations attach only to modifications of MPL-covered files
-  and only when those files are distributed. Half IraLens does not
+  and only when those files are distributed. IraLens does not
   distribute, vendor, or modify certifi — pip fetches it from PyPI. **No
   obligation, no incompatibility.** Even in a hypothetical bundled
   deployment, MPL-2.0 combines freely with Apache-2.0 works (no contagion
@@ -113,7 +113,7 @@ artifact.
 
 ## 8. Compatibility conclusion
 
-- Half IraLens (Apache-2.0) + adapted MIT code: **compatible** (attribution
+- IraLens (Apache-2.0) + adapted MIT code: **compatible** (attribution
   retained in NOTICE).
 - Apache-2.0 + every runtime dependency (Apache-2.0, BSD-2, BSD-3, MIT,
   PSF-2.0, Unlicense, MPL-2.0-unbundled): **compatible** — no copyleft

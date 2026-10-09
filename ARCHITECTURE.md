@@ -1,9 +1,9 @@
-# Half IraLens — Fusion Architecture
+# IraLens — Fusion Architecture
 
-Half IraLens is a single, unified Internet-access system. This document records
+IraLens is a single, unified Internet-access system. This document records
 the study of the two implementation sources and how their capabilities were
 consolidated. **The two sources are implementation details; the AI-facing
-system is Half IraLens only.**
+system is IraLens only.**
 
 ```
 AI
@@ -44,35 +44,35 @@ Unified Internet capabilities
 
 ### Overlap & complementarity
 
-| Area | A | B | Resolution in Half IraLens |
+| Area | A | B | Resolution in IraLens |
 |---|---|---|---|
 | Web page reading | Jina Reader (static markdown, remote service) | Engine rendering (local, full JS) | **One `read/open` capability** with ordered backends: specialized source → static reader → engine render. Anti-bot fallback chain instead of two products. |
 | Web search | Exa via mcporter | (none — only in-page text find) | **One `search` capability**: Exa backend if configured, otherwise engine-driven search-engine (DuckDuckGo) scraping. |
 | Reddit/WeChat-style JS-walled content | Auth-only CLIs | Engine rendering | Sources may use the **same engine** as one of their backends (e.g. reddit page read falls through to browser). |
 | SSRF protection | Python URL normalization | Rust `obscura-ssrf` crate | Both kept: facade normalizes every URL; engine enforces its own guard. |
-| Cookies/auth | Cookie import helpers, child env credential injection | Cookie jar + storage state export/import | Unified session: engine holds live cookies; storage state persisted by Half IraLens across runs; source CLIs get credentials via child env only. |
+| Cookies/auth | Cookie import helpers, child env credential injection | Cookie jar + storage state export/import | Unified session: engine holds live cookies; storage state persisted by IraLens across runs; source CLIs get credentials via child env only. |
 | Health/doctor | Channel probing framework | — | Generalized to all capabilities (engine + sources) in `capabilities.py`. |
-| Identity/CLI/MCP | `agent-reach` CLI, `get_status` MCP | `obscura` CLI, `browser_*` MCP | **Removed as AI-facing surfaces.** Replaced by one Half IraLens CLI, Python API, and MCP server. |
+| Identity/CLI/MCP | `agent-reach` CLI, `get_status` MCP | `obscura` CLI, `browser_*` MCP | **Removed as AI-facing surfaces.** Replaced by one IraLens CLI, Python API, and MCP server. |
 
 ### Components removed (conflicted with unified architecture)
 
-- Both original CLI/MCP identities and the "agent calls upstream CLIs directly via skill docs" pattern → replaced by native Half IraLens operations.
+- Both original CLI/MCP identities and the "agent calls upstream CLIs directly via skill docs" pattern → replaced by native IraLens operations.
 - Duplicate web-reading paths (reader vs. browser as separate products) → consolidated into one backend chain.
-- Agent Reach's installer/setup wizard scope (system-package installation) → out of scope; Half IraLens probes what exists and degrades gracefully.
-- Nothing was dropped capability-wise: every channel's access method survives as a backend of a Half IraLens source.
+- Agent Reach's installer/setup wizard scope (system-package installation) → out of scope; IraLens probes what exists and degrades gracefully.
+- Nothing was dropped capability-wise: every channel's access method survives as a backend of a IraLens source.
 
 ---
 
-## 2. Half IraLens structure
+## 2. IraLens structure
 
 ```
-halfiralens/
-  core.py          HalfIraLens facade — the single entry point
+iralens/
+  core.py          IraLens facade — the single entry point
   model.py         Artifact: unified data model + provenance
   errors.py        unified error taxonomy
   security.py      SSRF guard, credential scrubbing, untrusted-content rules
   session.py       unified session: history, discovered URLs, persisted engine state
-  config.py        ~/.half-iralens/config.yaml (atomic, owner-only, symlink-safe)
+  config.py        ~/.iralens/config.yaml (atomic, owner-only, symlink-safe)
   proc.py          subprocess runner + honest health probing
   capabilities.py  one doctor for the whole system
   engine/          internal browser engine driver (spawns the engine binary,
@@ -80,8 +80,8 @@ halfiralens/
   sources/         specialized source modules (web, search, github, youtube,
                    bilibili, reddit, rss, v2ex, twitter, xiaohongshu, linkedin,
                    boss, xueqiu, facebook, instagram, transcribe; xiaoyuzhou is planned and not implemented in this bundle)
-  cli.py           `halfiralens` command
-  mcp_server.py    Half IraLens MCP server (own unified tool surface)
+  cli.py           `iralens` command
+  mcp_server.py    IraLens MCP server (own unified tool surface)
 ```
 
 ### Unified data model (`model.Artifact`)
@@ -103,16 +103,16 @@ optional developer `detail`.
 
 One session across all capabilities: navigation history, discovered URLs with
 provenance, and the engine's exported storage state (cookies + web storage)
-persisted to `~/.half-iralens/state/`, so browser logins survive across runs
+persisted to `~/.iralens/state/`, so browser logins survive across runs
 and source operations see the same session bookkeeping.
 
 ### Unified interface
 
-- **Python:** `HalfIraLens` facade — `search()`, `open()`, `read()`, all
+- **Python:** `IraLens` facade — `search()`, `open()`, `read()`, all
   browser operations, `fetch(source, op, …)`, `sources()`, `doctor()`,
   `session()`, `close()`.
-- **CLI:** `halfiralens <command>` (same surface).
-- **MCP:** `halfiralens mcp` — one server named `half-iralens`, unified tools
+- **CLI:** `iralens <command>` (same surface).
+- **MCP:** `iralens mcp` — one server named `iralens`, unified tools
   (`search`, `open`, `read`, `navigate`, `click`, `extract`, `source_fetch`,
   `session_state`, …). No tool or parameter exposes an implementation source.
 
@@ -121,7 +121,7 @@ and source operations see the same session bookkeeping.
 - Every URL passes the SSRF guard before any fetch (private/internal hosts,
   userinfo, non-HTTP schemes rejected); the engine enforces a second guard.
 - Internet content is returned as *untrusted data* (flagged in artifacts and
-  MCP output); Half IraLens never executes instructions found in content.
+  MCP output); IraLens never executes instructions found in content.
 - Credentials live in owner-only config, are injected into child processes
   only, and are scrubbed from all error text.
 - No auto-login: authenticated sources require user-provided credentials or
@@ -130,20 +130,20 @@ and source operations see the same session bookkeeping.
 ### Deliberate non-goals (this version)
 
 No source-quality/credibility ranking, no research planning/synthesis, no
-custom search index, no vector DBs or background services. Half IraLens is the
+custom search index, no vector DBs or background services. IraLens is the
 Internet-access foundation; a future intelligence layer can sit above the
 facade without knowing anything below it.
 
-## Full IraLens layers (added on top of HalfIraLens)
+## IraLens layers (search, reliability, research on top of the access core)
 
 ```
-HalfIraLens facade (core.py) — search(), search_api(), research(), open(), …
+IraLens facade (core.py) — search(), search_api(), research(), open(), …
  ├── search/            Phase 1: schemas, reformulation, fallback chain, filters,
  │                      dedup, ranking, engines (duckduckgo, bing, exa)
  ├── reliability.py     Phase 2: failure taxonomy, retries, circuit breaker, gate
  ├── cache.py           Phase 2: TTL disk cache (search responses, static pages)
  ├── content_guard.py   Phase 2: injection / invisible-character flags
- ├── settings.py        all tunables (config.yaml or HIL_* env)
+ ├── settings.py        all tunables (config.yaml or IRALENS_* env)
  └── research/          Phase 3: planner loop, evidence, contradictions,
                         synthesis, provenance graph, replay, LLM adapters
 ```

@@ -14,9 +14,9 @@ import urllib.error
 
 import pytest
 
-from halfiralens import security
-from halfiralens.errors import SecurityBlockedError
-from halfiralens.security import (
+from iralens import security
+from iralens.errors import SecurityBlockedError
+from iralens.security import (
     MAX_REDIRECTS,
     SafeRedirectHandler,
     is_public_address,

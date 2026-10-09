@@ -53,7 +53,7 @@ verified `main` state.
 | HTTP failures | Reader classifies 404 / 403 bot-check / 429 / 5xx / redirect-loop; soft-404 heuristic (short body + not-found markers); empty-response detection; existing anti-bot detection kept | D-071 |
 | SSRF | `security.safe_urlopen`: DNS resolved up front, private/mixed answers refused, connection **pinned to the validated address** (no rebinding window), every redirect hop re-validated, https→http downgrade refused, ≤5 hops | D-072 |
 | Resource limits | 5 MB response cap + overall 60 s read deadline (slow-drip protection) + per-socket timeout | D-071 |
-| Engine install | Retry-with-backoff download; optional SHA-256 verification (`--checksum` / `HIL_ENGINE_SHA256`); startup probe **before** replacement (atomic swap — a bad download can never destroy a working engine); `install-engine --status`; honest `checksum_verified` reporting; tar `filter=` fallback for Python <3.12 (a real bug at `requires-python = 3.10`) | D-070 |
+| Engine install | Retry-with-backoff download; optional SHA-256 verification (`--checksum` / `IRALENS_ENGINE_SHA256`); startup probe **before** replacement (atomic swap — a bad download can never destroy a working engine); `install-engine --status`; honest `checksum_verified` reporting; tar `filter=` fallback for Python <3.12 (a real bug at `requires-python = 3.10`) | D-070 |
 | Default chain | `duckduckgo → bing → semantic-search` (free engines first; no paid key needed) | D-067 |
 | CLI errors | `ValueError`/`FilterError` now map to `invalid_input` (was `internal_error`) in the CLI, matching MCP | tests |
 | Verification honesty | `verify_interfaces.py` reports PASS/FAIL/**BLOCKED** and lists unverified live checks; exit code ignores network-blocked checks | D-074 |
@@ -82,8 +82,8 @@ regressions (3 tests), benchmark guard rails (2 tests).
 
 | Check | Command | Result |
 |---|---|---|
-| Lint | `ruff check --select E9,F,B halfiralens tests scripts` | All checks passed |
-| Types | `mypy halfiralens --ignore-missing-imports` | Success: no issues in 60 files |
+| Lint | `ruff check --select E9,F,B iralens tests scripts` | All checks passed |
+| Types | `mypy iralens --ignore-missing-imports` | Success: no issues in 60 files |
 | Dependency vulnerabilities | `pip-audit` over the runtime set (requests, feedparser, pyyaml, yt-dlp) | No known vulnerabilities found |
 | Engine release checksums | `gh api repos/h4ckf0r0day/obscura/releases/tags/v0.2.4` | Release exists; **no checksum asset is published** — therefore no checksum is claimed verified; optional operator-supplied checksum supported |
 
@@ -147,7 +147,7 @@ install reproduced these results.
 ### 3.7 Clean-environment install
 
 Fresh copy of the tree + fresh venv + `pip install ".[dev]"`: entry point
-works (`halfiralens --version`), full suite passes, `verify_interfaces.py`
+works (`iralens --version`), full suite passes, `verify_interfaces.py`
 passes. Browser-engine binary install could not be executed: the asset CDN
 (`objects.githubusercontent.com`) is outside the sandbox allowlist
 (download attempt blocked, recorded). The installer's logic (retries,
@@ -208,9 +208,22 @@ docs/RELIABILITY.md (no-results taxonomy, read limits, query hygiene).
 ```bash
 ./scripts/setup.sh
 .venv/bin/python -m pytest -q                       # 267 passed, 15 skipped
-.venv/bin/ruff check --select E9,F,B halfiralens tests scripts
-.venv/bin/mypy halfiralens --ignore-missing-imports
+.venv/bin/ruff check --select E9,F,B iralens tests scripts
+.venv/bin/mypy iralens --ignore-missing-imports
 .venv/bin/pip-audit -r requirements (runtime deps)  # no known vulnerabilities
 .venv/bin/python scripts/ranking_benchmark.py       # MRR/nDCG table
 .venv/bin/python scripts/verify_interfaces.py       # PASS/FAIL/BLOCKED verdicts
 ```
+
+## 9. Addendum — product rename (owner decision, D-075)
+
+After the remediation above, the owner directed that the product be shown as
+full **IraLens** everywhere instead of "Half IraLens". A complete rename was
+applied: package/import `iralens`, class `IraLens`, error base `IraLensError`,
+CLI `iralens`, MCP server name `iralens`, distribution `iralens`, state dir
+`~/.iralens`, engine cache `~/.cache/iralens/engine`, and env prefixes
+`IRALENS_HOME` / `IRALENS_<KEY>` / `IRALENS_ENGINE_*` (formerly
+`HALF_IRALENS_*` / `HIL_*`). Deliberately breaking; safe because the project
+is v0.1.0 and unpublished. Post-rename gates (same environment):
+267 passed / 15 skipped, ruff clean, mypy clean (60 files),
+verify_interfaces 18 PASS / 0 FAIL / 2 BLOCKED.

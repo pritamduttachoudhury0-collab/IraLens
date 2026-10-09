@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
-from halfiralens.search.engines.bing import decode_bing_url, parse_results_page as parse_bing
-from halfiralens.search.engines.duckduckgo import decode_result_url, parse_results_page as parse_ddg
-from halfiralens.search.engines.exa import parse_exa_payload
-from halfiralens.search.engines.base import as_html
+from iralens.search.engines.bing import decode_bing_url, parse_results_page as parse_bing
+from iralens.search.engines.duckduckgo import decode_result_url, parse_results_page as parse_ddg
+from iralens.search.engines.exa import parse_exa_payload
+from iralens.search.engines.base import as_html
 
 FIX = Path(__file__).parent / "fixtures" / "search"
 

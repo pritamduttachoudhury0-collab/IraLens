@@ -1,14 +1,14 @@
-# Decisions log — Full IraLens
+# Decisions log — IraLens
 
 Each entry: the decision, why, and what it trades off. Newest phase last.
 Scope and ownership: the session branch is `arena/a44d3b38-iralens`. All work is
 committed there. Nothing is pushed to `main`.
 
-## Baseline (before any Full IraLens change)
+## Baseline (before any IraLens change)
 
-**D-000 Import the HalfIraLens bundle as delivered, then build on it.**
+**D-000 Import the IraLens bundle as delivered, then build on it.**
 The bundle was unpacked verbatim (commit `a4b2716`). Changes are additive, so
-the existing `HalfIraLens.search(query, limit, backend) -> List[Artifact]`,
+the existing `IraLens.search(query, limit, backend) -> List[Artifact]`,
 the CLI, the MCP server, and the existing tests keep working.
 Baseline offline result: `pytest` gave 57 passed, 7 skipped, and 3 failed. All
 3 failures are live-network tests (`test_b_scrape_bulk_mixed_results`,
@@ -36,7 +36,7 @@ must never be committed.
 ## Phase 1 — Unified search
 
 **D-010 Keep the legacy surface, add a structured surface beside it.**
-`HalfIraLens.search()` returns `List[Artifact]` as before. `search_api()` returns
+`IraLens.search()` returns `List[Artifact]` as before. `search_api()` returns
 a typed `SearchResponse`. The legacy `web-search` source's `fetch("query")` now
 delegates to the new engine, so the existing test monkeypatch still works.
 
@@ -91,7 +91,7 @@ saved fixtures. Live behavior of DuckDuckGo and Bing was not verified here
 (no network). Bing is EXPERIMENTAL. See KNOWN_LIMITATIONS.md.
 
 **D-020 Settings, not magic numbers.** Every limit, weight, and TTL is in
-`halfiralens/settings.py`, read from config or `HIL_<KEY>` env vars.
+`iralens/settings.py`, read from config or `IRALENS_<KEY>` env vars.
 
 **D-021 Artifact gets an optional `provenance` field.** It is emitted only when
 non-empty, so existing JSON consumers see no change.
@@ -140,7 +140,7 @@ a shared store, and that is not built.
 **D-040 Deterministic core; LLM is an optional adapter.** The planner, claim
 extraction, contradiction detection, synthesis, and confidence formula are all
 deterministic and inspectable. `research/llm.py` takes any `complete(prompt)`
-callable. The facade does not take one yet. Reason: HalfIraLens ships no model
+callable. The facade does not take one yet. Reason: IraLens ships no model
 and no key, and an LLM must not be a hidden dependency of the core result.
 
 **D-041 Replayable trace.** The trace records every search response, every
@@ -229,7 +229,7 @@ to `arena/a44d3b38-iralens`, so the work is pushed there and a pull request into
 `main` is opened. No direct push to `main` is made.
 
 **D-056 Type and lint fixes are behavior-neutral except one bug.** mypy is clean on
-`halfiralens` (59 files). Ruff `E9,F,B` is clean. The real bug was
+`iralens` (59 files). Ruff `E9,F,B` is clean. The real bug was
 `ProvenanceGraph.node()` receiving `kind` twice whenever a contradiction was
 recorded. That crashed any research run with contested claims. The attribute is
 renamed to `contradiction_kind`, and a regression test runs the full planner
@@ -240,7 +240,7 @@ it by keyword.
 
 **D-057 MCP errors distinguish caller mistakes.** A missing required argument or a
 malformed value now returns `invalid_input` (new `InvalidInputError`), not
-`internal_error`. `halfiralens --version` was added as a top-level flag. The
+`internal_error`. `iralens --version` was added as a top-level flag. The
 `version` subcommand is kept.
 
 ## Release gate (final verification before merge)
@@ -254,7 +254,7 @@ Regression test: `test_claims_are_prose_not_markup`. The old extractor produced
 three markup-bearing sentences on that input; the new one produces none.
 
 **D-059 `--json` works before and after the subcommand.** Agents write
-`halfiralens research "q" --json`. That was an argparse error. Every subcommand now
+`iralens research "q" --json`. That was an argparse error. Every subcommand now
 inherits the flag through a parent parser with `default=SUPPRESS`, so the
 top-level default still applies when the flag is absent.
 
@@ -279,7 +279,7 @@ pytest. A fresh `./scripts/setup.sh` therefore could not run the documented
 fresh clone plus setup.sh gives working ruff and mypy.
 
 **D-063 Security scan: triage and one hardening change.** Bandit on
-`halfiralens/` (`-lll`) reported one High finding: `extractall` in the engine
+`iralens/` (`-lll`) reported one High finding: `extractall` in the engine
 installer. The tar path already uses `filter="data"`. The zip path now validates
 every member name (`check_archive_member`) before extraction, and rejects
 absolute, traversing, or drive-qualified names. The remaining zip call carries
@@ -324,7 +324,7 @@ removed.
 invisible characters (bidi overrides can make a query display differently from
 what is sent), whitespace-normalized, and capped at `search_max_query_chars`
 (400). Violations raise `FilterError` (`invalid_input` over MCP). Tokenization
-is symbol-aware (`halfiralens/search/querytext.py`): `c++`, `c#`, `.net`,
+is symbol-aware (`iralens/search/querytext.py`): `c++`, `c#`, `.net`,
 `f#` survive as single tokens, quoted phrases are kept intact through
 reformulation, and CJK runs are additionally split into character bigrams so
 2-character terms match longer compounds.
@@ -339,7 +339,7 @@ sequential mode keeps its early-stop when enough unique URLs are found.
 
 **D-070 Atomic, honest engine installation.** `install_engine` now downloads
 with retries (transient only), optionally verifies a supplied SHA-256
-(`--checksum` / `HIL_ENGINE_SHA256`), extracts and startup-probes the binary
+(`--checksum` / `IRALENS_ENGINE_SHA256`), extracts and startup-probes the binary
 inside a temporary directory, and only then moves it into place. A failed
 install never overwrites or deletes a working engine. Upstream publishes no
 checksum asset (verified against the GitHub API for v0.2.4), so without a
@@ -385,3 +385,15 @@ labeled REPLACEMENT for the unrecoverable original 20-case audit benchmark
 (single-commit history; no benchmark artifact exists anywhere in the repo).
 Measured delta, new relevance vs the verbatim legacy scorer: MRR +0.1000,
 nDCG@5 +0.0738 over 20 synthetic cases.
+
+**D-075 Rename: the product is IraLens, not "Half IraLens".** By owner
+decision the "Half" prefix is dropped everywhere: package and import name
+`iralens`, distribution name `iralens`, facade class `IraLens`, error base
+`IraLensError`, CLI command `iralens`, MCP server name `iralens`, state
+directory `~/.iralens`, engine cache `~/.cache/iralens/engine`, environment
+prefixes `IRALENS_HOME` / `IRALENS_<KEY>` / `IRALENS_ENGINE_PATH` /
+`IRALENS_ENGINE_SHA256` / `IRALENS_ENGINE_DIR` (previously `HALF_IRALENS_*`
+and `HIL_*`). This is a deliberate breaking rename: the project is v0.1.0
+and not published to PyPI, so nothing external depends on the old names;
+keeping both would double the public surface forever. All tests, scripts,
+setup files, and docs were updated in the same change.
