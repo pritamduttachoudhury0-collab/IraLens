@@ -309,3 +309,79 @@ need keyword questions. Recorded as a limitation; not changed in the planner.
 **D-066 Merge policy.** PR #1 is merged into `main` only after the gates pass. The
 merge is a GitHub merge of the session branch, not a direct push to `main`, and
 it is a merge commit. No force-push, no history rewrite, and the branch is kept.
+
+## Final production remediation
+
+**D-067 Free engines first in the default chain.** The default engine order
+was `semantic-search, duckduckgo, bing`, so every search first attempted the
+optional bridge that needs user configuration (`mcporter` + Exa). The promise
+is that search works with no separately configured paid API key, so the order
+is now `duckduckgo, bing, semantic-search`. The bridge still runs when the
+free engines fail or more results are needed; nothing that worked before was
+removed.
+
+**D-068 Query hygiene before any engine.** Queries are stripped of control and
+invisible characters (bidi overrides can make a query display differently from
+what is sent), whitespace-normalized, and capped at `search_max_query_chars`
+(400). Violations raise `FilterError` (`invalid_input` over MCP). Tokenization
+is symbol-aware (`halfiralens/search/querytext.py`): `c++`, `c#`, `.net`,
+`f#` survive as single tokens, quoted phrases are kept intact through
+reformulation, and CJK runs are additionally split into character bigrams so
+2-character terms match longer compounds.
+
+**D-069 Concurrent query variants with serialized navigation.** Reformulated
+query variants now run in a bounded thread pool (`search_parallel_queries`,
+default on; workers capped by `search_max_concurrent`). Browser-backed engines
+serialize navigate+read on a process-wide lock in `fetch_rendered_html`
+because the shared engine has one current page; CLI-bridge backends run truly
+in parallel. Results merge in query order, so output is deterministic;
+sequential mode keeps its early-stop when enough unique URLs are found.
+
+**D-070 Atomic, honest engine installation.** `install_engine` now downloads
+with retries (transient only), optionally verifies a supplied SHA-256
+(`--checksum` / `HIL_ENGINE_SHA256`), extracts and startup-probes the binary
+inside a temporary directory, and only then moves it into place. A failed
+install never overwrites or deletes a working engine. Upstream publishes no
+checksum asset (verified against the GitHub API for v0.2.4), so without a
+supplied value the report says `checksum_verified: false` — it never claims a
+verification that did not happen. `install-engine --status` reports the
+current state without installing. Also fixed: `tarfile.extractall(filter=...)`
+does not exist before Python 3.12; the installer now validates tar member
+names itself and falls back where `filter` is unavailable (requires-python is
+3.10).
+
+**D-071 Reader hardening and consistent max_chars.** `read_with_static_reader`
+fetches through `safe_urlopen` (D-072), streams under an overall deadline
+(`read_total_timeout_seconds`, slow-drip protection), enforces the size cap
+(`read_max_bytes`), classifies HTTP status (404 / 403 bot-check / 429 / 5xx /
+redirect loop), and detects soft 404s (short body + not-found markers).
+`max_chars` is enforced on both read backends — it was previously ignored on
+the static path — and artifacts report `truncated` and the budget in metadata.
+The CLI `read` command and the MCP `read` tool accept `max_chars`. The cache
+stores the full text; truncation happens when serving.
+
+**D-072 Redirect-validated, DNS-pinned fetches.** `security.safe_urlopen`
+closes KNOWN_LIMITATIONS items 17/36 for the reader path: hostnames are
+resolved and every answer must be global (mixed public+private answers are
+refused as a rebinding signature), the connection goes straight to the
+validated address (no rebinding window), every redirect hop is re-validated
+against the public-URL policy, https→http downgrades are refused, and chains
+longer than 5 hops are stopped. Verified offline with a local server and
+simulated DNS; see `tests/test_ssrf_fetch.py`.
+
+**D-073 Honest no-results, summary, and demotion.** `no_results_reason`
+distinguishes `filtered_out` (hits existed but were removed by the URL guard
+or filters) from `no_results` (engines answered empty), and only reports
+`engines_failed` when no engine answered at all. `SearchResponse.summary`
+adds one honest sentence. Groups whose hits carry a `prompt_injection:*` flag
+get their relevance factor halved: flagged results are demoted, never silently
+dropped, and the flag travels with them.
+
+**D-074 Verification honesty.** `scripts/verify_interfaces.py` reports
+PASS / FAIL / BLOCKED; live checks the environment cannot reach are BLOCKED and
+listed as unverified in the summary, and the exit code reflects only real
+failures. The ranking benchmark in `scripts/ranking_benchmark.py` is a clearly
+labeled REPLACEMENT for the unrecoverable original 20-case audit benchmark
+(single-commit history; no benchmark artifact exists anywhere in the repo).
+Measured delta, new relevance vs the verbatim legacy scorer: MRR +0.1000,
+nDCG@5 +0.0738 over 20 synthetic cases.

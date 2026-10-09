@@ -44,6 +44,15 @@ Per engine, per `SearchEngine` instance:
   `search_acquire_timeout_seconds` with a clear `OperationTimeoutError`. The slot
   is always released, even when the guarded code raises.
 - Each engine navigation has a timeout (`search_timeout_seconds`, 45).
+- Static page reads are bounded three ways: a response size cap
+  (`read_max_bytes`, default 5 MB), an overall read deadline
+  (`read_total_timeout_seconds`, default 60) that defeats slow-drip responses,
+  and the per-operation socket timeout. `max_chars` is then enforced when the
+  content is served (both static and browser backends), and the artifact's
+  metadata says `truncated: true` when it was cut.
+- Search queries are sanitized before any engine sees them: control and
+  invisible characters are stripped and queries longer than
+  `search_max_query_chars` (400) are rejected with a clear message.
 - Result counts are bounded: `search_max_results` (default 8, max 50) and
   `max_results * 2` raw hits per engine page. Snippets are capped at 400
   characters and titles at 200.

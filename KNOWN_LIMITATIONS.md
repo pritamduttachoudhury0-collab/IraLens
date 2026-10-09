@@ -59,8 +59,14 @@ Ordered by how much they can mislead a user. Read this before relying on output.
     process keeps its breaker state. Separate processes do not share it.
 16. **Injection flags are heuristic.** They cover common English phrasings. They
     miss paraphrases and other languages. They are advisory, not a boundary.
-17. **Private-address check is literal.** `normalize_public_http_url` checks the
-    URL text, not DNS results. DNS rebinding and private-IP redirects are not covered.
+17. **Private-address check: literal plus fetch-time DNS validation.**
+    `normalize_public_http_url` checks the URL text. In addition, the static
+    reader's fetch (`security.safe_urlopen`, D-072) resolves the hostname,
+    refuses any private/loopback answer (including mixed public+private
+    answers, a rebinding signature), pins the validated address for the actual
+    connection, and re-validates every redirect hop. Remaining gap: sources
+    with their own HTTP clients (RSS via `requests`, constant GitHub API
+    targets) still validate only the literal URL.
 18. **Research reads go to a third party.** Each top URL is sent to `r.jina.ai`.
     Use the browser for pages you do not want shared.
 
@@ -105,14 +111,47 @@ Ordered by how much they can mislead a user. Read this before relying on output.
 32. **Search failure still raises from `search()`.** `search()` raises
     `SourceUnavailableError` when every engine fails, as the baseline did. Use
     `search_api()` for structured outcomes.
-33. **Browser engine download is not checksum-verified.** The release asset is
-    fetched over HTTPS. This build does not verify a published checksum, because
-    none was checked here. The binary was not downloaded or run.
+33. **Browser engine download: optional checksum, still none published upstream.**
+    The installer verifies a SHA-256 when one is supplied (`install-engine
+    --checksum` or `HIL_ENGINE_SHA256`) and aborts on mismatch. The v0.2.4
+    release publishes no checksum asset (checked via the GitHub API), so by
+    default integrity rests on HTTPS plus the startup probe — and the install
+    report says `checksum_verified: false` rather than claiming otherwise.
+    Installation is now atomic (probe-before-replace, D-070), so a failed
+    download can never destroy a working engine. In this sandbox the asset CDN
+    (`objects.githubusercontent.com`) is unreachable, so the download itself
+    was not executed here.
 34. **Tested on Python 3.11 only** (Debian-based sandbox). `requires-python` says
     3.10 or newer; 3.10 has not been run.
 35. **Bandit findings reviewed, not fixed.** Low findings are `assert` statements,
     `try/except/pass`, and `subprocess` calls with fixed arguments. The Medium
     `urlopen` findings are covered in D-063.
-36. **Redirects are not re-checked.** A redirect from a public host to a private
-    address is followed; the private-address check is literal (item 17).
+36. **Redirects are re-checked on the reader path (D-072).** Every hop is
+    re-validated against the public-URL policy, https→http downgrades and
+    chains longer than 5 hops are refused, and connections are pinned to
+    validated addresses. Verified by offline tests with a local server and
+    simulated DNS; not exercised against live redirectors from this sandbox.
+    Paths that do not use `safe_urlopen` (see item 17) are unchanged.
 37. **Windows setup is untested** (item 25 still applies).
+
+## Added at the final production remediation
+
+38. **Ranking benchmark is a labeled replacement.** The original 20-case audit
+    benchmark was never committed and could not be recovered (the repository
+    history is a single squash-merged release commit). `scripts/ranking_benchmark.py`
+    is a reconstructed 20-case benchmark of synthetic SERPs; its numbers must
+    not be quoted as results from the original benchmark. Measured on this
+    branch: MRR 0.875 (legacy) -> 0.975 (new), nDCG@5 0.908 -> 0.982.
+39. **Low-coverage queries still lean on engine rank.** When a query shares few
+    terms with the right page, the rank component dominates and a high-ranked
+    distractor can win (case 5 of the benchmark fails under both scorers).
+40. **Soft-404 detection is heuristic.** Short bodies with not-found markers
+    are classified as `soft_404`; novel 404 page designs can slip through, and
+    short real pages that mention "404" are protected only by the length bound.
+41. **Live verification still blocked in this sandbox.** Only github.com,
+    api.github.com, registry.npmjs.org, and pypi.org are reachable. Live
+    search engines, the reader service, the engine asset CDN, and all live
+    integration tests remain unverified here; `scripts/verify_interfaces.py`
+    reports them as BLOCKED rather than PASS/FAIL.
+42. **CJK tokenization uses character bigrams.** Adequate for matching, not a
+    word-segmentation model; rare-compound queries can still miss.

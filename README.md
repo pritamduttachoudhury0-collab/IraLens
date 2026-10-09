@@ -117,8 +117,8 @@ with HalfIraLens() as hil:
 
 ```bash
 halfiralens search "query" --limit 5
-halfiralens open https://github.com/owner/repo     # source-aware open
-halfiralens read https://example.com               # fast static read
+halfiralens open https://github.com/owner/repo     # source-aware open (--max-chars N)
+halfiralens read https://example.com --max-chars 8000   # fast static read
 halfiralens fetch github search_repos query=cdp limit=5
 halfiralens navigate URL && halfiralens links && halfiralens snapshot
 halfiralens click "a.next" && halfiralens extract '{"rows[]": "tr"}'
@@ -160,18 +160,79 @@ halfiralens mcp                                    # start the MCP server
 | **Data model** | Every retrieval is an `Artifact`: title, url, source, content, source-specific metadata, retrieval method, timestamp, discovered_from — content always flagged untrusted |
 | **Errors** | One taxonomy: page_unavailable, navigation_failed, source_unavailable, authentication_required, operation_unsupported, timeout, extraction_failed, blocked_by_security_policy, browser_engine_unavailable, session_state_error, invalid_input (MCP: missing or malformed arguments) |
 
+## How search works without a paid search API key
+
+You do not need to sign up for a search API. The default chain drives public
+search engines through free endpoints (DuckDuckGo HTML/lite, then Bing as a
+fallback); an optional semantic bridge (Exa via `mcporter`) is used only if
+you install it and only when the free engines fail. Results from all engines
+are deduplicated, ranked with an explainable score breakdown, and returned
+with per-engine outcomes. If every engine is blocked or unreachable, the
+response says so (`no_results_reason`, `summary`) instead of failing silently.
+
 ## Security
 
 - **SSRF guard** on every URL (private hosts, metadata endpoints, userinfo
   tricks, non-HTTP schemes all rejected) — plus a second guard inside the
   browser engine.
+- **Redirect-validated, DNS-pinned fetches** on the page-reading path: every
+  redirect hop is re-checked against the public-URL policy, https→http
+  downgrades and long chains are refused, hostnames are resolved up front and
+  the connection is pinned to the validated address (no DNS-rebinding window).
+- **Hardened page reads**: response size cap (5 MB default), overall read
+  deadline (slow-drip protection), HTTP status classification (404, 403
+  bot-checks, 429, 5xx, redirect loops), soft-404 detection, and a consistent
+  `max_chars` budget on every backend (`truncated` is reported in metadata).
+- **Query hygiene**: control/invisible characters are stripped and queries are
+  length-capped (400 chars) before any engine sees them.
+- **Safe engine installation**: downloads retry on transient failures, the
+  binary is startup-probed *before* it replaces anything (a failed install
+  never destroys a working engine), and a SHA-256 is verified whenever one is
+  supplied (`install-engine --checksum` or `HIL_ENGINE_SHA256`). Upstream
+  publishes no checksum, so the install reports `checksum_verified: false`
+  honestly rather than claiming verification.
 - **Internet content is data, never instructions.** Retrievals are flagged
   `untrusted` and MCP output carries an explicit notice; Half IraLens never
-  obeys directives found in pages, search results, or documents.
+  obeys directives found in pages, search results, or documents. Results
+  flagged for prompt injection are demoted in ranking — never silently dropped.
 - **Credentials** live in an owner-only config file, are injected into child
   processes only, and are scrubbed from every error message.
 - **No auto-login.** Authenticated platforms use credentials *you* provide or
   *your own* browser sessions.
+
+Security boundaries and known gaps: `docs/THREAT_MODEL.md` and
+`KNOWN_LIMITATIONS.md`.
+
+## Privacy
+
+- The static reader is a remote service (`r.jina.ai`): every URL you read in
+  `static` mode is sent to it. Use `mode=browser` for pages you do not want
+  shared with a third party.
+- Search queries go to the public search engines in the chain; the optional
+  semantic bridge sends them to its configured backend.
+- Nothing is sent to the project authors. Session state and caches stay in
+  `~/.half-iralens` (or `HALF_IRALENS_HOME`).
+
+## Troubleshooting and verification
+
+```bash
+halfiralens doctor                      # what works right now, per source
+halfiralens install-engine --status     # browser engine: installed? executable?
+halfiralens install-engine              # install it (retries, probe-before-replace)
+.venv/bin/python scripts/verify_interfaces.py   # CLI + Python + MCP checks
+.venv/bin/python -m pytest -q           # offline suite; live tests auto-skip
+```
+
+- `doctor` reports `web-search` as `off` only when neither the browser engine
+  nor the semantic bridge is available; install the engine or check
+  `install-engine --status`.
+- Searches that return nothing carry a reason: `no_results` (genuinely
+  empty), `filtered_out` (filters removed everything), or `engines_failed`
+  (blocked/unreachable engines — check `outcomes` for `captcha`,
+  `rate_limited`, `layout_changed`, …).
+- Reads that fail tell you why: `http_404`, `http_403` (bot check), `http_429`,
+  `soft_404`, `antibot_challenge`, `response_too_large`, `slow_response_deadline`,
+  `redirect_loop`, or `blocked_by_security_policy`.
 
 ## Configuration
 
