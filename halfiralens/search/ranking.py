@@ -2,35 +2,53 @@
 """Explainable ranking for deduplicated search results.
 
 Score = weighted mean of four factors, each in [0, 1]:
-  relevance  - best engine rank (1/rank) blended with query-term overlap
+  relevance  - best engine rank (1/rank) blended with term overlap and,
+               when the query contains quoted phrases, phrase coverage.
+               Terms are tokenized symbol-aware (`c++`, `c#`, `.net`), so a
+               C++ query only overlaps pages that actually mention C++.
   authority  - domain-suffix weight from Settings.authority_weights
   freshness  - exponential decay by age when a date is known, else neutral
   agreement  - fraction of queried engines that returned the page
 
 Every factor value is returned in `score_breakdown`, so a ranking can be
 explained and audited. Weights come from Settings and are normalized to sum 1.
+
+The engine layer applies one further adjustment before combining: groups whose
+hits carry a `prompt_injection:*` security flag get their relevance factor
+halved (see SearchEngine._rank). Flagged content is still returned — never
+silently dropped — but it ranks below clean content.
 """
 
 from __future__ import annotations
 
 import math
-import re
 from datetime import date, datetime, timezone
 from typing import Dict, Mapping, Optional, Tuple
 
+from .querytext import quoted_phrases, term_set
 from .urls import domain_of
-
-_TERM_RE = re.compile(r"\w+", re.UNICODE)
-
-
-def _terms(text: str) -> set:
-    return {t.lower() for t in _TERM_RE.findall(text or "") if len(t) > 2}
 
 
 def relevance(best_rank: int, title: str, snippet: str, question: str) -> float:
+    """Term/phrase coverage blended with the engine's own rank.
+
+    Without quoted phrases: 0.5 * (1/rank) + 0.5 * term_overlap (the classic
+    formula, now symbol-aware). With quoted phrases: 0.5 * (1/rank) +
+    0.35 * term_overlap + 0.15 * phrase_coverage, so an "exact phrase" query
+    rewards pages that actually contain the phrase.
+    """
     rank_part = 1.0 / max(1, best_rank)
-    q_terms = _terms(question)
-    overlap = len(q_terms & _terms(f"{title} {snippet}")) / len(q_terms) if q_terms else 0.0
+    q_terms = term_set(question)
+    if q_terms:
+        overlap = len(q_terms & term_set(f"{title} {snippet}")) / len(q_terms)
+    else:
+        overlap = 0.0
+    phrases = quoted_phrases(question)
+    if phrases:
+        haystack = f"{title} {snippet}".casefold()
+        covered = sum(1 for p in phrases if p.casefold() in haystack)
+        phrase_part = covered / len(phrases)
+        return round(0.5 * rank_part + 0.35 * overlap + 0.15 * phrase_part, 4)
     return round(0.5 * rank_part + 0.5 * overlap, 4)
 
 

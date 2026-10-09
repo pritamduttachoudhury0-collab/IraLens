@@ -12,6 +12,8 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Mapping
 
+from .querytext import quoted_phrases, tokenize
+
 STOPWORDS = frozenset("""
 a an and are as at be been but by can could did do does for from had has have
 how i in into is it its of on or should so than that the their them there these
@@ -30,12 +32,26 @@ DEFAULT_SYNONYMS: Dict[str, List[str]] = {
 
 
 def _keywords(text: str) -> List[str]:
-    tokens = re.findall(r"[A-Za-z0-9][A-Za-z0-9'\-\.]*", text)
+    """Keyword form of the query, symbol-aware.
+
+    Technology tokens keep their symbols (`c++`, `c#`, `.net`, `f#`), quoted
+    phrases stay quoted so engines treat them as exact phrases, and stopword
+    pruning only applies to plain words. Unicode terms pass through.
+    """
     kept: List[str] = []
-    for tok in tokens:
-        low = tok.lower().strip(".'")
-        if low and low not in STOPWORDS and low not in kept:
-            kept.append(low)
+    for phrase in quoted_phrases(text):
+        quoted = f'"{phrase}"'
+        if quoted not in kept:
+            kept.append(quoted)
+    for token in tokenize(text):
+        is_symbol_token = any(ch in "+#." for ch in token)
+        if not is_symbol_token:
+            if token in STOPWORDS:
+                continue
+            if len(token) <= 2 and token.isascii():
+                continue
+        if token not in kept:
+            kept.append(token)
     return kept
 
 

@@ -160,8 +160,9 @@ class SearchResponse:
     filters: Dict[str, Any]
     cache: Dict[str, Any]
     dedup_log: List[Dict[str, Any]]
-    no_results_reason: str              # none | no_results | engines_failed
+    no_results_reason: str              # none | no_results | filtered_out | engines_failed
     security_flags: List[str] = field(default_factory=list)
+    summary: str = ""                   # one honest sentence about the outcome
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SearchResponse":
@@ -176,6 +177,7 @@ class SearchResponse:
             dedup_log=data["dedup_log"],
             no_results_reason=data["no_results_reason"],
             security_flags=data.get("security_flags", []),
+            summary=data.get("summary", ""),
         )
 
     @property

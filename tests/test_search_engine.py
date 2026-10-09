@@ -233,7 +233,10 @@ def test_facade_search_api_returns_structured_response(tmp_path, monkeypatch):
     monkeypatch.setattr(get_source("web-search"), "_engine", engine)
     hil = HalfIraLens()
     resp = hil.search_api("solar", filters={"file_type": "pdf"}, options={"reformulate": False})
-    assert resp.query == "solar" and resp.results == [] and resp.no_results_reason == "no_results"
+    # Hits existed but the pdf filter removed all of them: the response must
+    # say "filtered_out", not claim the web has no results.
+    assert resp.query == "solar" and resp.results == [] and resp.no_results_reason == "filtered_out"
+    assert "filtering" in resp.summary
     resp = hil.search_api("solar", options={"reformulate": False, "cache": "bypass"})
     assert [r.url for r in resp.results] == [h[1] for h in GOOD]
 

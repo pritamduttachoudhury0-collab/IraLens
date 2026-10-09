@@ -96,3 +96,64 @@ def test_freshness_decays_and_unknown_is_neutral():
 
 def test_combine_is_weighted_mean():
     assert combine({"a": 1.0, "b": 0.0}, {"a": 0.5, "b": 0.5}) == 0.5
+
+
+# ------------------------------------------- symbol-aware & phrase relevance
+def test_cpp_query_does_not_match_bare_letter_pages():
+    """Regression: with \\w+ tokenization, 'C++' collapsed to 'c', so pages
+    that merely mention the letter C scored as fully relevant."""
+    real = relevance(3, "Learn C++: free C++ tutorial", "vectors and more", "C++ tutorial")
+    fake = relevance(3, "The letter C in programming", "c is a letter", "C++ tutorial")
+    assert real > fake
+    assert fake < 0.5
+
+
+def test_csharp_and_dotnet_tokenized_consistently():
+    assert relevance(1, "C# events tutorial", "", "C# events") > 0.9
+    assert relevance(1, "Migrating to .NET 8", "", ".NET migration guide") > 0.5
+
+
+def test_quoted_phrase_coverage_is_credited():
+    with_phrase = relevance(2, 'Understanding "atomic operations" in practice', "",
+                            'what are "atomic operations"')
+    without = relevance(2, "Operations on atoms and molecules", "",
+                        'what are "atomic operations"')
+    assert with_phrase > without
+
+
+def test_relevance_unchanged_for_queries_without_phrases():
+    # classic formula preserved: 0.5 * 1/rank + 0.5 * overlap
+    assert relevance(1, "solar cell efficiency", "", "solar cell efficiency") == 1.0
+    assert relevance(4, "solar cell efficiency", "", "solar cell efficiency") == \
+        round(0.5 * 0.25 + 0.5, 4)
+
+
+# ----------------------------------------------------- versioned-page dedup
+def test_dedup_keeps_distinctly_versioned_pages():
+    hits = [hit("Python documentation", "https://docs.example.org/3.10/"),
+            hit("Python documentation", "https://docs.example.org/3.12/")]
+    groups, log = dedup(hits, threshold=0.85)
+    assert len(groups) == 2                       # same title, different versions
+    assert not any(e["reason"] == "near_duplicate" for e in log)
+
+
+def test_dedup_keeps_v_style_versions():
+    hits = [hit("Release notes", "https://a.example.org/v1/notes"),
+            hit("Release notes", "https://a.example.org/v2/notes")]
+    groups, _ = dedup(hits, threshold=0.85)
+    assert len(groups) == 2
+
+
+def test_dedup_still_merges_unversioned_near_duplicates():
+    hits = [hit("Release notes today", "https://a.example.org/notes-one"),
+            hit("Release notes today!", "https://a.example.org/notes-two")]
+    groups, log = dedup(hits, threshold=0.85)
+    assert len(groups) == 1
+    assert log and log[-1]["reason"] == "near_duplicate"
+
+
+def test_version_segments():
+    from halfiralens.search.dedup import version_segments
+    assert version_segments("https://d.org/3.10/library/") == ("3.10",)
+    assert version_segments("https://d.org/v2/api") == ("v2",)
+    assert version_segments("https://d.org/docs/intro") == ()

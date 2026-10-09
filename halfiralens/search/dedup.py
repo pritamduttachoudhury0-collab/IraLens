@@ -10,6 +10,7 @@ log so the caller can see why two hits were merged.
 from __future__ import annotations
 
 import re
+import urllib.parse
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -17,6 +18,18 @@ from ..search.schema import SearchHit
 from .urls import canonical_url, registrable_host
 
 _TOKEN_RE = re.compile(r"\w+", re.UNICODE)
+
+#: Path segments that look like a version: `v2`, `3.10`, `version-1.2`, `1_2_3`.
+_VERSION_SEG_RE = re.compile(r"^(?:v(?:er(?:sion)?)?[-_.]?)?\d+(?:[._]\d+){0,3}$", re.IGNORECASE)
+
+
+def version_segments(url: str) -> Tuple[str, ...]:
+    """Version-looking path segments of a URL, lowercased (may be empty)."""
+    try:
+        path = urllib.parse.urlsplit(url).path
+    except ValueError:
+        return ()
+    return tuple(seg.lower() for seg in path.split("/") if seg and _VERSION_SEG_RE.match(seg))
 
 
 def title_similarity(a: str, b: str) -> float:
@@ -58,8 +71,14 @@ def dedup(hits: List[SearchHit], threshold: float) -> Tuple[List[Group], List[Di
     for key in order:
         group = groups[key]
         target: Optional[Group] = None
+        group_versions = version_segments(group.hits[0].url)
         for kept in survivors:
             if registrable_host(kept.hits[0].url) != registrable_host(group.hits[0].url):
+                continue
+            # Distinctly versioned pages (…/3.10/ vs …/3.12/, /v1 vs /v2) are
+            # different pages even when their titles are nearly identical.
+            kept_versions = version_segments(kept.hits[0].url)
+            if kept_versions != group_versions and (kept_versions or group_versions):
                 continue
             sim = title_similarity(kept.hits[0].title, group.hits[0].title)
             if sim >= threshold:

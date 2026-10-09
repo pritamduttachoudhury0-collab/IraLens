@@ -19,13 +19,21 @@ DEFAULT_AUTHORITY: Dict[str, float] = {".gov": 0.9, ".edu": 0.85, ".org": 0.6}
 @dataclass(frozen=True)
 class Settings:
     # --- engines / fallback ------------------------------------------------
-    search_engines: Tuple[str, ...] = ("semantic-search", "duckduckgo", "bing")
+    # Free engines first: search must work with no paid API key configured
+    # (D-067). The optional semantic-search bridge runs last, so it is used
+    # only when the free engines fail or more results are needed.
+    search_engines: Tuple[str, ...] = ("duckduckgo", "bing", "semantic-search")
     search_min_engines: int = 2            # engines queried for cross-engine agreement
     search_max_results: int = 8
     search_timeout_seconds: int = 45       # per engine navigation/extraction budget
+    search_max_query_chars: int = 400      # longer queries are rejected (D-068)
     # --- resource management -----------------------------------------------
     search_max_concurrent: int = 2         # simultaneous searches on the shared engine
     search_acquire_timeout_seconds: int = 60
+    search_parallel_queries: bool = True   # run reformulated query variants in parallel (D-069)
+    # --- page reading --------------------------------------------------------
+    read_max_bytes: int = 5 * 1024 * 1024        # response size cap on every read
+    read_total_timeout_seconds: int = 60         # overall deadline per read (slow-drip guard)
     # --- ranking ------------------------------------------------------------
     weight_relevance: float = 0.4
     weight_authority: float = 0.2

@@ -17,10 +17,16 @@ Backends never write to the cache and never read the user's session state.
 from __future__ import annotations
 
 import json
+import threading
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
 from ...search.schema import SearchFilters, SearchHit
+
+#: The browser engine is one shared subprocess with a single "current page".
+#: navigate + read must be atomic, or concurrent query variants would
+#: interleave their navigations and read each other's pages.
+_NAV_LOCK = threading.Lock()
 
 NATIVE = "native"
 EMULATED = "emulated"
@@ -91,7 +97,13 @@ def as_html(raw: Any) -> str:
 
 
 def fetch_rendered_html(context: Any, url: str, timeout: int) -> str:
-    """Navigate the shared browser engine and return the rendered document HTML."""
+    """Navigate the shared browser engine and return the rendered document HTML.
+
+    Serialized on a process-wide lock: the engine holds one current page, so
+    two navigations may not interleave even when query variants run in
+    parallel threads (D-069).
+    """
     engine = context.engine()
-    engine.navigate(url, wait_until="domcontentloaded", timeout=timeout)
-    return as_html(engine.evaluate_js("document.documentElement.outerHTML"))
+    with _NAV_LOCK:
+        engine.navigate(url, wait_until="domcontentloaded", timeout=timeout)
+        return as_html(engine.evaluate_js("document.documentElement.outerHTML"))
