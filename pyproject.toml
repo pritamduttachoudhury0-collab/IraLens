@@ -35,3 +35,8 @@ include = ["iralens*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.mypy]
+# Third-party deps without type stubs (PyYAML, feedparser, yt-dlp, requests)
+# are not re-checked; every iralens module itself is.
+ignore_missing_imports = true
