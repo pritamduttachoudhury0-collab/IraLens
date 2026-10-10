@@ -12,6 +12,13 @@ One command, one system:
     iralens session                 unified session state
     iralens mcp                     start the MCP server
     iralens install-engine          install the browser engine
+
+Exit-code contract (D-079):
+    0    success, including an honest zero-results answer
+    2    caller error (bad input, bad arguments, forbidden target)
+    3    internal/operational error
+    4    every search engine failed (the query is not answered; see output)
+    130  interrupted (Ctrl-C)
 """
 
 from __future__ import annotations
@@ -23,9 +30,16 @@ from typing import Any, List, Optional
 
 from . import __version__
 from .core import IraLens
-from .errors import IraLensError
+from .errors import IraLensError, SearchEnginesFailedError
 from .model import Artifact
 from .security import UNTRUSTED_NOTICE, public_message
+
+# Exit codes (D-079). Agents may branch on these; keep them stable.
+EXIT_OK = 0
+EXIT_CALLER = 2
+EXIT_INTERNAL = 3
+EXIT_ENGINES_FAILED = 4
+EXIT_INTERRUPT = 130
 
 
 def _jsonable(obj: Any) -> Any:
@@ -235,146 +249,159 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--checksum", default=None, metavar="SHA256",
                    help="expected SHA-256 of the archive; aborts on mismatch "
                         "(also: IRALENS_ENGINE_SHA256 environment variable)")
+    p.add_argument("--print-url", action="store_true",
+                   help="print the exact asset URL for manual download; install nothing")
     sub.add_parser(parents=[json_flag], name="version", help="print version")
     return parser
 
 
-def run(args: argparse.Namespace) -> Any:
+def run(args: argparse.Namespace) -> tuple:
+    """Execute one command; return (result, exit_code) per the D-079 contract."""
     command = args.command
 
     if command == "version":
-        return {"system": "iralens", "version": __version__}
+        return ({"system": "iralens", "version": __version__}, EXIT_OK)
 
     if command == "install-engine":
-        from .engine.install import engine_status, install_engine
+        from .engine.install import ENGINE_VERSION, _asset_name, engine_download_url, engine_status, install_engine
 
         if getattr(args, "status", False):
-            return {"engine": engine_status()}
+            return ({"engine": engine_status()}, EXIT_OK)
+        if getattr(args, "print_url", False):
+            url = engine_download_url()
+            if getattr(args, "json", False):
+                return ({"url": url, "asset": _asset_name(), "version": ENGINE_VERSION}, EXIT_OK)
+            print(url)
+            return (None, EXIT_OK)
         install_report: dict = {}
         path = install_engine(force=getattr(args, "force", False),
                               expected_sha256=getattr(args, "checksum", None),
                               report=install_report)
-        return {"installed": str(path),
-                "already_installed": bool(install_report.get("already_installed")),
-                "checksum_verified": bool(install_report.get("checksum_verified"))}
+        return ({"installed": str(path),
+                 "already_installed": bool(install_report.get("already_installed")),
+                 "checksum_verified": bool(install_report.get("checksum_verified")),
+                 "shim": install_report.get("shim")}, EXIT_OK)
 
     if command == "mcp":
         from .mcp_server import main as mcp_main
 
         mcp_main()
-        return None
+        return (None, EXIT_OK)
 
     with IraLens() as hil:
         if command == "search":
-            return hil.search(args.query, limit=args.limit, backend=args.backend)
+            return (hil.search(args.query, limit=args.limit, backend=args.backend), EXIT_OK)
         if command == "research":
             opts = {"max_rounds": args.rounds, "max_queries": args.max_queries,
                     "min_sources": args.min_sources, "read_top_n": args.read_top}
             report = hil.research(args.question, options={k: v for k, v in opts.items() if v is not None})
-            return report.to_dict() if getattr(args, "json", False) else report.render_text()
+            code = EXIT_ENGINES_FAILED if report.stop_reason == "search_failed" else EXIT_OK
+            return (report.to_dict() if getattr(args, "json", False) else report.render_text(), code)
         if command == "search-api":
-            return hil.search_api(
+            response = hil.search_api(
                 args.query,
                 filters={"date_from": args.date_from, "date_to": args.date_to,
                          "include_domains": args.include_domain, "exclude_domains": args.exclude_domain,
                          "file_type": args.file_type, "language": args.language, "region": args.region},
                 options={"max_results": args.limit, "engines": args.engine,
                          "reformulate": not args.no_reformulate, "cache": args.cache},
-            ).to_dict()
+            )
+            code = EXIT_ENGINES_FAILED if response.no_results_reason == "engines_failed" else EXIT_OK
+            return (response.to_dict(), code)
         if command == "open":
-            return hil.open(args.url, mode=args.mode, max_chars=args.max_chars)
+            return (hil.open(args.url, mode=args.mode, max_chars=args.max_chars), EXIT_OK)
         if command == "read":
-            return hil.read(args.url, mode=args.mode, max_chars=args.max_chars)
+            return (hil.read(args.url, mode=args.mode, max_chars=args.max_chars), EXIT_OK)
         if command == "scrape":
-            return hil.scrape(args.urls, mode=args.mode)
+            return (hil.scrape(args.urls, mode=args.mode), EXIT_OK)
         if command == "fetch":
-            return hil.fetch(args.source, args.op, **_parse_params(args.params))
+            return (hil.fetch(args.source, args.op, **_parse_params(args.params)), EXIT_OK)
         if command == "sources":
-            return hil.sources()
+            return (hil.sources(), EXIT_OK)
         if command == "doctor":
-            return hil.doctor()
+            return (hil.doctor(), EXIT_OK)
         if command == "session":
-            return hil.session_state()
+            return (hil.session_state(), EXIT_OK)
         if command == "session-reset":
             hil.reset_session()
-            return {"reset": True}
+            return ({"reset": True}, EXIT_OK)
         if command == "configure":
             for key, value in _parse_params(args.pairs).items():
                 hil.configure(key, value)
-            return {"configured": list(_parse_params(args.pairs))}
+            return ({"configured": list(_parse_params(args.pairs))}, EXIT_OK)
         if command == "navigate":
-            return hil.navigate(args.url, wait_until=args.wait_until)
+            return (hil.navigate(args.url, wait_until=args.wait_until), EXIT_OK)
         if command == "back":
-            return hil.back()
+            return (hil.back(), EXIT_OK)
         if command == "forward":
-            return hil.forward()
+            return (hil.forward(), EXIT_OK)
         if command == "reload":
-            return hil.reload()
+            return (hil.reload(), EXIT_OK)
         if command == "snapshot":
-            return hil.snapshot()
+            return (hil.snapshot(), EXIT_OK)
         if command == "markdown":
-            return hil.page_markdown()
+            return (hil.page_markdown(), EXIT_OK)
         if command == "links":
-            return hil.links()
+            return (hil.links(), EXIT_OK)
         if command == "interactive":
-            return hil.interactive_elements()
+            return (hil.interactive_elements(), EXIT_OK)
         if command == "forms-detect":
-            return hil.forms_detect()
+            return (hil.forms_detect(), EXIT_OK)
         if command == "network-log":
-            return hil.network_log()
+            return (hil.network_log(), EXIT_OK)
         if command == "console-log":
-            return hil.console_log()
+            return (hil.console_log(), EXIT_OK)
         if command == "cookies-get":
-            return hil.cookies_get()
+            return (hil.cookies_get(), EXIT_OK)
         if command == "cookies-clear":
-            return hil.cookies_clear()
+            return (hil.cookies_clear(), EXIT_OK)
         if command == "storage-state":
-            return hil.storage_state()
+            return (hil.storage_state(), EXIT_OK)
         if command == "tab-list":
-            return hil.tab_list()
+            return (hil.tab_list(), EXIT_OK)
         if command == "click":
-            return hil.click(args.selector)
+            return (hil.click(args.selector), EXIT_OK)
         if command == "fill":
-            return hil.fill(args.selector, args.value)
+            return (hil.fill(args.selector, args.value), EXIT_OK)
         if command == "type":
-            return hil.type_text(args.text, args.selector)
+            return (hil.type_text(args.text, args.selector), EXIT_OK)
         if command == "press":
-            return hil.press_key(args.key, args.selector)
+            return (hil.press_key(args.key, args.selector), EXIT_OK)
         if command == "select":
-            return hil.select_option(args.selector, args.value)
+            return (hil.select_option(args.selector, args.value), EXIT_OK)
         if command == "scroll":
-            return hil.scroll(args.direction, args.amount)
+            return (hil.scroll(args.direction, args.amount), EXIT_OK)
         if command == "eval":
-            return hil.evaluate_js(args.expression)
+            return (hil.evaluate_js(args.expression), EXIT_OK)
         if command == "wait-for":
-            return hil.wait_for(args.selector, args.timeout)
+            return (hil.wait_for(args.selector, args.timeout), EXIT_OK)
         if command == "wait-for-text":
-            return hil.wait_for_text(args.text, args.timeout)
+            return (hil.wait_for_text(args.text, args.timeout), EXIT_OK)
         if command == "find":
-            return hil.find_in_page(args.query)
+            return (hil.find_in_page(args.query), EXIT_OK)
         if command == "extract":
-            return hil.extract(json.loads(args.schema_json))
+            return (hil.extract(json.loads(args.schema_json)), EXIT_OK)
         if command == "count":
-            return hil.count(args.selector)
+            return (hil.count(args.selector), EXIT_OK)
         if command == "attribute":
-            return hil.attribute(args.selector, args.name)
+            return (hil.attribute(args.selector, args.name), EXIT_OK)
         if command == "forms-fill":
-            return hil.forms_fill(json.loads(args.values_json))
+            return (hil.forms_fill(json.loads(args.values_json)), EXIT_OK)
         if command == "screenshot":
-            return hil.screenshot(args.path)
+            return (hil.screenshot(args.path), EXIT_OK)
         if command == "pdf":
-            return hil.pdf(args.path)
+            return (hil.pdf(args.path), EXIT_OK)
         if command == "cookies-set":
-            return hil.cookies_set(args.name, args.value, args.domain)
+            return (hil.cookies_set(args.name, args.value, args.domain), EXIT_OK)
         if command == "tab-new":
-            return hil.tab_new(args.url)
+            return (hil.tab_new(args.url), EXIT_OK)
         if command == "tab-switch":
-            return hil.tab_switch(args.tab_id)
+            return (hil.tab_switch(args.tab_id), EXIT_OK)
         if command == "tab-close":
-            return hil.tab_close(args.tab_id)
+            return (hil.tab_close(args.tab_id), EXIT_OK)
         if command == "close":
             hil.close()
-            return {"closed": True}
+            return ({"closed": True}, EXIT_OK)
     raise SystemExit(f"unknown command: {command}")
 
 
@@ -382,18 +409,23 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
-        result = run(args)
+        result, code = run(args)
+    except SearchEnginesFailedError as exc:
+        # Every engine failed (D-079): distinct from caller errors so callers
+        # can tell "your input was wrong" apart from "the web did not answer".
+        print(json.dumps(exc.to_dict(), ensure_ascii=False, indent=2), file=sys.stderr)
+        return EXIT_ENGINES_FAILED
     except IraLensError as exc:
         print(json.dumps(exc.to_dict(), ensure_ascii=False, indent=2), file=sys.stderr)
-        return 2
+        return EXIT_CALLER
     except ValueError as exc:
         # Malformed arguments and rejected filters/queries are caller errors
         # (FilterError is a ValueError), not internal faults — same mapping MCP uses.
         print(json.dumps({"error": "invalid_input", "message": public_message(exc)[:500]},
                          ensure_ascii=False, indent=2), file=sys.stderr)
-        return 2
+        return EXIT_CALLER
     except KeyboardInterrupt:
-        return 130
+        return EXIT_INTERRUPT
     except Exception as exc:  # never leak raw internal text
         print(
             json.dumps(
@@ -403,10 +435,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             ),
             file=sys.stderr,
         )
-        return 3
+        return EXIT_INTERNAL
     if result is not None:
         _out(result, getattr(args, "json", False))
-    return 0
+    return code
 
 
 if __name__ == "__main__":

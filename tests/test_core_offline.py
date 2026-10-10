@@ -149,4 +149,6 @@ def test_open_enforces_max_chars_end_to_end(hil, monkeypatch, tmp_path):
     art = hil.open("https://example.org/big", mode="static", max_chars=300)
     assert len(art.content) <= 360
     assert art.metadata.get("truncated") is True
-    assert art.retrieval_method == "static-reader"
+    # Local-first (D-077): plain-text/markdown bodies pass through the direct
+    # reader; only HTML bodies go through the extractor.
+    assert art.retrieval_method == "direct"

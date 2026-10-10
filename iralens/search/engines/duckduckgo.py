@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional
 from ...errors import ExtractionError, SourceUnavailableError
 from ...reliability import classify_block
 from ...search.schema import SearchFilters, SearchHit
-from .base import EMULATED, NATIVE, POST, UNSUPPORTED, SearchBackend, fetch_rendered_html
+from .base import EMULATED, NATIVE, POST, UNSUPPORTED, SearchBackend, fetch_serp_html
 
 ENDPOINTS = (
     "https://html.duckduckgo.com/html/?q={q}",
@@ -127,12 +127,14 @@ class DuckDuckGoBackend(SearchBackend):
 
     def search(self, query: str, filters: SearchFilters, limit: int, context: Any) -> List[SearchHit]:
         timeout = int(context.config.get("search_timeout_seconds", 45)) if context.config else 45
-        encoded = urllib.parse.quote_plus(self.build_query(query, filters))
+        # `query` is the built query text (D-076 transport: direct HTTP first,
+        # rendered engine only as fallback — see fetch_serp_html).
+        encoded = urllib.parse.quote_plus(query)
         region = f"&kl={urllib.parse.quote_plus(filters.region)}" if filters.region else ""
         last_error: Optional[Exception] = None
         for endpoint in ENDPOINTS:
             try:
-                html = fetch_rendered_html(context, endpoint.format(q=encoded) + region, timeout)
+                html = fetch_serp_html(context, endpoint.format(q=encoded) + region, timeout)
             except Exception as exc:  # engine errors are classified by the caller
                 last_error = exc
                 continue

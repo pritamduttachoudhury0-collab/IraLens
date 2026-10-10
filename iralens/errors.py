@@ -60,6 +60,17 @@ class SourceUnavailableError(IraLensError):
     error_type = "source_unavailable"
 
 
+class SearchEnginesFailedError(SourceUnavailableError):
+    """Every search engine failed (blocked, unreachable, or broken) (D-079).
+
+    Distinct from an honest empty result: the query may be fine, the engines
+    did not answer. The CLI exits 4 for this case so callers can tell it apart
+    from success (0) and caller errors (2).
+    """
+
+    error_type = "search_engines_failed"
+
+
 class AuthRequiredError(IraLensError):
     """The operation needs credentials/login the user has not provided."""
 
@@ -114,6 +125,7 @@ def classify_error(
         "page_unavailable": PageUnavailableError,
         "navigation_failed": NavigationError,
         "source_unavailable": SourceUnavailableError,
+        "search_engines_failed": SearchEnginesFailedError,
         "authentication_required": AuthRequiredError,
         "operation_unsupported": OperationUnsupportedError,
         "invalid_input": InvalidInputError,

@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional
 from ...errors import ExtractionError, SourceUnavailableError
 from ...reliability import classify_block
 from ...search.schema import SearchFilters, SearchHit
-from .base import EMULATED, NATIVE, POST, UNSUPPORTED, SearchBackend, fetch_rendered_html
+from .base import EMULATED, NATIVE, POST, UNSUPPORTED, SearchBackend, fetch_serp_html
 
 ENDPOINT = "https://www.bing.com/search?q={q}"
 _NO_RESULTS_MARKERS = ("there are no results", "did not match any documents")
@@ -138,10 +138,12 @@ class BingBackend(SearchBackend):
 
     def search(self, query: str, filters: SearchFilters, limit: int, context: Any) -> List[SearchHit]:
         timeout = int(context.config.get("search_timeout_seconds", 45)) if context.config else 45
-        url = ENDPOINT.format(q=urllib.parse.quote_plus(self.build_query(query, filters)))
+        # `query` is the built query text (D-076 transport: direct HTTP first,
+        # rendered engine only as fallback — see fetch_serp_html).
+        url = ENDPOINT.format(q=urllib.parse.quote_plus(query))
         if filters.language:
             url += f"&setlang={urllib.parse.quote_plus(filters.language)}"
-        html = fetch_rendered_html(context, url, timeout)
+        html = fetch_serp_html(context, url, timeout)
         page = parse_results_page(html)
         if page.hits:
             return [
