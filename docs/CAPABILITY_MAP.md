@@ -41,7 +41,7 @@ status reports honestly).
 
 | Channel / mechanism | IraLens surface | Status |
 |---|---|---|
-| web (Jina reader + anti-bot detection + 5 MB cap) | `web` source, static-reader backend of `read/open` | ✅ tests A, F |
+| web (direct fetch + local extraction; opt-in Jina reader; anti-bot detection + 5 MB cap) | `web` source, direct/static-reader backends of `read/open` | ✅ tests A, F |
 | exa_search (mcporter + Exa) | `web-search` source, semantic-search backend | ◻ bridge absent here; browser-search backend ✅ test A |
 | browser-based search engines (spec §18) | `web-search` browser-search backend (DDG HTML/lite) | ✅ test A live |
 | github (gh CLI) | `github` source, gh-cli backend (repos/code/issues/…) | ◻ gh absent here |
@@ -51,7 +51,7 @@ status reports honestly).
 | reddit (bridge / rdt-cli; honest "no anon path") | `reddit` source + browser fallback with auth-wall detection | ✅ fallback path tested via classifier; backends ◻ |
 | twitter (twitter-cli/xreach + child-env creds; bridge) | `twitter` source, both backends, creds never exported to shell | ◻ no creds here |
 | xiaohongshu (bridge / xhs-mcp / xsec_token rule) | `xiaohongshu` source; token rule documented in module | ◻ |
-| linkedin (mcporter MCP + Jina fallback) | `linkedin` source + static-reader fallback | ◻ (fallback ✅ code path shared with web) |
+| linkedin (mcporter MCP + direct/reader fallback) | `linkedin` source + local-first fallback | ◻ (fallback ✅ code path shared with web) |
 | boss (strict-CDP runbook: AUTH_EXPIRED, ENVIRONMENT_RISK, security-check ≠ login) | `boss` source with the same operational rules | ◻ |
 | xueqiu (bridge; 400 = session problem) | `xueqiu` source with the same rule | ◻ |
 | facebook / instagram (bridge passthrough) | `facebook` / `instagram` sources | ◻ |

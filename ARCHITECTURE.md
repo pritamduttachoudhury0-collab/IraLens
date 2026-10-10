@@ -87,8 +87,8 @@ iralens/
 ### Unified data model (`model.Artifact`)
 
 `title, url, source, kind, content, content_format, metadata (source-specific,
-preserved), retrieval_method (generic: browser / static-reader / api:… / cli:…
-— never names an implementation source), retrieved_at, discovered_from`
+preserved), retrieval_method (generic: direct / browser / static-reader / api:…
+/ cli:… — never names an implementation source), retrieved_at, discovered_from`
 (provenance: the search query or page that surfaced this item).
 
 ### Unified errors (`errors.py`)

@@ -397,3 +397,47 @@ and `HIL_*`). This is a deliberate breaking rename: the project is v0.1.0
 and not published to PyPI, so nothing external depends on the old names;
 keeping both would double the public surface forever. All tests, scripts,
 setup files, and docs were updated in the same change.
+
+**D-076 Engine-optional search over direct HTTP.** Built against an external
+critique ("not reliable enough to replace a search API key"). Single point of
+failure: every free engine previously drove the browser binary. Now the free
+engines fetch SERPs directly over SSRF-safe HTTP (`iralens/fetch.py`,
+`fetch_search_page` — DNS-pinned, redirect-validated, size-capped, with an
+overall deadline), and the browser engine is a *fallback* only: used when the
+direct transport is blocked or the page needs JavaScript. Parsing stays a pure
+function of the payload (fixture-tested). `install-engine --print-url` prints
+the exact release asset URL for manual download, a successful install drops an
+`iralens-engine` shim into `IRALENS_BIN_DIR` (default `~/.local/bin`), and
+core operation never requires the engine binary.
+
+**D-077 Local-first reading.** Privacy critique: every `static` read sent the
+URL to the remote reader (r.jina.ai). Reads are now local-first: direct fetch
+plus stdlib HTML extraction (`iralens/extract.py`) is the default; the remote
+reader is OFF and opt-in via `read_remote_reader_enabled` /
+`IRALENS_READ_REMOTE_READER_ENABLED`. Chain: direct -> remote reader (opt-in)
+-> browser. Extraction is lossy for complex/JS pages (documented); the
+browser backend covers those. All transports keep the D-071/D-072 guards:
+status classification, soft-404 detection, size cap, slow-drip deadline.
+
+**D-078 SearXNG rotation.** Scaling critique: rate limits on one endpoint
+kill the chain. New `searxng` engine rotates across public SearXNG instances
+with per-instance cooldowns (600 s default; `IRALENS_SEARXNG_INSTANCES`,
+`IRALENS_SEARXNG_COOLDOWN_SECONDS`, `IRALENS_SEARXNG_TIMEOUT_SECONDS`). The
+default chain is now duckduckgo -> searxng -> bing -> semantic-search. Bundled
+instances are unverified conveniences; pin your own for production
+(KNOWN_LIMITATIONS.md). Parsing is a pure function of the JSON payload.
+
+**D-079 Exit-code contract.** Silence critique: `search-api` used to exit 0
+even when every engine failed. The CLI now guarantees: 0 = success *including
+an honest zero-results answer*; 2 = caller error (bad input, bad arguments,
+forbidden target); 3 = internal/operational error; 4 = every search engine
+failed (`SearchEnginesFailedError`, `no_results_reason=engines_failed`, or
+research `stop_reason=search_failed`); 130 = interrupted. The structured
+output is still printed for exit 4 so agents see `outcomes` and the reason.
+
+*Provenance note (2026-10-10).* D-076…D-079 were first implemented in a
+local commit (38eb955) of a previous session that was never pushed and is
+unrecoverable; GitHub never held it. The decisions were rebuilt from the
+handoff specification and re-landed on `arena/cf67ee4b-iralens` with full
+tests. Nothing from the lost commit was claimed as verified beyond what was
+re-tested here; see the verification record in KNOWN_LIMITATIONS.md.
