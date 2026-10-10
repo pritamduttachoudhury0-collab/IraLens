@@ -73,6 +73,11 @@ st = json.loads(out) if rc == 0 else {}
 check("cli install-engine --status", rc == 0 and "engine" in st,
       f"installed={st.get('engine', {}).get('installed')}")
 
+rc, out, _ = run(["install-engine", "--print-url"])
+url = out.strip()
+check("cli install-engine --print-url (manual download URL)",
+      rc == 0 and url.startswith("https://github.com/") and " " not in url, url)
+
 # ---------------- CLI (live services)
 rc, out, _ = run(["fetch", "github", "search_repos", "query=headless browser", "limit=3", "--json"])
 data = json.loads(out) if rc == 0 else []
@@ -80,11 +85,18 @@ check("cli fetch github search_repos (LIVE)", rc == 0 and len(data) > 0,
       f"{len(data)} live repos, first={data[0]['url'] if data else None}", live=True)
 
 rc, out, _ = run(["--json", "search-api", "solar panel efficiency", "--cache", "bypass"])
-sa = json.loads(out) if rc == 0 else {}
+# D-079: the structured report is printed either way; exit 4 marks the
+# every-engine-failed case and exit 0 marks an answered query (even if the
+# honest answer is zero results).
+sa = json.loads(out) if out else {}
 outcomes = sa.get("outcomes", [])
-check("cli search-api --json (structured, machine-readable)", rc == 0 and "outcomes" in sa,
+check("cli search-api --json (structured, machine-readable)", rc in (0, 4) and "outcomes" in sa,
       "engine outcomes: " + (", ".join(f"{o['engine']}={o['status']}" for o in outcomes) or "(none)")
       + f"; summary={sa.get('summary', '')!r}")
+if sa.get("no_results_reason") == "engines_failed":
+    check("cli exit-code contract (D-079): engines_failed exits 4", rc == 4, f"rc={rc}")
+else:
+    check("cli exit-code contract (D-079): answered query exits 0", rc == 0, f"rc={rc}")
 # Web engines need search-engine access; with no engine installed and no
 # network, a structured all-engines-failed response is the *honest* result.
 engines_answered = any(o["status"] in ("results", "empty") for o in outcomes)
@@ -92,9 +104,11 @@ check("cli search-api reached at least one engine (LIVE)", engines_answered,
       sa.get("summary", ""), live=True)
 
 rc, out, _ = run(["--json", "research", "solar panel efficiency 2025", "--rounds", "1"])
-rr = json.loads(out) if rc == 0 else {}
-check("cli research --json returns structured report", rc == 0 and "stop_reason" in rr,
-      f"stop_reason={rr.get('stop_reason')} sources={len(rr.get('sources', []))}")
+# D-079: research exits 4 when every search failed; the report is still JSON.
+rr = json.loads(out) if out else {}
+contract_ok = (rr.get("stop_reason") == "search_failed") == (rc == 4)
+check("cli research --json returns structured report", rc in (0, 4) and "stop_reason" in rr and contract_ok,
+      f"rc={rc} stop_reason={rr.get('stop_reason')} sources={len(rr.get('sources', []))}")
 check("cli research found web sources (LIVE)", rr.get("stop_reason") not in ("search_failed", None),
       f"stop_reason={rr.get('stop_reason')}", live=True)
 

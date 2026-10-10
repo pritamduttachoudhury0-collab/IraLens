@@ -67,7 +67,7 @@ The server exposes 49 tools, including `research`, `search_api`, `search`, `read
 **Read the output correctly.** `research` returns leads, not verified answers. Check
 `stop_reason`, `limitations`, and each statement's `status` and `source_ids`. If the
 web search engines are unreachable, `stop_reason` is `search_failed` and the command
-still exits 0; read the JSON, do not assume success from the exit code.
+exits 4 (see the exit-code contract below) — the JSON on stdout still explains why.
 
 No platform-specific plugin or marketplace integration is provided. Any agent that can
 run a shell command or start an MCP stdio server can use IraLens; the two blocks above
@@ -75,6 +75,16 @@ are the entire integration.
 
 **Verify an install in one command:** `.venv/bin/python scripts/verify_interfaces.py`
 (runs the CLI, Python, and MCP checks; needs `api.github.com` for the live checks).
+
+**Exit-code contract** (stable; agents may branch on it):
+
+| code | meaning |
+|------|---------|
+| 0 | success — including an honest zero-results answer |
+| 2 | handled error with a typed JSON message on stderr (bad input, bad URL, forbidden target, unavailable source/page) |
+| 3 | unexpected internal error |
+| 4 | every search engine failed — the query is unanswered; see `outcomes` / `stop_reason` in the output |
+| 130 | interrupted (Ctrl-C) |
 
 Optional capabilities unlock as their (free) tools appear — `yt-dlp` for
 YouTube, `gh` for private GitHub repos and code search, the desktop browser
@@ -205,8 +215,11 @@ Security boundaries and known gaps: `docs/THREAT_MODEL.md` and
 
 ## Privacy
 
-- The static reader is a remote service (`r.jina.ai`): every URL you read in
-  `static` mode is sent to it. Use `mode=browser` for pages you do not want
+- Reads are local-first (D-077): `static` mode fetches the page directly and
+  extracts text locally. The remote reader (`r.jina.ai`) is **off by default**
+  and only used when you opt in
+  (`IRALENS_READ_REMOTE_READER_ENABLED=1`); when enabled, every URL you read
+  in `static` mode is sent to it. Use `mode=browser` for pages you do not want
   shared with a third party.
 - Search queries go to the public search engines in the chain; the optional
   semantic bridge sends them to its configured backend.
@@ -223,9 +236,10 @@ iralens install-engine              # install it (retries, probe-before-replace)
 .venv/bin/python -m pytest -q           # offline suite; live tests auto-skip
 ```
 
-- `doctor` reports `web-search` as `off` only when neither the browser engine
-  nor the semantic bridge is available; install the engine or check
-  `install-engine --status`.
+- `doctor` reports `web-search` health honestly: free engines fetch results
+  pages over direct HTTP (no browser engine needed); the engine, when
+  installed, is a rendered fallback for bot walls (check
+  `install-engine --status`).
 - Searches that return nothing carry a reason: `no_results` (genuinely
   empty), `filtered_out` (filters removed everything), or `engines_failed`
   (blocked/unreachable engines — check `outcomes` for `captcha`,
@@ -244,6 +258,18 @@ iralens configure groq_key=...            # transcription
 iralens configure twitter_auth_token=...  # X access
 iralens configure stealth=true            # engine anti-detection
 iralens configure proxy=http://...        # engine proxy
+```
+
+Search/read tuning is available as config keys or `IRALENS_*` environment
+variables (the environment wins):
+
+```bash
+IRALENS_SEARXNG_INSTANCES="https://your.instance,https://other"  # pin SearXNG instances
+IRALENS_SEARXNG_COOLDOWN_SECONDS=600     # per-instance failure cooldown
+IRALENS_SEARXNG_TIMEOUT_SECONDS=20       # per-instance request budget
+IRALENS_READ_REMOTE_READER_ENABLED=1     # opt in to the r.jina.ai reader
+IRALENS_BIN_DIR=~/.local/bin             # where install-engine puts the iralens-engine shim
+IRALENS_ENGINE_PATH=... IRALENS_ENGINE_SHA256=... IRALENS_ENGINE_DIR=...  # engine overrides
 ```
 
 ## Development

@@ -11,6 +11,7 @@ import urllib.error
 import pytest
 
 from iralens import content_guard
+from iralens.cache import ResponseCache
 from iralens.errors import (
     ExtractionError,
     OperationTimeoutError,
@@ -258,3 +259,147 @@ def test_truncate_text_reports_omitted_chars():
     assert "900 chars" in text
     same, not_truncated = content_guard.truncate_text("short", 100)
     assert same == "short" and not_truncated is False
+
+
+# ------------------------------------------ local-first direct read (D-077)
+class _RejectEngineCtx:
+    """Context whose engine must never be touched by static reads.
+
+    Carries a real Config so IRALENS_* env overrides (e.g. the remote-reader
+    opt-in) reach Settings, exactly as in production.
+    """
+
+    def __init__(self):
+        from iralens.config import Config
+
+        self.config = Config(read_only=True)
+
+    def engine(self):
+        raise AssertionError("static reads must not start the browser engine")
+
+
+def test_direct_read_extracts_html_to_markdown(monkeypatch, tmp_path):
+    html = b"<html><head><title>Page</title></head><body><h1>Head</h1><p>Body.</p></body></html>"
+    _patch_urlopen(monkeypatch, response=FakeResponse(html))
+    monkeypatch.setattr(web_mod, "ResponseCache",
+                        lambda enabled=True: ResponseCache(tmp_path / "pages"))
+    art = web_mod.WebSource().read_url("https://example.org/x", _RejectEngineCtx(),
+                                       mode="static")
+    assert art.retrieval_method == "direct"
+    assert "# Head" in art.content
+    assert "Body." in art.content
+    assert art.title == "Head"
+
+
+def test_direct_read_passes_plain_text_through(monkeypatch, tmp_path):
+    _patch_urlopen(monkeypatch, response=FakeResponse(b"# Notes\n\nplain body"))
+    monkeypatch.setattr(web_mod, "ResponseCache",
+                        lambda enabled=True: ResponseCache(tmp_path / "pages"))
+    art = web_mod.WebSource().read_url("https://example.org/x", _RejectEngineCtx(),
+                                       mode="static")
+    assert art.content == "# Notes\n\nplain body"
+
+
+def test_direct_read_classifies_http_status(monkeypatch):
+    err = urllib.error.HTTPError("https://example.org/x", 404, "nope", {}, None)
+    _patch_urlopen(monkeypatch, error=err)
+    with pytest.raises(PageUnavailableError) as exc:
+        web_mod.read_direct("https://example.org/x")
+    assert exc.value.detail == "http_404"
+
+
+def test_direct_read_detects_soft_404(monkeypatch):
+    _patch_urlopen(monkeypatch, response=FakeResponse(b"404 Not Found"))
+    with pytest.raises(PageUnavailableError) as exc:
+        web_mod.read_direct("https://example.org/gone")
+    assert exc.value.detail == "soft_404"
+
+
+def test_remote_reader_is_off_by_default(monkeypatch, tmp_path):
+    """Local-first: the URL must not be shared with r.jina.ai unless opted in."""
+    def explode(*a, **kw):
+        raise AssertionError("remote reader must not run by default")
+
+    monkeypatch.setattr(web_mod, "read_with_static_reader", explode)
+    _patch_urlopen(monkeypatch, response=FakeResponse(b"<html><p>local</p></html>"))
+    monkeypatch.setattr(web_mod, "ResponseCache",
+                        lambda enabled=True: ResponseCache(tmp_path / "pages"))
+    art = web_mod.WebSource().read_url("https://example.org/x", _RejectEngineCtx(),
+                                       mode="static")
+    assert "local" in art.content
+
+
+def test_remote_reader_used_only_when_enabled(monkeypatch, tmp_path):
+    monkeypatch.setenv("IRALENS_READ_REMOTE_READER_ENABLED", "1")
+
+    def reader(url, timeout=30, **kwargs):
+        return "# From reader"
+
+    def direct_fails(url, timeout=30, **kw):
+        raise PageUnavailableError("direct fetch failed", detail="http_503")
+
+    monkeypatch.setattr(web_mod, "read_direct", direct_fails)
+    monkeypatch.setattr(web_mod, "read_with_static_reader", reader)
+    monkeypatch.setattr(web_mod, "ResponseCache",
+                        lambda enabled=True: ResponseCache(tmp_path / "pages"))
+    art = web_mod.WebSource().read_url("https://example.org/x", _RejectEngineCtx(),
+                                       mode="static")
+    assert art.retrieval_method == "static-reader"
+    assert art.content == "# From reader"
+
+
+def test_static_mode_never_falls_through_to_browser(monkeypatch, tmp_path):
+    def direct_fails(url, timeout=30, **kw):
+        raise PageUnavailableError("gone", detail="http_404")
+
+    monkeypatch.setattr(web_mod, "read_direct", direct_fails)
+    monkeypatch.setattr(web_mod, "ResponseCache",
+                        lambda enabled=True: ResponseCache(tmp_path / "pages"))
+
+    class Ctx:
+        config = None
+
+        def engine(self):
+            raise AssertionError("mode=static must not fall through to browser")
+
+    with pytest.raises(PageUnavailableError):
+        web_mod.WebSource().read_url("https://example.org/x", Ctx(), mode="static")
+
+
+# ----------------------------- linkedin fallback follows the same policy
+def test_linkedin_fallback_is_local_first(monkeypatch):
+    from iralens.sources import linkedin as li_mod
+
+    def explode(*a, **kw):
+        raise AssertionError("remote reader must not run by default")
+
+    monkeypatch.setattr(li_mod, "read_direct", lambda url, **kw: "profile text")
+    monkeypatch.setattr(li_mod, "read_with_static_reader", explode)
+    src = li_mod.LinkedInSource()
+
+    class Ctx:
+        config = None
+
+    art = src.read_url("https://www.linkedin.com/in/x", Ctx())
+    assert art.retrieval_method == "direct"
+    assert art.content == "profile text"
+
+
+def test_linkedin_reader_used_only_when_enabled(monkeypatch):
+    from iralens.errors import AuthRequiredError
+    from iralens.sources import linkedin as li_mod
+
+    def direct_fails(url, **kw):
+        raise PageUnavailableError("blocked", detail="http_403")
+
+    monkeypatch.setattr(li_mod, "read_direct", direct_fails)
+    monkeypatch.setattr(li_mod, "read_with_static_reader",
+                        lambda url, **kw: (_ for _ in ()).throw(
+                            AssertionError("reader must stay off by default")))
+    src = li_mod.LinkedInSource()
+
+    class Ctx:
+        config = None
+
+    with pytest.raises(AuthRequiredError):
+        src.read_url("https://www.linkedin.com/in/x", Ctx())

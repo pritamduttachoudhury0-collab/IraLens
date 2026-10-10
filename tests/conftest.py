@@ -13,6 +13,8 @@ def isolated_home(tmp_path, monkeypatch):
     home = tmp_path / "iralens-home"
     home.mkdir()
     monkeypatch.setenv("IRALENS_HOME", str(home))
+    # Keep engine PATH shims out of the real ~/.local/bin during tests.
+    monkeypatch.setenv("IRALENS_BIN_DIR", str(home / "bin"))
     yield home
 
 

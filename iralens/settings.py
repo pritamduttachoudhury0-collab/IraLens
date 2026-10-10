@@ -15,18 +15,35 @@ from typing import Any, Dict, Tuple
 
 DEFAULT_AUTHORITY: Dict[str, float] = {".gov": 0.9, ".edu": 0.85, ".org": 0.6}
 
+#: Public SearXNG instances the `searxng` engine rotates across (D-078).
+#: UNVERIFIED conveniences — pin your own with IRALENS_SEARXNG_INSTANCES for
+#: anything serious (KNOWN_LIMITATIONS.md).
+DEFAULT_SEARXNG_INSTANCES: Tuple[str, ...] = (
+    "https://searx.be",
+    "https://searxng.site",
+    "https://priv.au",
+    "https://search.inetol.net",
+    "https://searx.tiekoetter.com",
+)
+
 
 @dataclass(frozen=True)
 class Settings:
     # --- engines / fallback ------------------------------------------------
     # Free engines first: search must work with no paid API key configured
     # (D-067). The optional semantic-search bridge runs last, so it is used
-    # only when the free engines fail or more results are needed.
-    search_engines: Tuple[str, ...] = ("duckduckgo", "bing", "semantic-search")
+    # only when the free engines fail or more results are needed. searxng (D-078)
+    # rotates across public instances, so it sits between the two single-
+    # endpoint engines.
+    search_engines: Tuple[str, ...] = ("duckduckgo", "searxng", "bing", "semantic-search")
     search_min_engines: int = 2            # engines queried for cross-engine agreement
     search_max_results: int = 8
     search_timeout_seconds: int = 45       # per engine navigation/extraction budget
     search_max_query_chars: int = 400      # longer queries are rejected (D-068)
+    # --- searxng instance rotation (D-078) ---------------------------------
+    searxng_instances: Tuple[str, ...] = DEFAULT_SEARXNG_INSTANCES
+    searxng_cooldown_seconds: float = 600.0   # a failed instance is skipped this long
+    searxng_timeout_seconds: int = 20         # per-instance request budget
     # --- resource management -----------------------------------------------
     search_max_concurrent: int = 2         # simultaneous searches on the shared engine
     search_acquire_timeout_seconds: int = 60
@@ -34,6 +51,9 @@ class Settings:
     # --- page reading --------------------------------------------------------
     read_max_bytes: int = 5 * 1024 * 1024        # response size cap on every read
     read_total_timeout_seconds: int = 60         # overall deadline per read (slow-drip guard)
+    # Local-first reading (D-077): direct fetch + stdlib extraction is the
+    # default; the remote reader (r.jina.ai) is OFF and opt-in only.
+    read_remote_reader_enabled: bool = False
     # --- ranking ------------------------------------------------------------
     weight_relevance: float = 0.4
     weight_authority: float = 0.2

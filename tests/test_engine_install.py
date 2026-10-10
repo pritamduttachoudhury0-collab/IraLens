@@ -4,6 +4,7 @@ verify-before-replace atomicity, and honest status reporting. Offline."""
 
 import hashlib
 import io
+import os
 import tarfile
 import urllib.error
 from pathlib import Path
@@ -201,3 +202,49 @@ def test_engine_status_reports_executable_state(monkeypatch, tmp_path):
     assert status["installed"] is True
     assert status["executable"] is True
     assert status["path"] == str(fake_path)
+
+
+# ------------------------------------------------- manual URL + PATH shim
+def test_engine_download_url_names_platform_asset():
+    from iralens.engine.install import ENGINE_RELEASE_BASE, ENGINE_VERSION, engine_download_url
+
+    url = engine_download_url()
+    assert url.startswith(f"{ENGINE_RELEASE_BASE}/v{ENGINE_VERSION}/")
+    assert url.endswith(install_mod._asset_name())
+
+
+def test_install_path_shim_writes_executable_wrapper(tmp_path):
+    from iralens.engine.install import install_path_shim
+
+    binary = tmp_path / "obscura"
+    binary.write_text("#!/bin/sh\necho 0.2.4\n")
+    bin_dir = tmp_path / "bin"
+    shim = install_path_shim(binary, bin_dir)
+    assert shim is not None and shim.is_file()
+    assert shim.name == "iralens-engine"
+    assert os.access(shim, os.X_OK)
+    body = shim.read_text()
+    assert body.startswith("#!/bin/sh")
+    assert str(binary) in body
+
+
+def test_install_engine_reports_shim(tmp_path, monkeypatch):
+    monkeypatch.setattr(install_mod, "probe_command", _ok_probe)
+    _patch_download(monkeypatch, _make_archive(tmp_path))
+    report = {}
+    path = install_engine(target_dir=tmp_path / "engine", report=report)
+    assert path.is_file()
+    assert report["shim"] is not None
+    assert Path(report["shim"]).name == "iralens-engine"
+
+
+def test_engine_status_reports_shim_presence(monkeypatch, tmp_path):
+    from iralens.engine.install import install_path_shim
+
+    monkeypatch.setattr(install_mod, "find_engine", lambda: None)
+    st = engine_status()
+    assert st["installed"] is False
+    assert st.get("shim") is None
+    shim = install_path_shim(tmp_path / "obscura")
+    st = engine_status()
+    assert st["shim"] == str(shim)

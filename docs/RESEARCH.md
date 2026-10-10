@@ -94,6 +94,7 @@ The facade does not take one yet.
 
 ## Privacy note
 
-Research reads use the static reader, which sends each top URL to the third-party
-reader service (`r.jina.ai`). The page URLs leave the machine. Search queries go
-to the search engines. The browser engine is not used for reads in research.
+Research reads are local-first (D-077): each top URL is fetched directly and
+extracted locally. Only if you opt in (`IRALENS_READ_REMOTE_READER_ENABLED=1`)
+does the remote reader (`r.jina.ai`) receive those URLs. Search queries go to
+the search engines. The browser engine is not used for reads in research.

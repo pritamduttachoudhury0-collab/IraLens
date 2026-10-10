@@ -18,6 +18,11 @@ Safety properties (D-070):
     release publishes no checksum file, so without a supplied value the
     install relies on HTTPS plus the startup probe — and the status report
     says exactly that instead of claiming a verified checksum.
+  - Operator ergonomics (D-076): `engine_download_url()` (CLI `install-engine
+    --print-url`) prints the exact asset URL for manual download, and a
+    successful install drops an `iralens-engine` shim into IRALENS_BIN_DIR
+    (default ~/.local/bin) so the engine is callable without knowing the
+    cache path. The engine stays optional for core operation.
 """
 
 from __future__ import annotations
@@ -83,6 +88,41 @@ def _asset_name() -> str:
             hint="build the engine from source and set IRALENS_ENGINE_PATH to the binary",
         )
     return asset
+
+
+def engine_download_url(version: str = ENGINE_VERSION) -> str:
+    """Exact release asset URL for this platform (manual downloads, --print-url)."""
+    return f"{ENGINE_RELEASE_BASE}/v{version}/{_asset_name()}"
+
+
+def _default_bin_dir() -> Path:
+    override = os.environ.get("IRALENS_BIN_DIR")
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".local" / "bin"
+
+
+def install_path_shim(binary: Path, bin_dir: Optional[Path] = None) -> Optional[Path]:
+    """Put an `iralens-engine` launcher for *binary* on the user's PATH (D-076).
+
+    Writes an executable `iralens-engine` wrapper into IRALENS_BIN_DIR
+    (default ~/.local/bin) so the engine can be invoked and probed without
+    remembering the cache path. A wrapper (not a symlink) keeps working if the
+    cache is later replaced. Returns the shim path, or None where the platform
+    has no POSIX shell (the shim is POSIX-only; Windows is untested).
+    """
+    if os.name == "nt":
+        return None
+    target = Path(bin_dir) if bin_dir else _default_bin_dir()
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        shim = target / "iralens-engine"
+        shim.write_text(f'#!/bin/sh\nexec "{binary}" "$@"\n', encoding="utf-8")
+        shim.chmod(0o755)
+        return shim
+    except OSError:
+        # A read-only or missing PATH directory must not fail the install.
+        return None
 
 
 def _download(url: str, dest: Path, *, max_attempts: int = DOWNLOAD_ATTEMPTS,
@@ -154,6 +194,8 @@ def engine_status() -> Dict[str, object]:
     """Report the current engine installation state without installing anything."""
     path = find_engine()
     report: Dict[str, object] = {"installed": path is not None}
+    shim = _default_bin_dir() / "iralens-engine"
+    report["shim"] = str(shim) if os.name != "nt" and shim.is_file() else None
     if path is None:
         report["message"] = "browser engine not installed — run: iralens install-engine"
         return report
@@ -196,11 +238,13 @@ def install_engine(
     if not force and final_path.is_file():
         probe = probe_command(str(final_path), ["--version"], timeout=15)
         if probe.ok:
-            info.update(already_installed=True, path=str(final_path))
+            shim = install_path_shim(final_path)
+            info.update(already_installed=True, path=str(final_path),
+                        shim=str(shim) if shim else None)
             return final_path
 
     checksum = expected_sha256 or os.environ.get("IRALENS_ENGINE_SHA256") or ""
-    url = f"{ENGINE_RELEASE_BASE}/v{version}/{asset}"
+    url = engine_download_url(version)
 
     with tempfile.TemporaryDirectory(prefix="iralens-engine-") as tmp:
         tmp_dir = Path(tmp)
@@ -237,6 +281,8 @@ def install_engine(
             )
 
         os.replace(staged, final_path)   # atomic swap into place
+        shim = install_path_shim(final_path)
         info.update(already_installed=False, path=str(final_path),
-                    checksum_source=("supplied" if checksum else "none published"))
+                    checksum_source=("supplied" if checksum else "none published"),
+                    shim=str(shim) if shim else None)
     return final_path

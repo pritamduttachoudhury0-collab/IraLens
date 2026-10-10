@@ -95,7 +95,7 @@ def test_static_reads_are_cached_and_browser_reads_are_not(tmp_path, monkeypatch
         def engine(self):
             return FakeEngine()
 
-    monkeypatch.setattr(web_mod, "read_with_static_reader", fake_static)
+    monkeypatch.setattr(web_mod, "read_direct", fake_static)
     monkeypatch.setattr(web_mod, "ResponseCache", lambda enabled=True: ResponseCache(tmp_path / "pages"))
     src = web_mod.WebSource()
 

@@ -18,7 +18,7 @@ from ..security import host_matches
 from shutil import which as shutil_which
 from ._mcporter import mcporter_server_names
 from .base import Source, SourceHealth
-from .web import read_with_static_reader
+from .web import read_direct, read_with_static_reader
 
 if TYPE_CHECKING:
     from ..core import Context
@@ -101,15 +101,31 @@ class LinkedInSource(Source):
         )
 
     def read_url(self, url: str, context: "Context", mode: str = "auto") -> Artifact:
+        # Local-first (D-077), same policy as the web source: direct fetch
+        # first; the remote reader is opt-in only.
+        from ..settings import Settings
+
+        settings = Settings.from_config(context.config)
+        method = "direct"
         try:
-            markdown = read_with_static_reader(url)
+            markdown = read_direct(url)
         except Exception as exc:
-            raise AuthRequiredError(
-                "LinkedIn blocks anonymous reads for this page",
-                hint="configure the LinkedIn MCP server (see iralens sources)",
-                detail=str(exc),
-            ) from exc
+            if not settings.read_remote_reader_enabled:
+                raise AuthRequiredError(
+                    "LinkedIn blocks anonymous reads for this page",
+                    hint="configure the LinkedIn MCP server (see iralens sources)",
+                    detail=str(exc),
+                ) from exc
+            try:
+                markdown = read_with_static_reader(url)
+                method = "static-reader"
+            except Exception as exc2:
+                raise AuthRequiredError(
+                    "LinkedIn blocks anonymous reads for this page",
+                    hint="configure the LinkedIn MCP server (see iralens sources)",
+                    detail=str(exc2),
+                ) from exc2
         return Artifact(
             title=url, url=url, source="linkedin", kind="page",
-            content=markdown, content_format="markdown", retrieval_method="static-reader",
+            content=markdown, content_format="markdown", retrieval_method=method,
         )

@@ -5,20 +5,26 @@ Ordered by how much they can mislead a user. Read this before relying on output.
 ## Verification gaps (not verified in this environment)
 
 1. **Live search engines were not exercised.** This sandbox can reach only
-   github.com, api.github.com, registry.npmjs.org, and pypi.org. DuckDuckGo and
-   Bing parsers are tested against saved HTML fixtures, not live pages.
-   Engine markup changes will show up as `layout_changed`, not as silent wrong results.
+   github.com, api.github.com, registry.npmjs.org, and pypi.org. DuckDuckGo,
+   Bing, and SearXNG parsers are tested against saved fixtures/payloads, not
+   live pages. Engine markup changes will show up as `layout_changed`, not as
+   silent wrong results. See the verification record at the end of this file.
 2. **Bing is experimental.** Its parser mirrors the `li.b_algo` structure from a
    fixture, and has never run against live Bing. Use `--engine duckduckgo` if
    Bing misbehaves.
 3. **Live tests skip here.** The `live` probe now makes a real HTTPS request
    (DECISIONS D-052). In this sandbox it fails, so the live tests skip with a
-   reason. They have never run to completion in this environment, so their
-   assertions against live sites are unverified.
-4. **Browser-engine behavior was not run.** The engine is not installed in this
-   sandbox. `install-engine` was not executed. The engine release URL and asset
-   names were checked against the GitHub API (release v0.2.4 exists, and the
-   Linux/macOS/Windows assets match `engine/install.py`). The downloaded binary was not run.
+   reason (confirmed again 2026-10-10: 15 skipped). They have never run to
+   completion in this environment, so their assertions against live sites are
+   unverified.
+4. **Browser-engine behavior was not run.** The engine is not installed in
+   this sandbox. `install-engine` was executed on 2026-10-10 and failed
+   honestly on the blocked download CDN (github release asset storage is not
+   in this sandbox's allowlist); it printed the exact manual URL
+   (`install-engine --print-url` prints the same) and exited 2 with
+   `browser_engine_unavailable`. The downloaded binary was therefore never
+   run, and no checksum is claimed (upstream publishes none). Core search and
+   read work without the engine (D-076/D-077).
 
 ## Research quality
 
@@ -90,8 +96,15 @@ Ordered by how much they can mislead a user. Read this before relying on output.
     could not be built or tested. See DECISIONS D-054.
 25. **Windows setup is untested.** `scripts/setup.ps1` was written without a
     Windows machine. `scripts/setup.sh` was run here (Linux, Python 3.11). See D-054.
-26. **Not published to PyPI.** Install from a checkout (README).
-27. **No CI workflow.** The offline checks run locally only (see README and AGENTS.md).
+26. **Not published to PyPI.** Install from a checkout (README). The name
+    `iralens` was checked on 2026-10-10 and is unclaimed (404 on both
+    `pypi.org/pypi/iralens/json` and `pypi.org/simple/iralens/`). Publishing
+    stays gated on full live verification (items 1-4).
+27. **CI runs the offline gates only.** `.github/workflows/ci.yml` (added
+    2026-10-10) runs pytest + ruff (E9,F,B) + mypy on every PR. Live checks
+    and the browser engine are not exercised in CI; run
+    `scripts/verify_interfaces.py` somewhere with open Internet before a
+    release.
 28. **Packaging metadata warnings: resolved** (D-061). The SPDX license form is
     used and the build requires setuptools 77 or newer.
 
@@ -105,12 +118,14 @@ Ordered by how much they can mislead a user. Read this before relying on output.
     not by live data.
 30. **GitHub corpus needs keyword queries.** Repository search requires every term
     to match, so a long question returns no results (D-065).
-31. **`research` exits 0 when every search failed.** The failure is reported in
-    `stop_reason` (`search_failed`) and in `limitations`. Agents must read the JSON;
-    the exit code does not signal it.
+31. **`research` exits 4 when every search failed** (D-079, updated
+    2026-10-10). The failure is still reported in `stop_reason`
+    (`search_failed`) and in `limitations`, and the JSON is still printed;
+    the exit code now signals it too.
 32. **Search failure still raises from `search()`.** `search()` raises
-    `SourceUnavailableError` when every engine fails, as the baseline did. Use
-    `search_api()` for structured outcomes.
+    `SearchEnginesFailedError` (a `SourceUnavailableError` subclass,
+    `error_type: search_engines_failed`) when every engine fails, and the CLI
+    exits 4 for it (D-079). Use `search_api()` for structured outcomes.
 33. **Browser engine download: optional checksum, still none published upstream.**
     The installer verifies a SHA-256 when one is supplied (`install-engine
     --checksum` or `IRALENS_ENGINE_SHA256`) and aborts on mismatch. The v0.2.4
@@ -155,3 +170,60 @@ Ordered by how much they can mislead a user. Read this before relying on output.
     reports them as BLOCKED rather than PASS/FAIL.
 42. **CJK tokenization uses character bigrams.** Adequate for matching, not a
     word-segmentation model; rare-compound queries can still miss.
+
+## Added with the D-076...D-079 hardening (2026-10-10)
+
+43. **Bundled SearXNG instances are unverified conveniences.** They are public
+    instances known to the SearXNG project; this sandbox cannot reach them, so
+    none has been checked for availability, honesty of results, or logging
+    policy. Pin your own with `IRALENS_SEARXNG_INSTANCES` for production
+    (D-078).
+44. **Direct-fetch User-Agents may hit bot walls.** The free engines and the
+    direct reader fetch with a browser-like UA; some sites answer such fetches
+    with a challenge. The chain classifies the block honestly (`captcha`,
+    `rate_limited`) and the browser engine, when installed, is the rendered
+    fallback (D-076).
+45. **Local HTML extraction is lossy for complex/JS pages.** The stdlib
+    extractor (D-077) has no DOM, CSS layout, or JavaScript. Tables become
+    pipe rows, widgets disappear. Use `mode=browser` when fidelity matters.
+46. **The remote reader is opt-in and third-party.** With
+    `IRALENS_READ_REMOTE_READER_ENABLED=1` every static URL is sent to
+    r.jina.ai (README Privacy). It is off by default precisely to keep reads
+    local.
+47. **Ranking is not benchmarked against commercial search APIs.** The
+    replacement benchmark (item 38) compares the new scorer against the
+    verbatim legacy scorer only; no claim about parity with Google/Bing/Brave
+    ranking can be made from this environment.
+
+## Verification record (2026-10-10, sandbox with allowlisted egress)
+
+Environment: Debian, Python 3.11.2, egress limited to github.com,
+api.github.com, codeload.github.com, registry.npmjs.org, pypi.org,
+files.pythonhosted.org. Exact commands and outcomes:
+
+- `./scripts/setup.sh` — venv + editable install + health check: **ok**.
+- `.venv/bin/python -m pytest -q` — **328 passed, 15 skipped** (the 15 are the
+  live tests; skipped honestly, no general egress).
+- `ruff check --select E9,F,B .` — **clean**. `mypy iralens` — **clean, 63
+  files** (unstubbed third-party imports ignored via `[tool.mypy]`).
+- `.venv/bin/python scripts/verify_interfaces.py` — **20 PASS / 0 FAIL /
+  2 BLOCKED** (of 22). PASS includes three live GitHub checks (api.github.com
+  is reachable) and the D-079 exit-code contract under real engine failure
+  (`engines_failed` exits 4). BLOCKED: "search-api reached at least one
+  engine", "research found web sources" — no general egress to verify the
+  search engines themselves.
+- `.venv/bin/python -m pytest tests/test_integration_live.py -q` — **15
+  skipped** (network probe fails here; never run to completion).
+- `iralens install-engine` — **failed honestly** (blocked download CDN):
+  `browser_engine_unavailable`, manual asset URL printed, exit 2. No engine
+  binary was run; no checksum is claimed. `install-engine --print-url`
+  verified (exact URL).
+- PyPI name `iralens` — **available** (404 on both endpoints).
+- **Not verified here, must run somewhere with open Internet:** live
+  DuckDuckGo/Bing/SearXNG result parsing, the optional r.jina.ai reader, the
+  engine download/exec path, and Windows setup.
+
+*Rebuild provenance:* the D-076...D-079 changes were first written in a local
+commit (38eb955) that was never pushed and is unrecoverable; this is the
+rebuild from the handoff specification (DECISIONS.md provenance note). Every
+claim above was re-tested in this environment on 2026-10-10.

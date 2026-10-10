@@ -21,6 +21,7 @@ import threading
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
+from ...reliability import classify_block
 from ...search.schema import SearchFilters, SearchHit
 
 #: The browser engine is one shared subprocess with a single "current page".
@@ -107,3 +108,42 @@ def fetch_rendered_html(context: Any, url: str, timeout: int) -> str:
     with _NAV_LOCK:
         engine.navigate(url, wait_until="domcontentloaded", timeout=timeout)
         return as_html(engine.evaluate_js("document.documentElement.outerHTML"))
+
+
+def fetch_serp_html(context: Any, url: str, timeout: int) -> str:
+    """SERP HTML for one URL: direct HTTP first, rendered engine as fallback.
+
+    D-076: free engines fetch results pages directly over SSRF-safe HTTP, so
+    search works with no browser engine installed. The rendered engine is a
+    fallback for bot walls and layout that needs JavaScript — if it is not
+    installed, the direct transport's result (or error) is what the engine
+    layer classifies.
+
+    A policy block (SSRF / invalid URL) is never routed around: it propagates
+    immediately instead of being retried through another transport.
+    """
+    from ...errors import SecurityBlockedError
+    from ...fetch import fetch_search_page
+
+    try:
+        html = fetch_search_page(url, timeout=timeout)
+    except (ValueError, SecurityBlockedError):
+        raise
+    except Exception as direct_exc:
+        try:
+            return fetch_rendered_html(context, url, timeout)
+        except (ValueError, SecurityBlockedError):
+            raise
+        except Exception:
+            # The direct error is the primary transport failure (and what the
+            # engine layer classifies); the fallback's failure is not its cause.
+            raise direct_exc from None
+    # A block page through the direct transport is exactly when a rendered
+    # browser has the best chance (JS challenges); give it one try.
+    if classify_block(html or ""):
+        try:
+            rendered = fetch_rendered_html(context, url, timeout)
+            return rendered
+        except Exception:
+            return html
+    return html

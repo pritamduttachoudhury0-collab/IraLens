@@ -27,9 +27,11 @@ data, or point the agent at internal targets.
    downgrades and chains longer than `MAX_REDIRECTS` (5) are refused.
 4. **Credential isolation.** Caching never stores authenticated content. Browser
    reads are never cached. Search and static reads send no cookies.
-5. **Third-party reader.** The static page reader (`r.jina.ai`) receives the URL
-   and returns markdown. Page URLs leave the machine. This is existing behavior,
-   recorded in DECISIONS.md. Use `mode=browser` to avoid it.
+5. **Third-party reader (opt-in, D-077).** Reads are local-first: direct fetch
+   plus local extraction, no third party. Only if you opt in
+   (`IRALENS_READ_REMOTE_READER_ENABLED=1`) does the remote reader
+   (`r.jina.ai`) receive the URL and return markdown; page URLs then leave the
+   machine. Use the default (off) or `mode=browser` to avoid it.
 
 ## Known gaps
 

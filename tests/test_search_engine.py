@@ -199,6 +199,7 @@ def test_legacy_alias_expands_to_browser_chain(tmp_path):
     engine = make_engine(tmp_path, [FakeBackend("duckduckgo"), FakeBackend("bing"),
                                     FakeBackend("semantic-search")], search_engines=("duckduckgo",))
     assert engine.resolve_chain(["browser-search"]) == ["duckduckgo", "bing"]
+    assert engine.resolve_chain(["semantic-search"]) == ["semantic-search"]
 
 
 def test_gate_times_out_when_slots_exhausted():
