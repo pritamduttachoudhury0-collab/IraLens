@@ -7,9 +7,14 @@ verifies it executes. No background services, no package managers required.
 
 Safety properties (D-070):
   - Atomic replacement: the archive is downloaded, extracted, and the binary
-    is startup-probed *inside a temporary directory*. Only after the probe
+    is startup-probed *inside a staging directory*. Only after the probe
     passes is the binary moved into place. A failed install never overwrites
     or deletes an existing working engine, and no unrelated file is touched.
+  - Same-filesystem staging (D-080): the staging directory is created *inside
+    the destination directory*, so the final placement is a rename on one
+    filesystem. Staging under $TMPDIR (often tmpfs) and renaming into the
+    engine cache (often a different mount) raises EXDEV — "Invalid cross-device
+    link" — which crashed the CLI on any machine with a split /tmp.
   - Retries: transient download failures (timeouts, 5xx) are retried with
     backoff; 4xx and policy failures are not.
   - Integrity: if a SHA-256 is supplied (`expected_sha256` argument or the
@@ -27,6 +32,7 @@ Safety properties (D-070):
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import os
 import platform
@@ -209,6 +215,35 @@ def engine_status() -> Dict[str, object]:
     return report
 
 
+def _mkdtemp(prefix: str, dir: Path) -> str:
+    """Create the staging directory (indirection so tests can move it)."""
+    return tempfile.mkdtemp(prefix=prefix, dir=dir)
+
+
+def _place(staged: Path, final_path: Path) -> None:
+    """Move the probed binary to its final name.
+
+    Both paths normally share a filesystem (the stage lives inside the
+    destination directory), so this is a single atomic rename. If they do not —
+    an exotic layout where the destination directory itself spans devices —
+    fall back to a copy-in-place plus rename so the install still lands
+    atomically instead of crashing with EXDEV.
+    """
+    try:
+        os.replace(staged, final_path)   # atomic swap into place
+        return
+    except OSError as exc:
+        if exc.errno != errno.EXDEV:
+            raise
+    incoming = final_path.with_name(f".{final_path.name}.incoming-{os.getpid()}")
+    try:
+        shutil.copy2(staged, incoming)
+        os.chmod(incoming, staged.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+        os.replace(incoming, final_path)
+    finally:
+        incoming.unlink(missing_ok=True)
+
+
 def install_engine(
     target_dir: Optional[Path] = None,
     version: str = ENGINE_VERSION,
@@ -246,9 +281,14 @@ def install_engine(
     checksum = expected_sha256 or os.environ.get("IRALENS_ENGINE_SHA256") or ""
     url = engine_download_url(version)
 
-    with tempfile.TemporaryDirectory(prefix="iralens-engine-") as tmp:
-        tmp_dir = Path(tmp)
-        archive = tmp_dir / asset
+    # Stage INSIDE the destination directory (D-080): the archive, its
+    # extraction and the probe all live on the same filesystem as the final
+    # binary, so the placement below is a rename and never a cross-device move.
+    # The directory is dot-prefixed so a crashed install leaves a visible but
+    # harmless artifact, and it is always removed in `finally`.
+    stage_root = Path(_mkdtemp(prefix=".install-", dir=dest))
+    try:
+        archive = stage_root / asset
         _download(url, archive, max_attempts=max_attempts, sleep=sleep)
 
         if checksum:
@@ -264,7 +304,7 @@ def install_engine(
             # Honest status: no published checksum was checked.
             info["checksum_verified"] = False
 
-        stage = tmp_dir / "stage"
+        stage = stage_root / "stage"
         stage.mkdir()
         staged = _extract(archive, asset, binary_name, stage)
         staged.chmod(staged.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
@@ -280,9 +320,20 @@ def install_engine(
                 detail=probe.hint,
             )
 
-        os.replace(staged, final_path)   # atomic swap into place
+        _place(staged, final_path)
         shim = install_path_shim(final_path)
         info.update(already_installed=False, path=str(final_path),
                     checksum_source=("supplied" if checksum else "none published"),
+                    staging="destination directory",
                     shim=str(shim) if shim else None)
+    except OSError as exc:
+        # A filesystem-level failure during staging/placement must surface as a
+        # typed error (D-079/D-080), never as a raw traceback.
+        raise EngineUnavailableError(
+            f"could not install the browser engine ({type(exc).__name__})",
+            hint="check free space and permissions on the engine directory",
+            detail=f"{exc} [staging={stage_root}]",
+        ) from exc
+    finally:
+        shutil.rmtree(stage_root, ignore_errors=True)
     return final_path

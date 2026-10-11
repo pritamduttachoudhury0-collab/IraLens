@@ -441,3 +441,79 @@ unrecoverable; GitHub never held it. The decisions were rebuilt from the
 handoff specification and re-landed on `arena/cf67ee4b-iralens` with full
 tests. Nothing from the lost commit was claimed as verified beyond what was
 re-tested here; see the verification record in KNOWN_LIMITATIONS.md.
+
+## Reliability benchmark and hardening (2026-10-11)
+
+**D-080 `install-engine` stages inside the destination directory.** The
+installer used `tempfile.TemporaryDirectory()` ($TMPDIR, often tmpfs) and then
+`os.replace()`d the probed binary into the engine cache. On any machine where
+`/tmp` is a different filesystem the install died with
+`OSError: [Errno 18] Invalid cross-device link` — and it surfaced as a raw
+traceback (exit 3), violating D-079. The staging directory is now created
+inside the destination directory, so the placement is a rename on one
+filesystem; `_place()` keeps a copy-then-rename fallback for exotic layouts,
+filesystem `OSError`s are converted into typed `EngineUnavailableError`s, and
+the stage is always removed (including after failures). Reproduced for real
+with `TMPDIR=/dev/shm` (device 21) and the cache on device 65024; five
+regression tests, two of which force a genuine cross-device move.
+
+**D-081 JS-shell reads fall back to the browser; page reads report the real
+failure.** A client-rendered app shell ("You need to enable JavaScript to run
+this app.") is served with HTTP 200, so the static reader used to return it as
+if it were the page text — the failure mode the benchmark's JS-heavy URLs
+measure. In `mode="auto"` a thin/JS-shell static result now triggers one
+rendered read automatically; the static text is kept when rendering is not
+better or the engine is unavailable, and the artifact records which happened
+(`provenance.fallback`, `metadata.static_fallback`). `mode="static"` still
+never starts the engine. In the same change, when both the static read and the
+browser fallback fail, the error raised is the *primary* static error (e.g.
+`page_unavailable/http_404`) with the fallback failure attached as a hint —
+raising the secondary error hid the real cause.
+
+**D-082 Private search backends need an explicit allowlist.** A self-hosted
+SearXNG on `127.0.0.1`/the LAN is the recommended way to get independent engine
+redundancy, but the SSRF policy blocks private targets — correctly. New
+`IRALENS_ALLOWED_PRIVATE_HOSTS` (comma-separated `host` or `host:port`) is
+consulted *only* by search transports (`fetch_url_text(allow_private_hosts=…)`,
+the searxng backend). Page reads never set the flag; credentials, non-HTTP
+schemes, link-local/metadata addresses and a hard-deny name list
+(`metadata.google.internal`, `instance-data`, `metadata`) stay blocked even
+when allowlisted; redirects are re-validated with the same rule. A blocked
+self-hosted instance now fails with a hint naming the exact variable to set.
+See `deploy/searxng/`.
+
+**D-083 PDF main text is extracted, not decoded as noise.** `read_direct`
+decoded every non-HTML body as UTF-8, so a PDF (`%PDF-`) came back as binary
+garbage while claiming success. PDFs are now detected by magic bytes and
+extracted with `pypdf` (added to the runtime dependencies; BSD-3-Clause).
+Missing dependency → typed `extraction_failed`/`pdf_support_missing` with the
+install hint; encrypted → `pdf_encrypted`; no text (a scan) → `pdf_no_text`;
+corrupt → `pdf_parse_failed`. One unreadable page never loses the document.
+
+**D-084 A dead engine fails in about a second, not in 60.** The engine driver
+waited out the whole RPC timeout when the child process had already exited, so
+a dangling `iralens-engine` shim (cache cleared, replaced binary, wrong
+architecture) cost 60 s per browser-backed call — 181 s for one search, 12
+minutes for a three-query benchmark smoke run, measured here. `_rpc` now polls
+the child while waiting and raises a typed `EngineUnavailableError`
+(`exit <code>` + sanitized last stderr lines) as soon as the process is gone;
+the failure is remembered for the process so a broken binary is not respawned
+per call; the `initialize` handshake has its own 20 s budget
+(`IRALENS_ENGINE_STARTUP_TIMEOUT_SECONDS`) separate from per-call timeouts. Nine
+regression tests run real subprocesses (dead, one-shot, hung, working).
+
+**D-085 The benchmark is the acceptance gate, and it is frozen.**
+`benchmarks/` holds 200 hand-labelled queries (140 dev / 60 held-out across
+factual, recent news, long-tail, technical, navigational, non-English,
+multi-intent) with acceptable domains or expected phrases, 100 labelled URLs
+(news, docs, wikis, blogs, JS-heavy, PDFs, walled) with required phrases, the
+Step-2 thresholds as data (`thresholds.json`) and a runner that bypasses the
+cache, paces realistically, measures availability/quality/redundancy/latency/
+load/extraction/honesty, optionally compares against a commercial API
+(`SEARCH_API_REFERENCE_KEY`), and writes `results.json`. It appends a row to
+`BENCHMARKS.md` **only when every threshold passes**; anything not run is
+`not_run` with its reason. `benchmarks/FREEZE.sha256` pins the corpus and the
+thresholds, and the run reports if they changed. The harness itself is
+validated offline by `--self-test` (synthetic system at known pass/fail rates).
+Corpus or thresholds must never be edited to raise a score; label fixes are
+allowed only with a regenerated freeze file and a note in `BENCHMARKS.md`.

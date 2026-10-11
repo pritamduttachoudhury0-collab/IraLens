@@ -21,6 +21,7 @@ from __future__ import annotations
 import functools
 import http.client
 import ipaddress
+import os
 import re
 import socket
 import ssl
@@ -66,8 +67,71 @@ def _literal_ip_address(host: str):
     return ipaddress.IPv4Address(packed)
 
 
-def normalize_public_http_url(url: str) -> str:
-    """Normalize a URL or reject targets that are not clearly public HTTP(S)."""
+#: Explicit opt-in allowlist for the *search transport only* (D-082).
+#: A self-hosted SearXNG instance on the LAN or on 127.0.0.1 is otherwise
+#: blocked by the SSRF policy, which is correct for page reads but must not
+#: make the recommended self-hosting option unusable.
+#: Format: comma-separated `host` or `host:port` entries, e.g.
+#: `IRALENS_ALLOWED_PRIVATE_HOSTS=127.0.0.1:8888,searxng.lan:8888`.
+#: A bare host matches any port on that host. Link-local/metadata addresses
+#: (169.254.0.0/16, fe80::/10) and the names below are refused even when
+#: allowlisted: they are credential-theft targets, never a search backend.
+ALLOWED_PRIVATE_HOSTS_ENV = "IRALENS_ALLOWED_PRIVATE_HOSTS"
+
+#: Names that no allowlist entry may ever enable.
+NEVER_ALLOWED_HOSTS = frozenset({
+    "instance-data",
+    "metadata.google.internal",
+    "metadata",
+})
+
+
+def allowed_private_hosts() -> "frozenset[str]":
+    """The configured private-host allowlist (empty when unset)."""
+    raw = os.environ.get(ALLOWED_PRIVATE_HOSTS_ENV, "")
+    return frozenset(part.strip().lower() for part in raw.split(",") if part.strip())
+
+
+def address_is_private(host: str) -> bool:
+    """Text-level guess that *host* is not a public target (no DNS lookup)."""
+    host = (host or "").lower().rstrip(".")
+    literal = _literal_ip_address(host)
+    if literal is not None:
+        return not literal.is_global
+    return (host in _BLOCKED_PUBLIC_FETCH_HOSTS
+            or host.endswith(_BLOCKED_PUBLIC_FETCH_SUFFIXES)
+            or "." not in host)
+
+
+def private_host_is_allowlisted(host: str, port: Optional[int] = None,
+                                entries: Optional["frozenset[str]"] = None) -> bool:
+    """Exact-match check against the allowlist (`host` or `host:port` entries)."""
+    host = (host or "").lower().rstrip(".")
+    if not host:
+        return False
+    allowed = allowed_private_hosts() if entries is None else entries
+    if host in allowed:
+        return True
+    return port is not None and f"{host}:{int(port)}" in allowed
+
+
+def _is_link_local(address) -> bool:
+    """Link-local (cloud metadata, APIPA) is never a legitimate search backend."""
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return True
+    return ip.is_link_local
+
+
+def normalize_public_http_url(url: str, *, allow_private_hosts: bool = False) -> str:
+    """Normalize a URL or reject targets that are not clearly public HTTP(S).
+
+    With `allow_private_hosts=True` (search transports only) a host that is on
+    `IRALENS_ALLOWED_PRIVATE_HOSTS` may resolve to a private/loopback address;
+    everything else — schemes, credentials, link-local targets, DNS-rebinding
+    shapes — is still rejected.
+    """
     candidate = str(url or "").strip()
     if (
         not candidate
@@ -89,16 +153,28 @@ def normalize_public_http_url(url: str) -> str:
         raise ValueError("only public HTTP(S) URLs are allowed") from None
 
     literal_address = _literal_ip_address(host)
+    allowlisted = (
+        allow_private_hosts
+        and host not in NEVER_ALLOWED_HOSTS
+        and private_host_is_allowlisted(host, parsed.port)
+        and not (literal_address is not None and _is_link_local(literal_address))
+    )
     if (
         parsed.scheme.lower() not in {"http", "https"}
         or not host
         or parsed.username is not None
         or parsed.password is not None
         or "%" in host
-        or host in _BLOCKED_PUBLIC_FETCH_HOSTS
-        or host.endswith(_BLOCKED_PUBLIC_FETCH_SUFFIXES)
-        or ("." not in host and literal_address is None)
-        or (literal_address is not None and not literal_address.is_global)
+        or host in NEVER_ALLOWED_HOSTS
+        or (
+            not allowlisted
+            and (
+                host in _BLOCKED_PUBLIC_FETCH_HOSTS
+                or host.endswith(_BLOCKED_PUBLIC_FETCH_SUFFIXES)
+                or ("." not in host and literal_address is None)
+                or (literal_address is not None and not literal_address.is_global)
+            )
+        )
     ):
         raise ValueError("only public HTTP(S) URLs are allowed")
 
@@ -130,7 +206,8 @@ def is_public_address(address: str) -> bool:
     return ip.is_global
 
 
-def resolve_public_addresses(host: str, port: int) -> List[str]:
+def resolve_public_addresses(host: str, port: int, *,
+                             allow_private_hosts: bool = False) -> List[str]:
     """Resolve *host* and return its addresses, refusing non-public ones.
 
     Raises SecurityBlockedError when the name resolves (only or also) to
@@ -145,6 +222,15 @@ def resolve_public_addresses(host: str, port: int) -> List[str]:
     except socket.gaierror as exc:
         raise ValueError(f"could not resolve host: {host}") from exc
     addresses = sorted({str(info[4][0]) for info in infos})
+    if allow_private_hosts and private_host_is_allowlisted(host, port):
+        # Explicit opt-in for a self-hosted search backend. Link-local stays
+        # forbidden: it is the cloud-metadata range, never a search instance.
+        if any(_is_link_local(a) for a in addresses):
+            raise SecurityBlockedError(
+                "allowlisted host resolves to a link-local address",
+                detail=f"resolved: {', '.join(addresses)}",
+            )
+        return addresses
     rejected = [a for a in addresses if not is_public_address(a)]
     allowed = [a for a in addresses if a not in rejected]
     if rejected and not allowed:
@@ -202,25 +288,35 @@ def _request_host_port(req, default: int):
 
 
 class _PinnedHTTPHandler(urllib.request.HTTPHandler):
+    def __init__(self, *, allow_private_hosts: bool = False) -> None:
+        super().__init__()
+        self._allow_private = allow_private_hosts
+
     def http_open(self, req):  # type: ignore[override]
         from .errors import SecurityBlockedError
 
         host, port = _request_host_port(req, 80)
         if not host:
             raise SecurityBlockedError("request has no host")
-        addresses = resolve_public_addresses(host, port)
+        addresses = resolve_public_addresses(host, port,
+                                             allow_private_hosts=self._allow_private)
         conn = functools.partial(_PinnedHTTPConnection, pinned_address=addresses[0])
         return self.do_open(conn, req)
 
 
 class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    def __init__(self, *, allow_private_hosts: bool = False, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._allow_private = allow_private_hosts
+
     def https_open(self, req):  # type: ignore[override]
         from .errors import SecurityBlockedError
 
         host, port = _request_host_port(req, 443)
         if not host:
             raise SecurityBlockedError("request has no host")
-        addresses = resolve_public_addresses(host, port)
+        addresses = resolve_public_addresses(host, port,
+                                             allow_private_hosts=self._allow_private)
         conn = functools.partial(
             _PinnedHTTPSConnection, pinned_address=addresses[0], context=self._context
         )
@@ -234,11 +330,15 @@ class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
     downgrades https to http, or when the chain is longer than MAX_REDIRECTS.
     """
 
+    def __init__(self, *, allow_private_hosts: bool = False) -> None:
+        super().__init__()
+        self._allow_private = allow_private_hosts
+
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         from .errors import SecurityBlockedError
 
         try:
-            normalize_public_http_url(newurl)
+            normalize_public_http_url(newurl, allow_private_hosts=self._allow_private)
         except ValueError as exc:
             raise SecurityBlockedError(
                 "redirect target rejected by the security policy",
@@ -256,15 +356,18 @@ class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def build_safe_opener() -> urllib.request.OpenerDirector:
+def build_safe_opener(*, allow_private_hosts: bool = False) -> urllib.request.OpenerDirector:
     """An opener with redirect re-validation and DNS-pinned connections."""
     return urllib.request.build_opener(
-        SafeRedirectHandler(), _PinnedHTTPHandler(), _PinnedHTTPSHandler()
+        SafeRedirectHandler(allow_private_hosts=allow_private_hosts),
+        _PinnedHTTPHandler(allow_private_hosts=allow_private_hosts),
+        _PinnedHTTPSHandler(allow_private_hosts=allow_private_hosts),
     )
 
 
 def safe_urlopen(url: str, *, timeout: float = 30,
-                 headers: Optional[Dict[str, str]] = None):
+                 headers: Optional[Dict[str, str]] = None,
+                 allow_private_hosts: bool = False):
     """urlopen replacement enforcing the SSRF policy end-to-end.
 
     The URL is normalized, every redirect hop is re-normalized, and each
@@ -272,9 +375,10 @@ def safe_urlopen(url: str, *, timeout: float = 30,
     resolution. Raises SecurityBlockedError for policy violations, and the
     usual urllib errors (URLError/HTTPError) for ordinary failures.
     """
-    safe_url = normalize_public_http_url(url)
+    safe_url = normalize_public_http_url(url, allow_private_hosts=allow_private_hosts)
     request = urllib.request.Request(safe_url, headers=headers or {})
-    return build_safe_opener().open(request, timeout=timeout)
+    return build_safe_opener(allow_private_hosts=allow_private_hosts).open(request,
+                                                                          timeout=timeout)
 
 
 def domain_matches(host: str, *domains: str) -> bool:

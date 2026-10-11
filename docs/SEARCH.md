@@ -29,6 +29,29 @@ with IraLens() as lens:
 MCP: the `search_api` tool takes `query`, `filters`, and `options` objects with
 the same keys.
 
+## Engine redundancy and self-hosted SearXNG
+
+The default chain is `duckduckgo -> searxng -> bing -> semantic-search`. The
+reliability benchmark requires **two engines to succeed on 80%+ of queries on
+their own**, so a single endpoint cannot be the whole system. Public SearXNG
+instances are shared and rate-limited; your own instance is not:
+
+```bash
+cd deploy/searxng && docker compose up -d      # see deploy/searxng/README.md
+export IRALENS_SEARXNG_INSTANCES="http://127.0.0.1:8888"
+export IRALENS_ALLOWED_PRIVATE_HOSTS="127.0.0.1:8888"
+```
+
+`IRALENS_ALLOWED_PRIVATE_HOSTS` is an exact `host` / `host:port` allowlist
+consulted **only by search transports** (D-082). Page reads stay strict, so a
+private URL that appears in a search result or page body is still blocked;
+link-local and metadata names are refused even when allowlisted.
+
+Engine failures are classified (`captcha`, `rate_limited`, `layout_changed`,
+`transient`, `unavailable`, `empty`) and visible in `outcomes`, and the
+per-engine circuit breaker skips an engine after repeated failures instead of
+burning the latency budget on it.
+
 ## Reading a `SearchResponse`
 
 | Field | Meaning |

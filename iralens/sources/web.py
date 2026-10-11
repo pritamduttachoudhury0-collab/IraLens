@@ -18,28 +18,46 @@ enforced on all backends, and the artifact says when its content was truncated.
 
 from __future__ import annotations
 
+import re
 import time
 import urllib.error
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from .. import content_guard
 from ..cache import ResponseCache
-from ..extract import extract_title, html_to_markdown
-from ..errors import ExtractionError, OperationTimeoutError, PageUnavailableError
+from ..extract import extract_title, html_to_markdown, looks_like_pdf, pdf_to_text
+from ..errors import (
+    ExtractionError,
+    IraLensError,
+    OperationTimeoutError,
+    PageUnavailableError,
+)
 from ..model import Artifact
-from ..security import normalize_public_http_url, safe_urlopen
+from ..security import normalize_public_http_url, public_message, safe_urlopen
 from ..settings import Settings
 from .base import Source, SourceHealth
 
 if TYPE_CHECKING:
     from ..core import Context
 
+_WHITESPACE_RE = re.compile(r"\s+")
 _UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 _DEFAULT_MAX_BYTES = 5 * 1024 * 1024
 _DEFAULT_DEADLINE_SECONDS = 60
 _READ_CHUNK = 64 * 1024
 _ANTIBOT_SCAN_BYTES = 4096
 _READER_BASE = "https://r.jina.ai/"
+
+#: A client-rendered app shell is not page text. When the static read returns
+#: one of these markers (or practically nothing) and mode is "auto", the read
+#: retries through the browser engine, which executes the JavaScript (D-081).
+_JS_SHELL_MARKERS = (
+    "enable javascript", "javascript is required", "javascript is disabled",
+    "you need to enable javascript", "must enable javascript",
+    "this application requires javascript", "please enable js",
+)
+#: Below this many visible characters a *complete* page is implausible.
+_JS_SHELL_MIN_CHARS = 150
 
 #: Soft-404 heuristic: a *short* body whose head looks like a not-found page.
 #: The length bound keeps real articles that merely mention "404" intact.
@@ -63,6 +81,22 @@ def _is_antibot_page(body: bytes) -> bool:
         "ray id" in sample or "/cdn-cgi/challenge-platform/" in sample
     )
     return (captcha_warning and challenge_structure) or cloudflare_block
+
+
+def looks_like_js_shell(text: str) -> bool:
+    """Heuristic: the static text looks like an app shell, not the page content.
+
+    Two signals: an explicit "enable JavaScript" notice, or so little text that
+    no real page could be this thin. False positives are cheap (one extra
+    rendered read, and the static text is kept when rendering is not better).
+    """
+    compact = _WHITESPACE_RE.sub(" ", text or "").strip()
+    if not compact:
+        return True
+    low = compact.casefold()
+    if any(marker in low for marker in _JS_SHELL_MARKERS):
+        return True
+    return len(compact) < _JS_SHELL_MIN_CHARS
 
 
 def _is_soft_404(text: str) -> bool:
@@ -207,7 +241,10 @@ def read_direct(
             hint="retry with the browser backend (open with mode=browser)",
             detail="antibot_challenge",
         )
-    if _looks_like_html(body):
+    if looks_like_pdf(body):
+        # PDF bodies used to be decoded as UTF-8 and returned as binary noise.
+        text, _info = pdf_to_text(body)
+    elif _looks_like_html(body):
         html = body.decode("utf-8", errors="replace")
         text = html_to_markdown(html)
         title = extract_title(html)
@@ -327,6 +364,8 @@ class WebSource(Source):
         safe_url = normalize_public_http_url(url)
         settings = Settings.from_config(context.config)
         cache = ResponseCache(enabled=settings.cache_enabled)
+        static_failure: Optional[IraLensError] = None
+        static_artifact: Optional[Artifact] = None
 
         if mode in ("auto", "static"):
             try:
@@ -348,32 +387,82 @@ class WebSource(Source):
                 # The cache keeps the full text; the budget is enforced when
                 # serving, so different max_chars values share one entry.
                 content, truncated = content_guard.truncate_text(markdown, max_chars)
-                return _static_artifact(safe_url, content, cache=cache_info, flags=flags,
-                                        truncated=truncated, total_chars=len(markdown),
-                                        max_chars=max_chars, method=method)
-            except (PageUnavailableError, ExtractionError, OperationTimeoutError):
+                static_artifact = _static_artifact(
+                    safe_url, content, cache=cache_info, flags=flags, truncated=truncated,
+                    total_chars=len(markdown), max_chars=max_chars, method=method)
+            except (PageUnavailableError, ExtractionError, OperationTimeoutError) as exc:
+                static_failure = exc
                 if mode == "static":
                     raise
 
-        # Browser backend (also the only path for mode="browser").
-        # Browser reads are never cached: the browser may hold session state.
-        engine = context.engine()
-        engine.navigate(safe_url)
-        markdown = engine.markdown(max_chars=max_chars)
-        current = engine.current_url_title()
-        content = markdown if isinstance(markdown, str) else str(markdown)
-        return Artifact(
-            title=current.get("title") or _title_from_markdown(content) or safe_url,
-            url=current.get("url") or safe_url,
-            source="web",
-            kind="page",
-            content=content,
-            content_format="markdown",
-            retrieval_method="browser",
-            metadata={"max_chars": max_chars,
-                      "truncated": max_chars > 0 and len(content) >= max_chars},
-            provenance={"security_flags": content_guard.scan(content), "cache": {"status": "bypass"}},
-        )
+        # A static read that succeeded but produced an app shell (or almost no
+        # text) has not read the page: the useful text is rendered client-side.
+        # In auto mode the browser gets its turn automatically (D-081).
+        shell_detected = static_artifact is not None and looks_like_js_shell(static_artifact.content)
+        if static_artifact is not None and (mode == "static" or not shell_detected):
+            return static_artifact
+
+        if mode == "browser" or (mode == "auto" and (static_artifact is None or shell_detected)):
+            try:
+                # Browser reads are never cached: the browser may hold session state.
+                engine = context.engine()
+                engine.navigate(safe_url)
+                markdown = engine.markdown(max_chars=max_chars)
+                current = engine.current_url_title()
+                content = markdown if isinstance(markdown, str) else str(markdown)
+                metadata: Dict[str, Any] = {
+                    "max_chars": max_chars,
+                    "truncated": max_chars > 0 and len(content) >= max_chars,
+                }
+                provenance: Dict[str, Any] = {"security_flags": content_guard.scan(content),
+                                              "cache": {"status": "bypass"}}
+                if static_artifact is not None:
+                    # Keep the (possibly richer) static text when rendering did
+                    # not actually improve it, but say what happened.
+                    metadata["static_fallback"] = "js_shell"
+                    if len(content.strip()) <= len(static_artifact.content.strip()):
+                        static_artifact.metadata.update(
+                            {"static_fallback": "js_shell_attempted",
+                             "fallback_result": "kept_static_text"})
+                        static_artifact.provenance["fallback"] = {
+                            "reason": "js_shell", "result": "kept_static_text"}
+                        return static_artifact
+                    provenance["fallback"] = {"reason": "js_shell", "result": "browser_text"}
+                return Artifact(
+                    title=current.get("title") or _title_from_markdown(content) or safe_url,
+                    url=current.get("url") or safe_url,
+                    source="web",
+                    kind="page",
+                    content=content,
+                    content_format="markdown",
+                    retrieval_method="browser",
+                    metadata=metadata,
+                    provenance=provenance,
+                )
+            except Exception as browser_exc:
+                if static_artifact is not None:
+                    # The static read produced text; never turn a usable read into
+                    # a failure because the optional renderer is unavailable.
+                    static_artifact.metadata["static_fallback"] = "js_shell_unavailable"
+                    static_artifact.metadata["fallback_error"] = public_message(browser_exc)[:200]
+                    static_artifact.provenance["fallback"] = {
+                        "reason": "js_shell", "result": "browser_unavailable",
+                        "error": getattr(browser_exc, "error_type", type(browser_exc).__name__)}
+                    return static_artifact
+                if static_failure is not None:
+                    # Report the *primary* reason the read failed (typically a
+                    # fetch error), with the fallback failure attached as a hint.
+                    # Raising the secondary error instead hides the real cause.
+                    static_failure.hint = (
+                        f"{static_failure.hint}; browser fallback also failed: "
+                        f"{public_message(browser_exc)}")[:400].strip("; ")
+                    raise static_failure from browser_exc
+                raise
+        # Unreachable with the documented modes; keeps an unknown mode from
+        # silently returning None (an untyped failure would break the contract).
+        raise PageUnavailableError(
+            "could not read the page", hint="mode must be auto, static, or browser",
+            detail="unknown_mode")  # pragma: no cover - defensive
 
 
 _PAGE_NS = "page.v1"

@@ -1,0 +1,20 @@
+{
+  "schema": "iralens-benchmark-thresholds/1",
+  "frozen": "2026-10-11",
+  "note": "Step-2 acceptance thresholds, frozen. Never lowered to make a run pass: a run that misses one is reported as FAIL and no row is appended to BENCHMARKS.md.",
+  "availability_min": 0.99,
+  "quality_min": 0.85,
+  "quality_max_heldout_gap": 0.05,
+  "redundancy_min_engines": 2,
+  "redundancy_min_engine_success_rate": 0.8,
+  "search_p50_seconds": 3.0,
+  "search_p95_seconds": 10.0,
+  "read_p95_seconds": 8.0,
+  "load_minutes": 30,
+  "load_rate_per_minute": 10,
+  "load_concurrency": 5,
+  "load_max_failure_rate": 0.02,
+  "extraction_min_phrase_rate": 0.9,
+  "consecutive_runs_required": 3,
+  "consecutive_runs_note": "All thresholds must hold on 3 consecutive full runs; the runner scores one run at a time."
+}

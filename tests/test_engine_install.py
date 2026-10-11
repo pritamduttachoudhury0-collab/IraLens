@@ -2,10 +2,13 @@
 """Safe browser-engine installation (D-070): retries, checksum policy,
 verify-before-replace atomicity, and honest status reporting. Offline."""
 
+import errno
 import hashlib
 import io
 import os
 import tarfile
+import tempfile
+import time
 import urllib.error
 from pathlib import Path
 
@@ -248,3 +251,121 @@ def test_engine_status_reports_shim_presence(monkeypatch, tmp_path):
     shim = install_path_shim(tmp_path / "obscura")
     st = engine_status()
     assert st["shim"] == str(shim)
+
+
+# ------------------------------------------------- EXDEV / same-filesystem staging
+# Regression for the `install-engine` crash: the stage used to live under
+# $TMPDIR (tmpfs) while the engine cache lives elsewhere, so `os.replace`
+# raised OSError(EXDEV) — "Invalid cross-device link" — and the CLI died with a
+# raw traceback instead of installing (or reporting a typed error).
+
+
+def _capture_download(monkeypatch, archive: bytes):
+    """Patch the download step, recording where the archive was written.
+
+    Records (archive path, stage device, destination device) *while the stage
+    is still alive* — it is removed once the install finishes.
+    """
+    seen = []
+
+    def fake_download(url, dest, *, max_attempts=install_mod.DOWNLOAD_ATTEMPTS, sleep=time.sleep):
+        path = Path(dest)
+        seen.append((path, os.stat(path.parent).st_dev))
+        path.write_bytes(archive)
+
+    monkeypatch.setattr(install_mod, "_download", fake_download)
+    return seen
+
+
+def test_staging_happens_inside_the_destination_directory(tmp_path, monkeypatch):
+    archive = _make_archive(tmp_path)
+    seen = _capture_download(monkeypatch, archive)
+    monkeypatch.setattr(install_mod, "probe_command", _ok_probe)
+    dest = tmp_path / "cache"
+    install_engine(dest, sleep=lambda s: None)
+
+    assert seen, "the download step did not run"
+    archive_path, stage_dev = seen[0]
+    stage_root = archive_path.parent
+    assert stage_root.parent == dest.resolve()          # inside the destination
+    assert stage_dev == os.stat(dest).st_dev            # same filesystem as the target
+    assert list(dest.rglob(".install-*")) == []         # stage cleaned up
+    assert [p.name for p in dest.iterdir()] == ["obscura"]
+
+
+def test_stage_directory_is_removed_even_when_the_install_fails(tmp_path, monkeypatch):
+    _capture_download(monkeypatch, _make_archive(tmp_path))
+    monkeypatch.setattr(install_mod, "probe_command", _ok_probe)
+    dest = tmp_path / "cache"
+    with pytest.raises(EngineUnavailableError):
+        install_engine(dest, expected_sha256="0" * 64, sleep=lambda s: None)
+    assert list(dest.iterdir()) == []                   # nothing left behind
+
+
+def _separate_device_dir() -> Path | None:
+    """A directory on a different filesystem than the repo, if one exists."""
+    here = Path(tempfile.gettempdir()).resolve()
+    for candidate in (Path("/dev/shm"), Path("/run")):
+        try:
+            if candidate.is_dir() and os.stat(candidate).st_dev != os.stat(here).st_dev:
+                return candidate
+        except OSError:  # pragma: no cover - defensive
+            continue
+    return None
+
+
+@pytest.mark.skipif(_separate_device_dir() is None,
+                    reason="no second filesystem available to force a real EXDEV")
+def test_cross_device_staging_still_installs(tmp_path, monkeypatch):
+    """A stage on another filesystem must not crash the install (real EXDEV)."""
+    other = _separate_device_dir()
+    assert other is not None
+    foreign = Path(tempfile.mkdtemp(prefix="iralens-exdev-", dir=str(other)))
+    monkeypatch.setattr(install_mod, "_mkdtemp",
+                        lambda prefix="", dir=None: tempfile.mkdtemp(prefix=prefix, dir=str(foreign)))
+    monkeypatch.setattr(install_mod, "probe_command", _ok_probe)
+    archive = _make_archive(tmp_path)
+    _capture_download(monkeypatch, archive)
+
+    dest = tmp_path / "cache"
+    path = install_engine(dest, expected_sha256=hashlib.sha256(archive).hexdigest(),
+                          sleep=lambda s: None)
+    assert path.is_file()
+    assert path.read_bytes() == b"#!/bin/sh\necho 0.2.4\n"
+    assert os.access(path, os.X_OK)                      # mode preserved by the copy fallback
+    assert not list(foreign.glob(".install-*"))          # foreign stage also cleaned up
+
+
+def test_place_falls_back_to_copy_on_exdev(tmp_path, monkeypatch):
+    staged = tmp_path / "staged"
+    staged.write_bytes(b"binary")
+    final = tmp_path / "cache" / "obscura"
+    final.parent.mkdir()
+    real_replace = os.replace
+    calls = {"n": 0}
+
+    def flaky_replace(src, dst):
+        calls["n"] += 1
+        if Path(src) == staged:                          # only the cross-device move fails
+            raise OSError(errno.EXDEV, "Invalid cross-device link", str(src), str(dst))
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(install_mod.os, "replace", flaky_replace)
+    install_mod._place(staged, final)
+    assert final.read_bytes() == b"binary"
+    assert os.access(final, os.X_OK)
+    assert calls["n"] == 2                               # the copy landed within the destination
+
+
+def test_filesystem_errors_are_typed_not_raw(tmp_path, monkeypatch):
+    def no_space(url, dest, *, max_attempts=1, sleep=time.sleep):
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(install_mod, "_download", no_space)
+    dest = tmp_path / "cache"
+    with pytest.raises(EngineUnavailableError) as exc_info:
+        install_engine(dest, sleep=lambda s: None)
+    assert "ENOSPC" in str(exc_info.value.detail) or "No space left" in str(exc_info.value.detail)
+    assert not (dest / "obscura").exists()
+    assert list(dest.iterdir()) == []
+

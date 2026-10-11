@@ -37,6 +37,29 @@ def _has_engine() -> bool:
     return find_engine() is not None
 
 
+def cli_command() -> list:
+    """The CLI invocation that belongs to *this* interpreter.
+
+    Tests must never rely on a bare ``iralens`` being on PATH: the venv that
+    runs pytest may not be activated, and a different (or missing) binary is
+    then picked up — or nothing is. Prefer the console script installed next to
+    the running interpreter; fall back to ``python -m iralens``, which is the
+    same entry point (iralens/__main__.py).
+    """
+    import os
+    import sys
+    from pathlib import Path
+
+    exe = Path(sys.executable)
+    candidates = [exe.parent / "iralens"]
+    if os.name == "nt":  # pragma: no cover - Windows is untested here
+        candidates = [exe.parent / "iralens.exe", exe.parent / "iralens"]
+    for candidate in candidates:
+        if candidate.is_file():
+            return [str(candidate)]
+    return [sys.executable, "-m", "iralens"]
+
+
 NETWORK = _has_network()
 ENGINE = _has_engine()
 

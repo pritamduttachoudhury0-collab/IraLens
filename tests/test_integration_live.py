@@ -17,7 +17,7 @@ from iralens.errors import (
     SessionStateError,
 )
 
-from .conftest import browser, live
+from .conftest import browser, cli_command, live
 
 
 @pytest.fixture
@@ -40,7 +40,10 @@ def test_a_web_search_open_extract(hil):
     page = hil.open(first.url, discovered_from=first.discovered_from)
     assert page.content.strip()
     assert page.discovered_from == first.discovered_from
-    assert page.retrieval_method in ("static-reader", "browser")
+    # D-077: the default static path is the local `direct` fetch; the remote
+    # `static-reader` only appears when it is explicitly opted into, and
+    # `browser` when the static path fails. All three are legitimate.
+    assert page.retrieval_method in ("direct", "static-reader", "browser")
 
 
 # -------------------------------------------------- Test B — specialized src
@@ -179,9 +182,16 @@ def test_g_mcp_surface_is_pure():
     assert not any(n.startswith(("agent_reach", "obscura", "browser_ar")) for n in names)
 
 
-@live
 def test_g_cli_help_is_pure():
-    out = subprocess.run(["iralens", "--help"], capture_output=True, text=True, timeout=30)
+    """`--help` must not leak implementation ancestry.
+
+    Offline by design: it runs the CLI belonging to the running interpreter
+    (the venv's own console script, or `python -m iralens`), never a bare
+    `iralens` from PATH — that used to fail with FileNotFoundError wherever the
+    venv was not activated.
+    """
+    out = subprocess.run(cli_command() + ["--help"], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, (out.stdout, out.stderr)
     blob = (out.stdout + out.stderr).lower()
     for term in ("obscura", "agent-reach", "agent_reach"):
         assert term not in blob

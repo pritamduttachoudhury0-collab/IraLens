@@ -94,6 +94,7 @@ def fetch_url_text(
     deadline_seconds: Optional[float] = None,
     headers: Optional[Dict[str, str]] = None,
     user_agent: str = DEFAULT_USER_AGENT,
+    allow_private_hosts: bool = False,
 ) -> str:
     """Fetch *url* over SSRF-safe HTTP and return the decoded body text.
 
@@ -103,6 +104,10 @@ def fetch_url_text(
       PageUnavailableError — HTTP status problems, classified by code.
       OperationTimeoutError — the overall deadline expired (slow-drip guard).
       ExtractionError — the response exceeded the size cap.
+
+    `allow_private_hosts` consults IRALENS_ALLOWED_PRIVATE_HOSTS (D-082). It is
+    only for search transports calling a self-hosted backend; page reads never
+    set it, so a private target in page content stays blocked.
     """
     request_headers = {"User-Agent": user_agent, "Accept": "*/*"}
     request_headers.update(headers or {})
@@ -111,7 +116,8 @@ def fetch_url_text(
         deadline_seconds if deadline_seconds else DEFAULT_DEADLINE_SECONDS
     )
     try:
-        with safe_urlopen(url, timeout=timeout, headers=request_headers) as resp:
+        with safe_urlopen(url, timeout=timeout, headers=request_headers,
+                          allow_private_hosts=allow_private_hosts) as resp:
             body = read_body_with_deadline(resp, limit, deadline)
     except urllib.error.HTTPError as exc:
         raise _classify_http_error(exc) from exc

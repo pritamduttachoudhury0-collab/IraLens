@@ -163,7 +163,7 @@ iralens mcp                                    # start the MCP server
 | Group | What you get |
 |---|---|
 | **Web discovery** | Web search (semantic bridge if configured, otherwise the built-in browser drives a public search engine), ranked results with provenance |
-| **Page reading** | Any URL: specialized platform reader → fast static markdown → full local browser rendering, with anti-bot fallback |
+| **Page reading** | Any URL: specialized platform reader → fast static markdown (HTML **and PDF**) → full local browser rendering, with anti-bot and JS-shell fallback |
 | **Browser** | navigate/back/forward/reload, snapshot, markdown, links, click, fill, type, keys, select, scroll, JS eval, waits, in-page find, forms, structured CSS extraction, tabs, cookies, storage state, network log, console log, screenshots, PDF |
 | **Specialized sources** | GitHub, YouTube, Twitter/X, Reddit, Bilibili, XiaoHongShu, V2EX, Xueqiu, Boss直聘, LinkedIn, Facebook, Instagram, RSS, podcast transcription — each with honest health status and multi-backend fallbacks |
 | **Session** | One session across everything: history, discovered URLs with provenance, and browser login state that survives restarts |
@@ -173,12 +173,37 @@ iralens mcp                                    # start the MCP server
 ## How search works without a paid search API key
 
 You do not need to sign up for a search API. The default chain drives public
-search engines through free endpoints (DuckDuckGo HTML/lite, then Bing as a
-fallback); an optional semantic bridge (Exa via `mcporter`) is used only if
-you install it and only when the free engines fail. Results from all engines
-are deduplicated, ranked with an explainable score breakdown, and returned
-with per-engine outcomes. If every engine is blocked or unreachable, the
-response says so (`no_results_reason`, `summary`) instead of failing silently.
+search engines through free endpoints (DuckDuckGo HTML/lite, SearXNG
+instances, then Bing as a fallback); an optional semantic bridge (Exa via
+`mcporter`) is used only if you install it and only when the free engines fail.
+Results from all engines are deduplicated, ranked with an explainable score
+breakdown, and returned with per-engine outcomes. If every engine is blocked or
+unreachable, the response says so (`no_results_reason`, `summary`) instead of
+failing silently.
+
+**Self-hosting SearXNG (recommended for reliability).** Your own instance is
+not shared with anyone, so it does not rate-limit you the way public instances
+do, and it gives the chain a second independent engine. See
+`deploy/searxng/` (docker compose + settings) and then:
+
+```bash
+export IRALENS_SEARXNG_INSTANCES="http://127.0.0.1:8888"
+export IRALENS_ALLOWED_PRIVATE_HOSTS="127.0.0.1:8888"   # opt-in for the SEARCH transport only
+```
+
+**Reliability benchmark.** `benchmarks/` is a frozen 200-query / 100-URL
+acceptance benchmark with the thresholds IraLens must hold (availability,
+quality on dev + held-out splits, engine redundancy, latency, load, extraction,
+honesty). One command, no key required:
+
+```bash
+.venv/bin/python benchmarks/run_benchmark.py --all --with-load --network home
+```
+
+It bypasses the cache, paces requests realistically, writes `results.json`,
+appends a row to `BENCHMARKS.md` only when every threshold passes, and labels
+anything it could not run as `not_run` with the reason. See
+`benchmarks/README.md`.
 
 ## Security
 
@@ -244,6 +269,8 @@ iralens install-engine              # install it (retries, probe-before-replace)
   empty), `filtered_out` (filters removed everything), or `engines_failed`
   (blocked/unreachable engines — check `outcomes` for `captcha`,
   `rate_limited`, `layout_changed`, …).
+- PDFs are read with their text layer (`pypdf`); image-only scans fail with a
+  typed `pdf_no_text`, never as binary noise.
 - Reads that fail tell you why: `http_404`, `http_403` (bot check), `http_429`,
   `soft_404`, `antibot_challenge`, `response_too_large`, `slow_response_deadline`,
   `redirect_loop`, or `blocked_by_security_policy`.
@@ -268,6 +295,8 @@ IRALENS_SEARXNG_INSTANCES="https://your.instance,https://other"  # pin SearXNG i
 IRALENS_SEARXNG_COOLDOWN_SECONDS=600     # per-instance failure cooldown
 IRALENS_SEARXNG_TIMEOUT_SECONDS=20       # per-instance request budget
 IRALENS_READ_REMOTE_READER_ENABLED=1     # opt in to the r.jina.ai reader
+IRALENS_ALLOWED_PRIVATE_HOSTS="127.0.0.1:8888"  # self-hosted search backend opt-in (search only)
+IRALENS_ENGINE_STARTUP_TIMEOUT_SECONDS=20 # engine handshake budget (a dead binary fails in ~1s)
 IRALENS_BIN_DIR=~/.local/bin             # where install-engine puts the iralens-engine shim
 IRALENS_ENGINE_PATH=... IRALENS_ENGINE_SHA256=... IRALENS_ENGINE_DIR=...  # engine overrides
 ```

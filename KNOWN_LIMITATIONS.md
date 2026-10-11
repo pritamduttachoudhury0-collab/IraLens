@@ -227,3 +227,54 @@ files.pythonhosted.org. Exact commands and outcomes:
 commit (38eb955) that was never pushed and is unrecoverable; this is the
 rebuild from the handoff specification (DECISIONS.md provenance note). Every
 claim above was re-tested in this environment on 2026-10-10.
+
+## Additions, 2026-10-11 (benchmark + hardening)
+
+48. **The Step-2 benchmark thresholds are UNVERIFIED from the build sandbox.**
+    The sandbox egress policy allows only `github.com`, `api.github.com`,
+    `codeload.github.com`, `registry.npmjs.org`, `pypi.org` and
+    `files.pythonhosted.org`; every search engine and general web page is
+    unreachable (verified with `curl` and the runner's preflight probe). A
+    `--limit 3` smoke run therefore reported availability 0.00 / extraction
+    0.00 and correctly refused to claim anything. The full three-consecutive-run
+    acceptance must be executed on an open network:
+    `python benchmarks/run_benchmark.py --all --with-load --network home`.
+49. **PDF text extraction needs `pypdf`** (a declared dependency since D-083).
+    Without it a PDF read raises `extraction_failed`/`pdf_support_missing`
+    instead of returning text; there is **no OCR**, so scanned/image-only PDFs
+    raise `pdf_no_text`. Extraction quality depends on the PDF's own text layer
+    and fonts — verified here only on hand-built PDFs (plain and
+    FlateDecode-compressed), not on the arXiv/RFC corpus in `benchmarks/urls.json`.
+50. **The JS-shell heuristic can over-trigger.** Any static page under ~150
+    visible characters (or containing an "enable JavaScript" notice) is
+    re-read through the browser when the engine is installed. The cost is one
+    extra render; the static text is kept if rendering is not better. Thresholds
+    and pages in `benchmarks/urls.json` measure this on a real network.
+51. **The private-host allowlist applies to search transports only.** Page reads
+    keep the strict public-URL policy, so a self-hosted SearXNG cannot be used
+    as a general reader, and any user who enables
+    `IRALENS_ALLOWED_PRIVATE_HOSTS` should remember that a *search* response
+    containing links to private hosts still cannot be fetched. Link-local and
+    metadata names are refused even when allowlisted.
+
+## Verification record (2026-10-11, same sandbox, allowlisted egress)
+
+- `.venv/bin/python -m pytest -q` — **378 passed, 14 skipped** (the live suite
+  skips without general egress; the CLI-help purity test is now offline).
+  Previous records said 328 passed/15 skipped.
+- `ruff check --select E9,F,B iralens tests benchmarks` — **clean**.
+  `mypy iralens --ignore-missing-imports` — **clean, 64 files**.
+- `python benchmarks/run_benchmark.py --self-test` — **PASSED** (harness
+  metrics, verdicts, table and `results.json` round-trip validated against a
+  synthetic system; explicitly not a measurement).
+- `python benchmarks/run_benchmark.py --all --skip-load --limit 3 --network
+  datacenter` — ran end to end, **FAIL by design** on a blocked network, exited
+  non-zero, appended no row.
+- Install-engine EXDEV — **reproduced for real** (`TMPDIR=/dev/shm`, cache on a
+  different device) before the fix and **verified fixed** after it.
+- Dangling engine shim — **reproduced for real**: read 60.2 s, search 181 s
+  before D-084; read 1.07 s, search 0.87 s after it.
+- **Not verified here, must run on an open network:** live engine parsing
+  (DuckDuckGo/Bing/SearXNG), the real thresholds in `benchmarks/`, PDF
+  extraction on real papers, the r.jina.ai reader, and engine
+  download/startup of a real binary.

@@ -24,6 +24,7 @@ import time
 import urllib.parse
 from typing import Any, Dict, List, Tuple
 
+from ... import security
 from ...errors import SourceUnavailableError
 from ...fetch import fetch_url_text
 from ...reliability import classify_block
@@ -124,7 +125,12 @@ class SearxngBackend(SearchBackend):
             url = self._build_url(instance, query, filters, limit)
             try:
                 text = fetch_url_text(url, timeout=timeout,
-                                      headers={"Accept": "application/json"})
+                                      headers={"Accept": "application/json"},
+                                      # A self-hosted instance on the LAN or on
+                                      # 127.0.0.1 must be explicitly allowlisted
+                                      # (IRALENS_ALLOWED_PRIVATE_HOSTS, D-082);
+                                      # this flag only consults that allowlist.
+                                      allow_private_hosts=True)
             except Exception as exc:
                 self._record_failure(instance, cooldown)
                 errors.append(f"{instance}: {exc}")
@@ -144,9 +150,20 @@ class SearxngBackend(SearchBackend):
                           published_at=h["published"] or None, query=query)
                 for i, h in enumerate(hits[: limit * 2])
             ]
+        hint = "pin reliable instances with IRALENS_SEARXNG_INSTANCES"
+        blocked_private = []
+        for instance in candidates:
+            parts = urllib.parse.urlsplit(instance)
+            host = (parts.hostname or "").lower()
+            if security.address_is_private(host) and not security.private_host_is_allowlisted(
+                    host, parts.port):
+                blocked_private.append(f"{host}:{parts.port or (443 if parts.scheme == 'https' else 80)}")
+        if blocked_private:
+            hint = ("a self-hosted instance on a private address needs the explicit "
+                    f"allowlist: IRALENS_ALLOWED_PRIVATE_HOSTS={','.join(blocked_private)}; " + hint)
         raise SourceUnavailableError(
             "searxng: all configured instances failed",
-            hint="pin reliable instances with IRALENS_SEARXNG_INSTANCES",
+            hint=hint,
             detail="; ".join(errors)[:300],
         )
 
