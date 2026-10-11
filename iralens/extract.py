@@ -6,6 +6,11 @@ of sending every URL to a remote reader service. The extraction is lossy for
 complex/JS-driven pages (no DOM, no CSS layout, no script execution) — see
 KNOWN_LIMITATIONS.md — and the browser backend exists for those.
 
+PDF bodies are detected by their magic bytes and converted with `pypdf` when
+it is installed (``pip install pypdf``, or the ``[pdf]`` extra). Without it the
+read fails with a typed `extraction_failed`/`pdf_support_missing` error that
+names the fix, instead of returning binary noise as if it were page text.
+
 Contract:
   - `html_to_markdown(html)` returns markdown-flavored text: ATX headings,
     paragraphs, lists, blockquotes, fenced code blocks, inline links/code,
@@ -19,8 +24,14 @@ Contract:
 
 from __future__ import annotations
 
+import io
 from html.parser import HTMLParser
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+from .errors import ExtractionError
+
+#: PDF magic: the header is `%PDF-<version>` within the first bytes of the file.
+PDF_MAGIC = b"%PDF-"
 
 #: Elements whose entire subtree is noise for page text.
 _SKIP_TAGS = {"script", "style", "noscript", "svg", "template", "iframe",
@@ -297,3 +308,69 @@ def html_to_text(html: str) -> str:
             i += 1
         out.append("".join(buf))
     return "\n".join(out)
+
+
+# --------------------------------------------------------------------------- pdf
+def looks_like_pdf(body: bytes) -> bool:
+    """True when the body starts with the PDF header (magic-byte sniff)."""
+    return (body or b"")[:1024].lstrip()[:5] == PDF_MAGIC
+
+
+def pdf_to_text(data: bytes, *, max_pages: int = 0,
+                max_chars: int = 2_000_000) -> Tuple[str, Dict[str, Any]]:
+    """Extract readable text from a PDF body.
+
+    Returns `(text, info)` where info carries page counts for the artifact
+    metadata. Raises a typed ExtractionError when the PDF cannot be read, when
+    it has no extractable text (scanned images), or when the optional PDF
+    dependency is missing — never binary noise.
+    """
+    try:
+        from pypdf import PdfReader
+    except ImportError as exc:  # pragma: no cover - exercised via sys.modules stub
+        raise ExtractionError(
+            "PDF support requires the 'pypdf' package",
+            hint="install it with: pip install 'iralens[pdf]' (or pip install pypdf)",
+            detail="pdf_support_missing",
+        ) from exc
+    try:
+        reader = PdfReader(io.BytesIO(data))
+        if reader.is_encrypted:
+            try:
+                reader.decrypt("")           # many PDFs are only "owner" encrypted
+            except Exception as exc:
+                raise ExtractionError(
+                    "the PDF is encrypted", hint="decrypt it first, or open it in a browser",
+                    detail="pdf_encrypted",
+                ) from exc
+        pages = list(reader.pages)
+        wanted = pages[:max_pages] if max_pages > 0 else pages
+        chunks: List[str] = []
+        extracted = 0
+        for page in wanted:
+            try:
+                text = page.extract_text() or ""
+            except Exception:
+                text = ""                    # one broken page must not lose the document
+            if text.strip():
+                extracted += 1
+            chunks.append(text)
+            if sum(len(c) for c in chunks) >= max_chars:
+                break
+        body = "\n\n".join(c.strip() for c in chunks if c.strip())
+    except ExtractionError:
+        raise
+    except Exception as exc:
+        raise ExtractionError(
+            "the PDF could not be parsed",
+            hint="the file may be truncated or corrupt",
+            detail=f"pdf_parse_failed: {type(exc).__name__}",
+        ) from exc
+    if not body.strip():
+        raise ExtractionError(
+            "the PDF contained no extractable text",
+            hint="it is probably a scan; there is no OCR in this build",
+            detail="pdf_no_text",
+        )
+    info = {"pages": len(pages), "pages_with_text": extracted, "text_chars": len(body)}
+    return body, info

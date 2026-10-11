@@ -1,0 +1,741 @@
+{
+  "schema": "iralens-benchmark-urls/1",
+  "frozen": "2026-10-11",
+  "notes": [
+    "100 public URLs across news, docs, wikis, blogs, JS-heavy apps, PDFs and",
+    "walled pages. A read passes when the extracted main text contains",
+    "required_phrase (whitespace/case-insensitive).",
+    "expect=phrase_or_walled marks pages that may legitimately refuse (paywall,",
+    "login wall): those pass with the phrase OR with a typed error \u2014 never with",
+    "silently empty content. See run_benchmark.py for the exact scoring.",
+    "requires_js=True marks pages whose useful text is rendered client-side; if",
+    "the static fetch does not contain the phrase, the read must fall back to the",
+    "browser engine automatically."
+  ],
+  "urls": [
+    {
+      "id": "u001",
+      "url": "https://www.bbc.com/news/science_and_environment",
+      "category": "news",
+      "required_phrase": "BBC",
+      "expect": "phrase"
+    },
+    {
+      "id": "u002",
+      "url": "https://apnews.com/hub/technology",
+      "category": "news",
+      "required_phrase": "AP",
+      "expect": "phrase"
+    },
+    {
+      "id": "u003",
+      "url": "https://www.reuters.com/technology/",
+      "category": "news",
+      "required_phrase": "Reuters",
+      "expect": "phrase"
+    },
+    {
+      "id": "u004",
+      "url": "https://www.theguardian.com/world",
+      "category": "news",
+      "required_phrase": "Guardian",
+      "expect": "phrase"
+    },
+    {
+      "id": "u005",
+      "url": "https://www.aljazeera.com/",
+      "category": "news",
+      "required_phrase": "Al Jazeera",
+      "expect": "phrase"
+    },
+    {
+      "id": "u006",
+      "url": "https://www.npr.org/sections/news/",
+      "category": "news",
+      "required_phrase": "NPR",
+      "expect": "phrase"
+    },
+    {
+      "id": "u007",
+      "url": "https://www.dw.com/en/",
+      "category": "news",
+      "required_phrase": "DW",
+      "expect": "phrase"
+    },
+    {
+      "id": "u008",
+      "url": "https://www.france24.com/en/",
+      "category": "news",
+      "required_phrase": "France 24",
+      "expect": "phrase"
+    },
+    {
+      "id": "u009",
+      "url": "https://www.theverge.com/tech",
+      "category": "news",
+      "required_phrase": "Verge",
+      "expect": "phrase"
+    },
+    {
+      "id": "u010",
+      "url": "https://arstechnica.com/",
+      "category": "news",
+      "required_phrase": "Ars Technica",
+      "expect": "phrase"
+    },
+    {
+      "id": "u011",
+      "url": "https://techcrunch.com/",
+      "category": "news",
+      "required_phrase": "TechCrunch",
+      "expect": "phrase"
+    },
+    {
+      "id": "u012",
+      "url": "https://www.politico.eu/",
+      "category": "news",
+      "required_phrase": "Politico",
+      "expect": "phrase"
+    },
+    {
+      "id": "u013",
+      "url": "https://www.cnbc.com/technology/",
+      "category": "news",
+      "required_phrase": "CNBC",
+      "expect": "phrase"
+    },
+    {
+      "id": "u014",
+      "url": "https://www.abc.net.au/news/",
+      "category": "news",
+      "required_phrase": "ABC",
+      "expect": "phrase"
+    },
+    {
+      "id": "u015",
+      "url": "https://www.scmp.com/tech",
+      "category": "news",
+      "required_phrase": "South China Morning Post",
+      "expect": "phrase"
+    },
+    {
+      "id": "u016",
+      "url": "https://docs.python.org/3/library/json.html",
+      "category": "docs",
+      "required_phrase": "JSON encoder and decoder",
+      "expect": "phrase"
+    },
+    {
+      "id": "u017",
+      "url": "https://docs.python.org/3/library/asyncio-task.html",
+      "category": "docs",
+      "required_phrase": "coroutine",
+      "expect": "phrase"
+    },
+    {
+      "id": "u018",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise",
+      "category": "docs",
+      "required_phrase": "Promise",
+      "expect": "phrase"
+    },
+    {
+      "id": "u019",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API",
+      "category": "docs",
+      "required_phrase": "fetch",
+      "expect": "phrase"
+    },
+    {
+      "id": "u020",
+      "url": "https://docs.docker.com/get-started/",
+      "category": "docs",
+      "required_phrase": "Docker",
+      "expect": "phrase"
+    },
+    {
+      "id": "u021",
+      "url": "https://kubernetes.io/docs/concepts/overview/",
+      "category": "docs",
+      "required_phrase": "Kubernetes",
+      "expect": "phrase"
+    },
+    {
+      "id": "u022",
+      "url": "https://git-scm.com/docs/git-rebase",
+      "category": "docs",
+      "required_phrase": "git-rebase",
+      "expect": "phrase"
+    },
+    {
+      "id": "u023",
+      "url": "https://man7.org/linux/man-pages/man1/curl.1.html",
+      "category": "docs",
+      "required_phrase": "curl",
+      "expect": "phrase"
+    },
+    {
+      "id": "u024",
+      "url": "https://www.postgresql.org/docs/current/sql-select.html",
+      "category": "docs",
+      "required_phrase": "SELECT",
+      "expect": "phrase"
+    },
+    {
+      "id": "u025",
+      "url": "https://dev.mysql.com/doc/refman/8.0/en/select.html",
+      "category": "docs",
+      "required_phrase": "SELECT",
+      "expect": "phrase"
+    },
+    {
+      "id": "u026",
+      "url": "https://docs.pytest.org/en/stable/how-to/fixtures.html",
+      "category": "docs",
+      "required_phrase": "fixture",
+      "expect": "phrase"
+    },
+    {
+      "id": "u027",
+      "url": "https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html",
+      "category": "docs",
+      "required_phrase": "ownership",
+      "expect": "phrase"
+    },
+    {
+      "id": "u028",
+      "url": "https://go.dev/tour/basics/1",
+      "category": "docs",
+      "required_phrase": "package",
+      "expect": "phrase"
+    },
+    {
+      "id": "u029",
+      "url": "https://developer.hashicorp.com/terraform/docs",
+      "category": "docs",
+      "required_phrase": "Terraform",
+      "expect": "phrase"
+    },
+    {
+      "id": "u030",
+      "url": "https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html",
+      "category": "docs",
+      "required_phrase": "Amazon S3",
+      "expect": "phrase"
+    },
+    {
+      "id": "u031",
+      "url": "https://redis.io/docs/latest/develop/data-types/strings/",
+      "category": "docs",
+      "required_phrase": "string",
+      "expect": "phrase"
+    },
+    {
+      "id": "u032",
+      "url": "https://www.kernel.org/doc/html/latest/process/submitting-patches.html",
+      "category": "docs",
+      "required_phrase": "patch",
+      "expect": "phrase"
+    },
+    {
+      "id": "u033",
+      "url": "https://httpd.apache.org/docs/2.4/howto/htaccess.html",
+      "category": "docs",
+      "required_phrase": "htaccess",
+      "expect": "phrase"
+    },
+    {
+      "id": "u034",
+      "url": "https://www.gnu.org/software/bash/manual/bash.html",
+      "category": "docs",
+      "required_phrase": "Bash",
+      "expect": "phrase"
+    },
+    {
+      "id": "u035",
+      "url": "https://docs.github.com/en/actions/using-workflows/about-workflows",
+      "category": "docs",
+      "required_phrase": "workflow",
+      "expect": "phrase"
+    },
+    {
+      "id": "u036",
+      "url": "https://en.wikipedia.org/wiki/Web_scraping",
+      "category": "wiki",
+      "required_phrase": "scraping",
+      "expect": "phrase"
+    },
+    {
+      "id": "u037",
+      "url": "https://en.wikipedia.org/wiki/Python_(programming_language)",
+      "category": "wiki",
+      "required_phrase": "Guido van Rossum",
+      "expect": "phrase"
+    },
+    {
+      "id": "u038",
+      "url": "https://en.wikipedia.org/wiki/HTTP",
+      "category": "wiki",
+      "required_phrase": "Hypertext Transfer Protocol",
+      "expect": "phrase"
+    },
+    {
+      "id": "u039",
+      "url": "https://en.wikipedia.org/wiki/Rust_(programming_language)",
+      "category": "wiki",
+      "required_phrase": "Rust",
+      "expect": "phrase"
+    },
+    {
+      "id": "u040",
+      "url": "https://en.wikipedia.org/wiki/Transformer_(deep_learning_architecture)",
+      "category": "wiki",
+      "required_phrase": "attention",
+      "expect": "phrase"
+    },
+    {
+      "id": "u041",
+      "url": "https://en.wikipedia.org/wiki/CAPTCHA",
+      "category": "wiki",
+      "required_phrase": "CAPTCHA",
+      "expect": "phrase"
+    },
+    {
+      "id": "u042",
+      "url": "https://en.wikipedia.org/wiki/Unicode",
+      "category": "wiki",
+      "required_phrase": "Unicode",
+      "expect": "phrase"
+    },
+    {
+      "id": "u043",
+      "url": "https://en.wikipedia.org/wiki/Apache_HTTP_Server",
+      "category": "wiki",
+      "required_phrase": "Apache",
+      "expect": "phrase"
+    },
+    {
+      "id": "u044",
+      "url": "https://en.wikipedia.org/wiki/GraphQL",
+      "category": "wiki",
+      "required_phrase": "GraphQL",
+      "expect": "phrase"
+    },
+    {
+      "id": "u045",
+      "url": "https://en.wikipedia.org/wiki/Domain_Name_System",
+      "category": "wiki",
+      "required_phrase": "domain name",
+      "expect": "phrase"
+    },
+    {
+      "id": "u046",
+      "url": "https://en.wikipedia.org/wiki/Linux_kernel",
+      "category": "wiki",
+      "required_phrase": "Linux kernel",
+      "expect": "phrase"
+    },
+    {
+      "id": "u047",
+      "url": "https://en.wikipedia.org/wiki/Convolutional_neural_network",
+      "category": "wiki",
+      "required_phrase": "convolutional",
+      "expect": "phrase"
+    },
+    {
+      "id": "u048",
+      "url": "https://en.wikipedia.org/wiki/WebAssembly",
+      "category": "wiki",
+      "required_phrase": "WebAssembly",
+      "expect": "phrase"
+    },
+    {
+      "id": "u049",
+      "url": "https://en.wikipedia.org/wiki/Quantum_computing",
+      "category": "wiki",
+      "required_phrase": "quantum",
+      "expect": "phrase"
+    },
+    {
+      "id": "u050",
+      "url": "https://en.wikipedia.org/wiki/Bayes%27_theorem",
+      "category": "wiki",
+      "required_phrase": "Bayes",
+      "expect": "phrase"
+    },
+    {
+      "id": "u051",
+      "url": "https://blog.cloudflare.com/",
+      "category": "blog",
+      "required_phrase": "Cloudflare",
+      "expect": "phrase"
+    },
+    {
+      "id": "u052",
+      "url": "https://stackoverflow.blog/",
+      "category": "blog",
+      "required_phrase": "Stack Overflow",
+      "expect": "phrase"
+    },
+    {
+      "id": "u053",
+      "url": "https://github.blog/",
+      "category": "blog",
+      "required_phrase": "GitHub",
+      "expect": "phrase"
+    },
+    {
+      "id": "u054",
+      "url": "https://research.google/blog/",
+      "category": "blog",
+      "required_phrase": "Google",
+      "expect": "phrase"
+    },
+    {
+      "id": "u055",
+      "url": "https://netflixtechblog.com/",
+      "category": "blog",
+      "required_phrase": "Netflix",
+      "expect": "phrase"
+    },
+    {
+      "id": "u056",
+      "url": "https://engineering.fb.com/",
+      "category": "blog",
+      "required_phrase": "Meta",
+      "expect": "phrase"
+    },
+    {
+      "id": "u057",
+      "url": "https://simonwillison.net/",
+      "category": "blog",
+      "required_phrase": "Simon Willison",
+      "expect": "phrase"
+    },
+    {
+      "id": "u058",
+      "url": "https://danluu.com/",
+      "category": "blog",
+      "required_phrase": "Dan Luu",
+      "expect": "phrase"
+    },
+    {
+      "id": "u059",
+      "url": "https://jvns.ca/",
+      "category": "blog",
+      "required_phrase": "Julia Evans",
+      "expect": "phrase"
+    },
+    {
+      "id": "u060",
+      "url": "https://www.joelonsoftware.com/",
+      "category": "blog",
+      "required_phrase": "Joel",
+      "expect": "phrase"
+    },
+    {
+      "id": "u061",
+      "url": "https://martinfowler.com/",
+      "category": "blog",
+      "required_phrase": "Martin Fowler",
+      "expect": "phrase"
+    },
+    {
+      "id": "u062",
+      "url": "https://paulgraham.com/articles.html",
+      "category": "blog",
+      "required_phrase": "Paul Graham",
+      "expect": "phrase"
+    },
+    {
+      "id": "u063",
+      "url": "https://react.dev/learn",
+      "category": "js_heavy",
+      "required_phrase": "React",
+      "expect": "phrase",
+      "requires_js": true
+    },
+    {
+      "id": "u064",
+      "url": "https://nextjs.org/docs",
+      "category": "js_heavy",
+      "required_phrase": "Next.js",
+      "expect": "phrase",
+      "requires_js": true
+    },
+    {
+      "id": "u065",
+      "url": "https://vuejs.org/guide/introduction.html",
+      "category": "js_heavy",
+      "required_phrase": "Vue",
+      "expect": "phrase",
+      "requires_js": true
+    },
+    {
+      "id": "u066",
+      "url": "https://tailwindcss.com/docs/installation",
+      "category": "js_heavy",
+      "required_phrase": "Tailwind",
+      "expect": "phrase",
+      "requires_js": true
+    },
+    {
+      "id": "u067",
+      "url": "https://vercel.com/docs",
+      "category": "js_heavy",
+      "required_phrase": "Vercel",
+      "expect": "phrase",
+      "requires_js": true
+    },
+    {
+      "id": "u068",
+      "url": "https://news.ycombinator.com/",
+      "category": "js_heavy",
+      "required_phrase": "Hacker News",
+      "expect": "phrase",
+      "requires_js": true
+    },
+    {
+      "id": "u069",
+      "url": "https://www.reddit.com/r/programming/",
+      "category": "js_heavy",
+      "required_phrase": "programming",
+      "expect": "phrase",
+      "requires_js": true
+    },
+    {
+      "id": "u070",
+      "url": "https://webflow.com/",
+      "category": "js_heavy",
+      "required_phrase": "Webflow",
+      "expect": "phrase",
+      "requires_js": true
+    },
+    {
+      "id": "u071",
+      "url": "https://flutter.dev/",
+      "category": "js_heavy",
+      "required_phrase": "Flutter",
+      "expect": "phrase",
+      "requires_js": true
+    },
+    {
+      "id": "u072",
+      "url": "https://www.figma.com/",
+      "category": "js_heavy",
+      "required_phrase": "Figma",
+      "expect": "phrase",
+      "requires_js": true
+    },
+    {
+      "id": "u073",
+      "url": "https://svelte.dev/",
+      "category": "js_heavy",
+      "required_phrase": "Svelte",
+      "expect": "phrase",
+      "requires_js": true
+    },
+    {
+      "id": "u074",
+      "url": "https://angular.dev/",
+      "category": "js_heavy",
+      "required_phrase": "Angular",
+      "expect": "phrase",
+      "requires_js": true
+    },
+    {
+      "id": "u075",
+      "url": "https://discord.com/",
+      "category": "js_heavy",
+      "required_phrase": "Discord",
+      "expect": "phrase",
+      "requires_js": true
+    },
+    {
+      "id": "u076",
+      "url": "https://observablehq.com/",
+      "category": "js_heavy",
+      "required_phrase": "Observable",
+      "expect": "phrase",
+      "requires_js": true
+    },
+    {
+      "id": "u077",
+      "url": "https://arxiv.org/pdf/1706.03762",
+      "category": "pdf",
+      "required_phrase": "Attention Is All You Need",
+      "expect": "phrase"
+    },
+    {
+      "id": "u078",
+      "url": "https://arxiv.org/pdf/1810.04805",
+      "category": "pdf",
+      "required_phrase": "BERT",
+      "expect": "phrase"
+    },
+    {
+      "id": "u079",
+      "url": "https://arxiv.org/pdf/1512.03385",
+      "category": "pdf",
+      "required_phrase": "Deep Residual Learning",
+      "expect": "phrase"
+    },
+    {
+      "id": "u080",
+      "url": "https://arxiv.org/pdf/1301.3781",
+      "category": "pdf",
+      "required_phrase": "Word Representations",
+      "expect": "phrase"
+    },
+    {
+      "id": "u081",
+      "url": "https://arxiv.org/pdf/1207.0580",
+      "category": "pdf",
+      "required_phrase": "Dropout",
+      "expect": "phrase"
+    },
+    {
+      "id": "u082",
+      "url": "https://arxiv.org/pdf/1607.06450",
+      "category": "pdf",
+      "required_phrase": "Layer Normalization",
+      "expect": "phrase"
+    },
+    {
+      "id": "u083",
+      "url": "https://arxiv.org/pdf/2005.11401",
+      "category": "pdf",
+      "required_phrase": "Retrieval-Augmented Generation",
+      "expect": "phrase"
+    },
+    {
+      "id": "u084",
+      "url": "https://arxiv.org/pdf/2103.00020",
+      "category": "pdf",
+      "required_phrase": "CLIP",
+      "expect": "phrase"
+    },
+    {
+      "id": "u085",
+      "url": "https://www.rfc-editor.org/rfc/rfc8446.pdf",
+      "category": "pdf",
+      "required_phrase": "TLS 1.3",
+      "expect": "phrase"
+    },
+    {
+      "id": "u086",
+      "url": "https://www.rfc-editor.org/rfc/rfc9110.pdf",
+      "category": "pdf",
+      "required_phrase": "HTTP Semantics",
+      "expect": "phrase"
+    },
+    {
+      "id": "u087",
+      "url": "https://www.unicode.org/versions/Unicode15.1.0/ch01.pdf",
+      "category": "pdf",
+      "required_phrase": "Unicode Standard",
+      "expect": "phrase"
+    },
+    {
+      "id": "u088",
+      "url": "https://www.sec.gov/files/form10-k.pdf",
+      "category": "pdf",
+      "required_phrase": "10-K",
+      "expect": "phrase"
+    },
+    {
+      "id": "u089",
+      "url": "https://www.irs.gov/pub/irs-pdf/p15.pdf",
+      "category": "pdf",
+      "required_phrase": "Employer",
+      "expect": "phrase"
+    },
+    {
+      "id": "u090",
+      "url": "https://www.rfc-editor.org/rfc/rfc9112.pdf",
+      "category": "pdf",
+      "required_phrase": "HTTP/1.1",
+      "expect": "phrase"
+    },
+    {
+      "id": "u091",
+      "url": "https://www.wsj.com/",
+      "category": "paywalled",
+      "required_phrase": "Wall Street Journal",
+      "expect": "phrase_or_walled",
+      "wall_reason": "paywall"
+    },
+    {
+      "id": "u092",
+      "url": "https://www.ft.com/",
+      "category": "paywalled",
+      "required_phrase": "Financial Times",
+      "expect": "phrase_or_walled",
+      "wall_reason": "paywall"
+    },
+    {
+      "id": "u093",
+      "url": "https://www.economist.com/",
+      "category": "paywalled",
+      "required_phrase": "Economist",
+      "expect": "phrase_or_walled",
+      "wall_reason": "paywall"
+    },
+    {
+      "id": "u094",
+      "url": "https://www.bloomberg.com/",
+      "category": "paywalled",
+      "required_phrase": "Bloomberg",
+      "expect": "phrase_or_walled",
+      "wall_reason": "paywall"
+    },
+    {
+      "id": "u095",
+      "url": "https://www.nytimes.com/",
+      "category": "paywalled",
+      "required_phrase": "New York Times",
+      "expect": "phrase_or_walled",
+      "wall_reason": "paywall"
+    },
+    {
+      "id": "u096",
+      "url": "https://www.washingtonpost.com/",
+      "category": "paywalled",
+      "required_phrase": "Washington Post",
+      "expect": "phrase_or_walled",
+      "wall_reason": "paywall"
+    },
+    {
+      "id": "u097",
+      "url": "https://www.theatlantic.com/",
+      "category": "paywalled",
+      "required_phrase": "Atlantic",
+      "expect": "phrase_or_walled",
+      "wall_reason": "paywall"
+    },
+    {
+      "id": "u098",
+      "url": "https://x.com/elonmusk",
+      "category": "paywalled",
+      "required_phrase": "Elon Musk",
+      "expect": "phrase_or_walled",
+      "wall_reason": "login_wall"
+    },
+    {
+      "id": "u099",
+      "url": "https://www.linkedin.com/feed/",
+      "category": "paywalled",
+      "required_phrase": "LinkedIn",
+      "expect": "phrase_or_walled",
+      "wall_reason": "login_wall"
+    },
+    {
+      "id": "u100",
+      "url": "https://www.instagram.com/",
+      "category": "paywalled",
+      "required_phrase": "Instagram",
+      "expect": "phrase_or_walled",
+      "wall_reason": "login_wall"
+    }
+  ]
+}

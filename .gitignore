@@ -6,3 +6,7 @@ tools/engine/
 dist/
 build/
 .venv/
+
+# benchmark output and its isolated home are per-run, not source
+benchmarks/results/
+benchmarks/.home/

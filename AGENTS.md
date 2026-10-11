@@ -20,9 +20,10 @@ It includes a deterministic research layer (`iralens/research/`).
 .venv/bin/mypy iralens --ignore-missing-imports      # must pass
 ```
 
-Run the offline suite before and after a change. At the release commit it gives
-181 passed, 15 skipped (live tests skip without HTTPS access). Check the count
-yourself: `pytest -q`.
+Run the offline suite before and after a change. It gives **378 passed, 14
+skipped** as of 2026-10-11 (earlier records: 181/15 at the release commit,
+328/15 after the D-076…D-079 rebuild; live tests skip without HTTPS access).
+Check the count yourself: `pytest -q`.
 
 To verify the public interfaces end to end (CLI, Python, MCP):
 `.venv/bin/python scripts/verify_interfaces.py`. To exercise the research code on
@@ -37,6 +38,10 @@ Neither proves web research works; see KNOWN_LIMITATIONS.md.
 - **Do not invent interfaces.** Check that a method, flag, or operation exists
   (`grep`, `iralens --json sources`, `TOOLS` in `mcp_server.py`) before you
   document or call it. Docs must match code; `len(TOOLS)` is the MCP tool count.
+- **Never tune the benchmark.** `benchmarks/queries.json`, `urls.json` and
+  `thresholds.json` are frozen (`benchmarks/FREEZE.sha256`). Do not edit labels
+  to raise a score, do not lower a threshold, and label anything you could not
+  run as `not_run` with the reason. `BENCHMARKS.md` records every run.
 - **Verify before claiming.** Say "tested" only for what you ran. Network-dependent
   behavior (live engines, live sources, the browser engine) is not verified here
   unless you ran it.
@@ -70,6 +75,8 @@ Neither proves web research works; see KNOWN_LIMITATIONS.md.
 | `docs/` | SEARCH, RELIABILITY, RESEARCH, THREAT_MODEL, CAPABILITY_MAP |
 | `scripts/` | `setup.sh` (tested on Linux), `setup.ps1` (untested) |
 | `tools/install_engine.py` | browser-engine installer (binary goes under `tools/engine/`, ignored) |
+| `benchmarks/` | frozen reliability benchmark (200 queries, 100 URLs, thresholds); `run_benchmark.py --self-test` validates the harness offline |
+| `deploy/searxng/` | self-hosted SearXNG backend (docker compose + settings) for engine redundancy |
 
 ## Known open items
 

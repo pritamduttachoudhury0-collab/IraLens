@@ -52,7 +52,9 @@ class EndlessResponse:
 
 
 def _patch(monkeypatch, response=None, error=None, seen=None):
-    def fake_urlopen(url, *, timeout=30, headers=None):
+    # Mirrors the real signature, including the D-082 private-host allowlist
+    # switch, so a change to the transport contract fails loudly here.
+    def fake_urlopen(url, *, timeout=30, headers=None, allow_private_hosts=False):
         if seen is not None:
             seen.append((url, headers))
         if error is not None:

@@ -1,0 +1,2886 @@
+{
+  "schema": "iralens-benchmark-queries/1",
+  "frozen": "2026-10-11",
+  "notes": [
+    "Hand-labelled acceptance lists, frozen before any tuning. Do not edit to",
+    "improve scores: a query counts as answered when a top-5 result is on one of",
+    "its acceptable_domains or contains one of its expected_phrases.",
+    "recency_days marks queries whose *subject* moves; the domain match is what is",
+    "scored, freshness is reported separately (see run_benchmark.py)."
+  ],
+  "queries": [
+    {
+      "id": "f001",
+      "category": "factual",
+      "query": "what is the capital of Australia",
+      "split": "dev",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "australia.gov.au",
+        "canberra.com.au"
+      ],
+      "expected_phrases": [
+        "Canberra"
+      ]
+    },
+    {
+      "id": "f002",
+      "category": "factual",
+      "query": "who wrote the play Romeo and Juliet",
+      "split": "dev",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "shakespeare.org.uk",
+        "folger.edu"
+      ],
+      "expected_phrases": [
+        "Shakespeare"
+      ]
+    },
+    {
+      "id": "f003",
+      "category": "factual",
+      "query": "what is the boiling point of water at sea level in celsius",
+      "split": "dev",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "nist.gov",
+        "usgs.gov"
+      ],
+      "expected_phrases": [
+        "100"
+      ]
+    },
+    {
+      "id": "f004",
+      "category": "factual",
+      "query": "how many bones are in the adult human body",
+      "split": "dev",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "nih.gov",
+        "clevelandclinic.org"
+      ],
+      "expected_phrases": [
+        "206"
+      ]
+    },
+    {
+      "id": "f005",
+      "category": "factual",
+      "query": "what year did the Berlin Wall fall",
+      "split": "dev",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "history.com",
+        "bbc.co.uk"
+      ],
+      "expected_phrases": [
+        "1989"
+      ]
+    },
+    {
+      "id": "f006",
+      "category": "factual",
+      "query": "who invented the World Wide Web",
+      "split": "dev",
+      "acceptable_domains": [
+        "en.wikipedia.org",
+        "britannica.com",
+        "w3.org",
+        "cern.ch"
+      ],
+      "expected_phrases": [
+        "Tim Berners-Lee"
+      ]
+    },
+    {
+      "id": "f007",
+      "category": "factual",
+      "query": "what is the largest planet in the solar system",
+      "split": "dev",
+      "acceptable_domains": [
+        "nasa.gov",
+        "britannica.com",
+        "en.wikipedia.org",
+        "space.com"
+      ],
+      "expected_phrases": [
+        "Jupiter"
+      ]
+    },
+    {
+      "id": "f008",
+      "category": "factual",
+      "query": "what is the chemical symbol for gold",
+      "split": "dev",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "pubchem.ncbi.nlm.nih.gov",
+        "rsc.org"
+      ],
+      "expected_phrases": [
+        "Au"
+      ]
+    },
+    {
+      "id": "f009",
+      "category": "factual",
+      "query": "when was the first iPhone released",
+      "split": "dev",
+      "acceptable_domains": [
+        "en.wikipedia.org",
+        "britannica.com",
+        "apple.com",
+        "macrumors.com"
+      ],
+      "expected_phrases": [
+        "2007"
+      ]
+    },
+    {
+      "id": "f010",
+      "category": "factual",
+      "query": "what is the speed of light in a vacuum",
+      "split": "dev",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "nist.gov",
+        "nasa.gov"
+      ],
+      "expected_phrases": [
+        "299,792,458",
+        "299792458"
+      ]
+    },
+    {
+      "id": "f011",
+      "category": "factual",
+      "query": "which country has the most time zones",
+      "split": "dev",
+      "acceptable_domains": [
+        "en.wikipedia.org",
+        "britannica.com",
+        "timeanddate.com",
+        "worldatlas.com"
+      ],
+      "expected_phrases": [
+        "France"
+      ]
+    },
+    {
+      "id": "f012",
+      "category": "factual",
+      "query": "what is the tallest mountain above sea level",
+      "split": "dev",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "nasa.gov",
+        "nationalgeographic.com"
+      ],
+      "expected_phrases": [
+        "Everest"
+      ]
+    },
+    {
+      "id": "f013",
+      "category": "factual",
+      "query": "who painted the Starry Night",
+      "split": "dev",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "moma.org",
+        "vangoghmuseum.nl"
+      ],
+      "expected_phrases": [
+        "Van Gogh"
+      ]
+    },
+    {
+      "id": "f014",
+      "category": "factual",
+      "query": "how deep is the Mariana Trench in meters",
+      "split": "dev",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "noaa.gov",
+        "nationalgeographic.com"
+      ],
+      "expected_phrases": [
+        "10,9"
+      ]
+    },
+    {
+      "id": "f015",
+      "category": "factual",
+      "query": "what is the currency of Switzerland",
+      "split": "dev",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "snb.ch",
+        "swissinfo.ch"
+      ],
+      "expected_phrases": [
+        "franc",
+        "CHF"
+      ]
+    },
+    {
+      "id": "f016",
+      "category": "factual",
+      "query": "when did the Soviet Union dissolve",
+      "split": "dev",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "history.com",
+        "bbc.co.uk"
+      ],
+      "expected_phrases": [
+        "1991"
+      ]
+    },
+    {
+      "id": "f017",
+      "category": "factual",
+      "query": "what is the largest organ in the human body",
+      "split": "dev",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "nih.gov",
+        "healthline.com"
+      ],
+      "expected_phrases": [
+        "skin"
+      ]
+    },
+    {
+      "id": "f018",
+      "category": "factual",
+      "query": "how many players are on a soccer team on the field",
+      "split": "dev",
+      "acceptable_domains": [
+        "fifa.com",
+        "britannica.com",
+        "en.wikipedia.org",
+        "thefa.com"
+      ],
+      "expected_phrases": [
+        "11",
+        "eleven"
+      ]
+    },
+    {
+      "id": "f019",
+      "category": "factual",
+      "query": "what is the population of Tokyo metropolitan area",
+      "split": "dev",
+      "acceptable_domains": [
+        "en.wikipedia.org",
+        "britannica.com",
+        "statista.com",
+        "worldpopulationreview.com"
+      ]
+    },
+    {
+      "id": "f020",
+      "category": "factual",
+      "query": "who discovered penicillin",
+      "split": "dev",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "nobelprize.org",
+        "nih.gov"
+      ],
+      "expected_phrases": [
+        "Fleming"
+      ]
+    },
+    {
+      "id": "f021",
+      "category": "factual",
+      "query": "what is the freezing point of ethanol in celsius",
+      "split": "dev",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "pubchem.ncbi.nlm.nih.gov",
+        "engineeringtoolbox.com"
+      ],
+      "expected_phrases": [
+        "-11"
+      ]
+    },
+    {
+      "id": "f022",
+      "category": "factual",
+      "query": "which element has atomic number 26",
+      "split": "dev",
+      "acceptable_domains": [
+        "en.wikipedia.org",
+        "britannica.com",
+        "pubchem.ncbi.nlm.nih.gov",
+        "rsc.org"
+      ],
+      "expected_phrases": [
+        "iron"
+      ]
+    },
+    {
+      "id": "f023",
+      "category": "factual",
+      "query": "what language is spoken in Brazil",
+      "split": "dev",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "gov.br",
+        "worldatlas.com"
+      ],
+      "expected_phrases": [
+        "Portuguese"
+      ]
+    },
+    {
+      "id": "f024",
+      "category": "factual",
+      "query": "how long does it take sunlight to reach Earth",
+      "split": "dev",
+      "acceptable_domains": [
+        "nasa.gov",
+        "en.wikipedia.org",
+        "britannica.com",
+        "space.com"
+      ],
+      "expected_phrases": [
+        "8 min",
+        "8.3",
+        "8 minutes"
+      ]
+    },
+    {
+      "id": "f025",
+      "category": "factual",
+      "query": "when was the European Union founded by the Maastricht Treaty",
+      "split": "dev",
+      "acceptable_domains": [
+        "europa.eu",
+        "en.wikipedia.org",
+        "britannica.com",
+        "bbc.co.uk"
+      ],
+      "expected_phrases": [
+        "1993"
+      ]
+    },
+    {
+      "id": "f026",
+      "category": "factual",
+      "query": "what is the second largest ocean by area",
+      "split": "dev",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "noaa.gov",
+        "nationalgeographic.com"
+      ],
+      "expected_phrases": [
+        "Atlantic"
+      ]
+    },
+    {
+      "id": "f027",
+      "category": "factual",
+      "query": "how many hearts does an octopus have",
+      "split": "dev",
+      "acceptable_domains": [
+        "en.wikipedia.org",
+        "britannica.com",
+        "nationalgeographic.com",
+        "smithsonianmag.com"
+      ],
+      "expected_phrases": [
+        "three",
+        "3"
+      ]
+    },
+    {
+      "id": "f028",
+      "category": "factual",
+      "query": "what is the national animal of Scotland",
+      "split": "dev",
+      "acceptable_domains": [
+        "en.wikipedia.org",
+        "britannica.com",
+        "visitscotland.com",
+        "gov.scot"
+      ],
+      "expected_phrases": [
+        "unicorn"
+      ]
+    },
+    {
+      "id": "f029",
+      "category": "factual",
+      "query": "what is the capital of Canada",
+      "split": "heldout",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "canada.ca",
+        "ottawa.ca"
+      ],
+      "expected_phrases": [
+        "Ottawa"
+      ]
+    },
+    {
+      "id": "f030",
+      "category": "factual",
+      "query": "who wrote the novel 1984",
+      "split": "heldout",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "theguardian.com",
+        "penguin.co.uk"
+      ],
+      "expected_phrases": [
+        "Orwell"
+      ]
+    },
+    {
+      "id": "f031",
+      "category": "factual",
+      "query": "how many chambers does the human heart have",
+      "split": "heldout",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "nih.gov",
+        "mayoclinic.org"
+      ],
+      "expected_phrases": [
+        "four",
+        "4"
+      ]
+    },
+    {
+      "id": "f032",
+      "category": "factual",
+      "query": "what is the longest river in Africa",
+      "split": "heldout",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "nationalgeographic.com",
+        "worldatlas.com"
+      ],
+      "expected_phrases": [
+        "Nile"
+      ]
+    },
+    {
+      "id": "f033",
+      "category": "factual",
+      "query": "when was the Declaration of Independence signed",
+      "split": "heldout",
+      "acceptable_domains": [
+        "archives.gov",
+        "en.wikipedia.org",
+        "britannica.com",
+        "history.com"
+      ],
+      "expected_phrases": [
+        "1776"
+      ]
+    },
+    {
+      "id": "f034",
+      "category": "factual",
+      "query": "what is the hardest natural substance on Earth",
+      "split": "heldout",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "usgs.gov",
+        "nhm.ac.uk"
+      ],
+      "expected_phrases": [
+        "diamond"
+      ]
+    },
+    {
+      "id": "f035",
+      "category": "factual",
+      "query": "who was the first woman to win a Nobel Prize",
+      "split": "heldout",
+      "acceptable_domains": [
+        "nobelprize.org",
+        "en.wikipedia.org",
+        "britannica.com",
+        "smithsonianmag.com"
+      ],
+      "expected_phrases": [
+        "Curie"
+      ]
+    },
+    {
+      "id": "f036",
+      "category": "factual",
+      "query": "what is the official language of Egypt",
+      "split": "heldout",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "worldatlas.com",
+        "gov.eg"
+      ],
+      "expected_phrases": [
+        "Arabic"
+      ]
+    },
+    {
+      "id": "f037",
+      "category": "factual",
+      "query": "how many satellites does Jupiter have",
+      "split": "heldout",
+      "acceptable_domains": [
+        "nasa.gov",
+        "en.wikipedia.org",
+        "britannica.com",
+        "skyandtelescope.org"
+      ],
+      "expected_phrases": [
+        "95",
+        "9"
+      ]
+    },
+    {
+      "id": "f038",
+      "category": "factual",
+      "query": "what is the melting point of iron in celsius",
+      "split": "heldout",
+      "acceptable_domains": [
+        "britannica.com",
+        "en.wikipedia.org",
+        "engineeringtoolbox.com",
+        "pubchem.ncbi.nlm.nih.gov"
+      ],
+      "expected_phrases": [
+        "1538",
+        "1535"
+      ]
+    },
+    {
+      "id": "f039",
+      "category": "factual",
+      "query": "which planet has the shortest day",
+      "split": "heldout",
+      "acceptable_domains": [
+        "nasa.gov",
+        "en.wikipedia.org",
+        "britannica.com",
+        "space.com"
+      ],
+      "expected_phrases": [
+        "Jupiter"
+      ]
+    },
+    {
+      "id": "f040",
+      "category": "factual",
+      "query": "what is the GDP of Germany",
+      "split": "heldout",
+      "acceptable_domains": [
+        "worldbank.org",
+        "imf.org",
+        "destatis.de",
+        "statista.com"
+      ]
+    },
+    {
+      "id": "n001",
+      "category": "navigational",
+      "query": "Hacker News",
+      "split": "dev",
+      "acceptable_domains": [
+        "news.ycombinator.com",
+        "ycombinator.com"
+      ],
+      "expected_phrases": [
+        "Hacker News"
+      ]
+    },
+    {
+      "id": "n002",
+      "category": "navigational",
+      "query": "Python Package Index download page",
+      "split": "dev",
+      "acceptable_domains": [
+        "pypi.org",
+        "python.org"
+      ],
+      "expected_phrases": [
+        "PyPI",
+        "Python Package Index"
+      ]
+    },
+    {
+      "id": "n003",
+      "category": "navigational",
+      "query": "GitHub repository for Linux kernel source",
+      "split": "dev",
+      "acceptable_domains": [
+        "github.com",
+        "kernel.org"
+      ],
+      "expected_phrases": [
+        "Linux"
+      ]
+    },
+    {
+      "id": "n004",
+      "category": "navigational",
+      "query": "Rust programming language official website",
+      "split": "dev",
+      "acceptable_domains": [
+        "rust-lang.org",
+        "doc.rust-lang.org"
+      ],
+      "expected_phrases": [
+        "Rust"
+      ]
+    },
+    {
+      "id": "n005",
+      "category": "navigational",
+      "query": "Kubernetes official documentation site",
+      "split": "dev",
+      "acceptable_domains": [
+        "kubernetes.io"
+      ],
+      "expected_phrases": [
+        "Kubernetes"
+      ]
+    },
+    {
+      "id": "n006",
+      "category": "navigational",
+      "query": "MDN Web Docs JavaScript reference",
+      "split": "dev",
+      "acceptable_domains": [
+        "developer.mozilla.org"
+      ],
+      "expected_phrases": [
+        "JavaScript"
+      ]
+    },
+    {
+      "id": "n007",
+      "category": "navigational",
+      "query": "Stack Overflow homepage",
+      "split": "dev",
+      "acceptable_domains": [
+        "stackoverflow.com",
+        "stackexchange.com"
+      ],
+      "expected_phrases": [
+        "Stack Overflow"
+      ]
+    },
+    {
+      "id": "n008",
+      "category": "navigational",
+      "query": "NASA James Webb Space Telescope mission page",
+      "split": "dev",
+      "acceptable_domains": [
+        "nasa.gov",
+        "webbtelescope.org",
+        "stsci.edu"
+      ],
+      "expected_phrases": [
+        "Webb"
+      ]
+    },
+    {
+      "id": "n009",
+      "category": "navigational",
+      "query": "The New York Times international edition",
+      "split": "dev",
+      "acceptable_domains": [
+        "nytimes.com"
+      ],
+      "expected_phrases": [
+        "New York Times"
+      ]
+    },
+    {
+      "id": "n010",
+      "category": "navigational",
+      "query": "arXiv preprint server listing",
+      "split": "dev",
+      "acceptable_domains": [
+        "arxiv.org"
+      ],
+      "expected_phrases": [
+        "arXiv"
+      ]
+    },
+    {
+      "id": "n011",
+      "category": "navigational",
+      "query": "Docker official getting started guide",
+      "split": "dev",
+      "acceptable_domains": [
+        "docs.docker.com",
+        "docker.com"
+      ],
+      "expected_phrases": [
+        "Docker"
+      ]
+    },
+    {
+      "id": "n012",
+      "category": "navigational",
+      "query": "Wikimedia Commons free media repository",
+      "split": "dev",
+      "acceptable_domains": [
+        "commons.wikimedia.org",
+        "wikimedia.org"
+      ],
+      "expected_phrases": [
+        "Wikimedia Commons"
+      ]
+    },
+    {
+      "id": "n013",
+      "category": "navigational",
+      "query": "Internet Archive Wayback Machine",
+      "split": "dev",
+      "acceptable_domains": [
+        "web.archive.org",
+        "archive.org"
+      ],
+      "expected_phrases": [
+        "Wayback"
+      ]
+    },
+    {
+      "id": "n014",
+      "category": "navigational",
+      "query": "WHO coronavirus disease dashboard",
+      "split": "dev",
+      "acceptable_domains": [
+        "who.int",
+        "covid19.who.int"
+      ],
+      "expected_phrases": [
+        "WHO",
+        "World Health Organization"
+      ]
+    },
+    {
+      "id": "n015",
+      "category": "navigational",
+      "query": "PostgreSQL tutorials site",
+      "split": "dev",
+      "acceptable_domains": [
+        "postgresql.org",
+        "postgresqltutorial.com"
+      ],
+      "expected_phrases": [
+        "PostgreSQL"
+      ]
+    },
+    {
+      "id": "n016",
+      "category": "navigational",
+      "query": "Royal Society of Chemistry periodic table",
+      "split": "dev",
+      "acceptable_domains": [
+        "rsc.org",
+        "periodic-table.rsc.org"
+      ],
+      "expected_phrases": [
+        "periodic table"
+      ]
+    },
+    {
+      "id": "n017",
+      "category": "navigational",
+      "query": "NIST reference on constants and units",
+      "split": "dev",
+      "acceptable_domains": [
+        "physics.nist.gov",
+        "nist.gov"
+      ],
+      "expected_phrases": [
+        "NIST"
+      ]
+    },
+    {
+      "id": "n018",
+      "category": "navigational",
+      "query": "Federal Reserve economic data FRED",
+      "split": "heldout",
+      "acceptable_domains": [
+        "fred.stlouisfed.org",
+        "stlouisfed.org"
+      ],
+      "expected_phrases": [
+        "FRED"
+      ]
+    },
+    {
+      "id": "n019",
+      "category": "navigational",
+      "query": "European Commission official portal",
+      "split": "heldout",
+      "acceptable_domains": [
+        "ec.europa.eu",
+        "europa.eu",
+        "commission.europa.eu"
+      ],
+      "expected_phrases": [
+        "European Commission"
+      ]
+    },
+    {
+      "id": "n020",
+      "category": "navigational",
+      "query": "GitLab DevOps platform",
+      "split": "heldout",
+      "acceptable_domains": [
+        "gitlab.com",
+        "about.gitlab.com"
+      ],
+      "expected_phrases": [
+        "GitLab"
+      ]
+    },
+    {
+      "id": "n021",
+      "category": "navigational",
+      "query": "Hugging Face model hub",
+      "split": "heldout",
+      "acceptable_domains": [
+        "huggingface.co"
+      ],
+      "expected_phrases": [
+        "Hugging Face"
+      ]
+    },
+    {
+      "id": "n022",
+      "category": "navigational",
+      "query": "Nature journal latest research",
+      "split": "heldout",
+      "acceptable_domains": [
+        "nature.com"
+      ],
+      "expected_phrases": [
+        "Nature"
+      ]
+    },
+    {
+      "id": "n023",
+      "category": "navigational",
+      "query": "Kaggle datasets search",
+      "split": "heldout",
+      "acceptable_domains": [
+        "kaggle.com"
+      ],
+      "expected_phrases": [
+        "Kaggle"
+      ]
+    },
+    {
+      "id": "n024",
+      "category": "navigational",
+      "query": "Reuters world news homepage",
+      "split": "heldout",
+      "acceptable_domains": [
+        "reuters.com"
+      ],
+      "expected_phrases": [
+        "Reuters"
+      ]
+    },
+    {
+      "id": "n025",
+      "category": "navigational",
+      "query": "Linux man pages online reference",
+      "split": "heldout",
+      "acceptable_domains": [
+        "man7.org",
+        "manpages.debian.org",
+        "man.archlinux.org",
+        "kernel.org"
+      ],
+      "expected_phrases": [
+        "man"
+      ]
+    },
+    {
+      "id": "t001",
+      "category": "technical",
+      "query": "python ModuleNotFoundError No module named 'requests'",
+      "split": "dev",
+      "acceptable_domains": [
+        "stackoverflow.com",
+        "pypi.org",
+        "docs.python.org",
+        "github.com"
+      ],
+      "expected_phrases": [
+        "requests"
+      ]
+    },
+    {
+      "id": "t002",
+      "category": "technical",
+      "query": "TypeScript error TS2345 argument of type not assignable",
+      "split": "dev",
+      "acceptable_domains": [
+        "typescriptlang.org",
+        "stackoverflow.com",
+        "github.com"
+      ],
+      "expected_phrases": [
+        "TS2345",
+        "assignable"
+      ]
+    },
+    {
+      "id": "t003",
+      "category": "technical",
+      "query": "docker compose healthcheck depends_on condition service_healthy",
+      "split": "dev",
+      "acceptable_domains": [
+        "docs.docker.com",
+        "stackoverflow.com",
+        "github.com"
+      ],
+      "expected_phrases": [
+        "healthcheck"
+      ]
+    },
+    {
+      "id": "t004",
+      "category": "technical",
+      "query": "pandas SettingWithCopyWarning fix",
+      "split": "dev",
+      "acceptable_domains": [
+        "pandas.pydata.org",
+        "stackoverflow.com",
+        "github.com"
+      ],
+      "expected_phrases": [
+        "SettingWithCopyWarning"
+      ]
+    },
+    {
+      "id": "t005",
+      "category": "technical",
+      "query": "git remove file from last commit without deleting",
+      "split": "dev",
+      "acceptable_domains": [
+        "git-scm.com",
+        "stackoverflow.com",
+        "atlassian.com",
+        "github.blog"
+      ],
+      "expected_phrases": [
+        "commit"
+      ]
+    },
+    {
+      "id": "t006",
+      "category": "technical",
+      "query": "postgres index on jsonb field GIN",
+      "split": "dev",
+      "acceptable_domains": [
+        "postgresql.org",
+        "stackoverflow.com",
+        "dba.stackexchange.com"
+      ],
+      "expected_phrases": [
+        "GIN"
+      ]
+    },
+    {
+      "id": "t007",
+      "category": "technical",
+      "query": "systemd service file Restart=on-failure example",
+      "split": "dev",
+      "acceptable_domains": [
+        "freedesktop.org",
+        "man7.org",
+        "digitalocean.com",
+        "stackoverflow.com"
+      ],
+      "expected_phrases": [
+        "Restart"
+      ]
+    },
+    {
+      "id": "t008",
+      "category": "technical",
+      "query": "rust borrow checker error cannot borrow as mutable more than once",
+      "split": "dev",
+      "acceptable_domains": [
+        "doc.rust-lang.org",
+        "stackoverflow.com",
+        "github.com"
+      ],
+      "expected_phrases": [
+        "borrow"
+      ]
+    },
+    {
+      "id": "t009",
+      "category": "technical",
+      "query": "kubernetes pod pending insufficient cpu scheduling",
+      "split": "dev",
+      "acceptable_domains": [
+        "kubernetes.io",
+        "stackoverflow.com",
+        "github.com"
+      ],
+      "expected_phrases": [
+        "Pending",
+        "insufficient"
+      ]
+    },
+    {
+      "id": "t010",
+      "category": "technical",
+      "query": "numpy ValueError operands could not be broadcast together",
+      "split": "dev",
+      "acceptable_domains": [
+        "numpy.org",
+        "stackoverflow.com",
+        "github.com"
+      ],
+      "expected_phrases": [
+        "broadcast"
+      ]
+    },
+    {
+      "id": "t011",
+      "category": "technical",
+      "query": "CSS flexbox center div vertically and horizontally",
+      "split": "dev",
+      "acceptable_domains": [
+        "developer.mozilla.org",
+        "css-tricks.com",
+        "w3schools.com",
+        "stackoverflow.com"
+      ],
+      "expected_phrases": [
+        "flex"
+      ]
+    },
+    {
+      "id": "t012",
+      "category": "technical",
+      "query": "regex negative lookahead example",
+      "split": "dev",
+      "acceptable_domains": [
+        "regular-expressions.info",
+        "developer.mozilla.org",
+        "stackoverflow.com",
+        "rexegg.com"
+      ],
+      "expected_phrases": [
+        "lookahead"
+      ]
+    },
+    {
+      "id": "t013",
+      "category": "technical",
+      "query": "go context deadline exceeded vs canceled",
+      "split": "dev",
+      "acceptable_domains": [
+        "pkg.go.dev",
+        "go.dev",
+        "stackoverflow.com",
+        "github.com"
+      ],
+      "expected_phrases": [
+        "context"
+      ]
+    },
+    {
+      "id": "t014",
+      "category": "technical",
+      "query": "ssh permission denied publickey debugging",
+      "split": "dev",
+      "acceptable_domains": [
+        "stackoverflow.com",
+        "ssh.com",
+        "digitalocean.com",
+        "github.com"
+      ],
+      "expected_phrases": [
+        "publickey"
+      ]
+    },
+    {
+      "id": "t015",
+      "category": "technical",
+      "query": "pytest fixture scope session vs module",
+      "split": "dev",
+      "acceptable_domains": [
+        "docs.pytest.org",
+        "stackoverflow.com",
+        "github.com"
+      ],
+      "expected_phrases": [
+        "scope"
+      ]
+    },
+    {
+      "id": "t016",
+      "category": "technical",
+      "query": "sqlite locking database is locked WAL mode",
+      "split": "dev",
+      "acceptable_domains": [
+        "sqlite.org",
+        "stackoverflow.com",
+        "github.com"
+      ],
+      "expected_phrases": [
+        "WAL",
+        "locked"
+      ]
+    },
+    {
+      "id": "t017",
+      "category": "technical",
+      "query": "nginx 502 bad gateway upstream timed out",
+      "split": "dev",
+      "acceptable_domains": [
+        "nginx.org",
+        "stackoverflow.com",
+        "digitalocean.com"
+      ],
+      "expected_phrases": [
+        "502"
+      ]
+    },
+    {
+      "id": "t018",
+      "category": "technical",
+      "query": "jwt decode verify signature python pyjwt",
+      "split": "dev",
+      "acceptable_domains": [
+        "pyjwt.readthedocs.io",
+        "stackoverflow.com",
+        "pypi.org",
+        "github.com"
+      ],
+      "expected_phrases": [
+        "jwt",
+        "PyJWT",
+        "decode"
+      ]
+    },
+    {
+      "id": "t019",
+      "category": "technical",
+      "query": "macos dyld library not loaded rpath fix",
+      "split": "dev",
+      "acceptable_domains": [
+        "stackoverflow.com",
+        "developer.apple.com",
+        "github.com"
+      ],
+      "expected_phrases": [
+        "dyld"
+      ]
+    },
+    {
+      "id": "t020",
+      "category": "technical",
+      "query": "terraform state lock error already locked",
+      "split": "dev",
+      "acceptable_domains": [
+        "developer.hashicorp.com",
+        "stackoverflow.com",
+        "github.com"
+      ],
+      "expected_phrases": [
+        "lock"
+      ]
+    },
+    {
+      "id": "t021",
+      "category": "technical",
+      "query": "openai api rate limit 429 exponential backoff",
+      "split": "dev",
+      "acceptable_domains": [
+        "platform.openai.com",
+        "stackoverflow.com",
+        "github.com",
+        "cookbook.openai.com"
+      ],
+      "expected_phrases": [
+        "rate limit"
+      ]
+    },
+    {
+      "id": "t022",
+      "category": "technical",
+      "query": "react useEffect cleanup function unsubscribe",
+      "split": "dev",
+      "acceptable_domains": [
+        "react.dev",
+        "developer.mozilla.org",
+        "stackoverflow.com"
+      ],
+      "expected_phrases": [
+        "useEffect"
+      ]
+    },
+    {
+      "id": "t023",
+      "category": "technical",
+      "query": "ffmpeg extract audio from video mp3",
+      "split": "dev",
+      "acceptable_domains": [
+        "ffmpeg.org",
+        "stackoverflow.com",
+        "trac.ffmpeg.org"
+      ],
+      "expected_phrases": [
+        "ffmpeg"
+      ]
+    },
+    {
+      "id": "t024",
+      "category": "technical",
+      "query": "protobuf field numbers reserved range",
+      "split": "dev",
+      "acceptable_domains": [
+        "protobuf.dev",
+        "developers.google.com",
+        "stackoverflow.com",
+        "github.com"
+      ],
+      "expected_phrases": [
+        "reserved",
+        "field number"
+      ]
+    },
+    {
+      "id": "t025",
+      "category": "technical",
+      "query": "windows WSL2 DNS resolution broken resolv.conf",
+      "split": "dev",
+      "acceptable_domains": [
+        "learn.microsoft.com",
+        "github.com",
+        "stackoverflow.com",
+        "superuser.com"
+      ],
+      "expected_phrases": [
+        "resolv.conf"
+      ]
+    },
+    {
+      "id": "t026",
+      "category": "technical",
+      "query": "c++ std::optional reference member initialization",
+      "split": "heldout",
+      "acceptable_domains": [
+        "en.cppreference.com",
+        "stackoverflow.com",
+        "isocpp.org"
+      ],
+      "expected_phrases": [
+        "optional"
+      ]
+    },
+    {
+      "id": "t027",
+      "category": "technical",
+      "query": "redis maxmemory-policy allkeys-lru configuration",
+      "split": "heldout",
+      "acceptable_domains": [
+        "redis.io",
+        "stackoverflow.com",
+        "github.com"
+      ],
+      "expected_phrases": [
+        "maxmemory"
+      ]
+    },
+    {
+      "id": "t028",
+      "category": "technical",
+      "query": "github actions cache key hashFiles",
+      "split": "heldout",
+      "acceptable_domains": [
+        "docs.github.com",
+        "github.com",
+        "stackoverflow.com"
+      ],
+      "expected_phrases": [
+        "hashFiles"
+      ]
+    },
+    {
+      "id": "t029",
+      "category": "technical",
+      "query": "matplotlib savefig dpi bbox_inches tight whitespace",
+      "split": "heldout",
+      "acceptable_domains": [
+        "matplotlib.org",
+        "stackoverflow.com",
+        "github.com"
+      ],
+      "expected_phrases": [
+        "bbox_inches"
+      ]
+    },
+    {
+      "id": "t030",
+      "category": "technical",
+      "query": "kafka consumer group rebalance timeout session",
+      "split": "heldout",
+      "acceptable_domains": [
+        "kafka.apache.org",
+        "confluent.io",
+        "stackoverflow.com"
+      ],
+      "expected_phrases": [
+        "rebalance"
+      ]
+    },
+    {
+      "id": "t031",
+      "category": "technical",
+      "query": "s3 pre-signed URL expiry maximum 7 days",
+      "split": "heldout",
+      "acceptable_domains": [
+        "docs.aws.amazon.com",
+        "aws.amazon.com",
+        "stackoverflow.com"
+      ],
+      "expected_phrases": [
+        "7 days",
+        "sigv4",
+        "expiration"
+      ]
+    },
+    {
+      "id": "t032",
+      "category": "technical",
+      "query": "rust tokio spawn blocking vs async",
+      "split": "heldout",
+      "acceptable_domains": [
+        "docs.rs",
+        "tokio.rs",
+        "stackoverflow.com",
+        "github.com"
+      ],
+      "expected_phrases": [
+        "spawn_blocking"
+      ]
+    },
+    {
+      "id": "t033",
+      "category": "technical",
+      "query": "chrome devtools performance profile long task blocking main thread",
+      "split": "heldout",
+      "acceptable_domains": [
+        "developer.chrome.com",
+        "web.dev",
+        "developer.mozilla.org"
+      ],
+      "expected_phrases": [
+        "main thread"
+      ]
+    },
+    {
+      "id": "t034",
+      "category": "technical",
+      "query": "elasticsearch mapping keyword vs text analyzer difference",
+      "split": "heldout",
+      "acceptable_domains": [
+        "elastic.co",
+        "stackoverflow.com",
+        "github.com"
+      ],
+      "expected_phrases": [
+        "keyword"
+      ]
+    },
+    {
+      "id": "t035",
+      "category": "technical",
+      "query": "webpack tree shaking sideEffects false package.json",
+      "split": "heldout",
+      "acceptable_domains": [
+        "webpack.js.org",
+        "stackoverflow.com",
+        "github.com",
+        "developer.mozilla.org"
+      ],
+      "expected_phrases": [
+        "sideEffects"
+      ]
+    },
+    {
+      "id": "l001",
+      "category": "long_tail",
+      "query": "average lifespan of a Greenland shark",
+      "split": "dev",
+      "acceptable_domains": [
+        "en.wikipedia.org",
+        "nationalgeographic.com",
+        "britannica.com",
+        "nature.com",
+        "oceanconservancy.org"
+      ]
+    },
+    {
+      "id": "l002",
+      "category": "long_tail",
+      "query": "how to make sourdough starter from scratch timeline",
+      "split": "dev",
+      "acceptable_domains": [
+        "kingarthurbaking.com",
+        "seriouseats.com",
+        "en.wikipedia.org",
+        "bbcgoodfood.com",
+        "food52.com"
+      ]
+    },
+    {
+      "id": "l003",
+      "category": "long_tail",
+      "query": "why do cats knead with their paws",
+      "split": "dev",
+      "acceptable_domains": [
+        "petmd.com",
+        "aspca.org",
+        "en.wikipedia.org",
+        "vetmed.ucdavis.edu",
+        "hillspet.com"
+      ]
+    },
+    {
+      "id": "l004",
+      "category": "long_tail",
+      "query": "fastest way to shred a chicken breast with a stand mixer",
+      "split": "dev",
+      "acceptable_domains": [
+        "seriouseats.com",
+        "allrecipes.com",
+        "food52.com",
+        "bonappetit.com"
+      ]
+    },
+    {
+      "id": "l005",
+      "category": "long_tail",
+      "query": "do penguins have knees",
+      "split": "dev",
+      "acceptable_domains": [
+        "en.wikipedia.org",
+        "britannica.com",
+        "nationalgeographic.com",
+        "animals.sandiegozoo.org"
+      ]
+    },
+    {
+      "id": "l006",
+      "category": "long_tail",
+      "query": "how to remove hard water stains from glass shower door without chemicals",
+      "split": "dev",
+      "acceptable_domains": [
+        "bhg.com",
+        "goodhousekeeping.com",
+        "apartmenttherapy.com",
+        "homeguides.sfgate.com",
+        "familyhandyman.com"
+      ]
+    },
+    {
+      "id": "l007",
+      "category": "long_tail",
+      "query": "what happens if you boil maple syrup twice",
+      "split": "dev",
+      "acceptable_domains": [
+        "maplesyrup.org",
+        "en.wikipedia.org",
+        "kingarthurbaking.com",
+        "seriouseats.com"
+      ]
+    },
+    {
+      "id": "l008",
+      "category": "long_tail",
+      "query": "record for most consecutive days living underwater",
+      "split": "dev",
+      "acceptable_domains": [
+        "guinnessworldrecords.com",
+        "en.wikipedia.org",
+        "bbc.com",
+        "reuters.com"
+      ]
+    },
+    {
+      "id": "l009",
+      "category": "long_tail",
+      "query": "how long can a hermit crab go without changing shells",
+      "split": "dev",
+      "acceptable_domains": [
+        "en.wikipedia.org",
+        "petmd.com",
+        "thesprucepets.com",
+        "britannica.com"
+      ]
+    },
+    {
+      "id": "l010",
+      "category": "long_tail",
+      "query": "why does my sourdough bread taste like alcohol",
+      "split": "dev",
+      "acceptable_domains": [
+        "kingarthurbaking.com",
+        "theperfectloaf.com",
+        "seriouseats.com",
+        "breadtopia.com"
+      ]
+    },
+    {
+      "id": "l011",
+      "category": "long_tail",
+      "query": "smallest country in the world by population 2025",
+      "split": "dev",
+      "acceptable_domains": [
+        "en.wikipedia.org",
+        "worldometers.info",
+        "britannica.com",
+        "worldpopulationreview.com"
+      ]
+    },
+    {
+      "id": "l012",
+      "category": "long_tail",
+      "query": "how many sheets of paper in a ream of A4",
+      "split": "dev",
+      "acceptable_domains": [
+        "en.wikipedia.org",
+        "britannica.com",
+        "papersizes.org",
+        "iso.org"
+      ],
+      "expected_phrases": [
+        "500"
+      ]
+    },
+    {
+      "id": "l013",
+      "category": "long_tail",
+      "query": "average reading speed words per minute for adults",
+      "split": "dev",
+      "acceptable_domains": [
+        "en.wikipedia.org",
+        "sciencedirect.com",
+        "readspeeder.com",
+        "irisreading.com"
+      ]
+    },
+    {
+      "id": "l014",
+      "category": "long_tail",
+      "query": "what is the loudest sound ever recorded in decibels",
+      "split": "dev",
+      "acceptable_domains": [
+        "en.wikipedia.org",
+        "guinnessworldrecords.com",
+        "noaa.gov",
+        "britannica.com"
+      ]
+    },
+    {
+      "id": "l015",
+      "category": "long_tail",
+      "query": "how do you unclog a shower drain with baking soda and vinegar safely",
+      "split": "dev",
+      "acceptable_domains": [
+        "familyhandyman.com",
+        "bhg.com",
+        "goodhousekeeping.com",
+        "thespruce.com"
+      ]
+    },
+    {
+      "id": "l016",
+      "category": "long_tail",
+      "query": "why is my granite countertop suddenly sticky",
+      "split": "dev",
+      "acceptable_domains": [
+        "hunker.com",
+        "familyhandyman.com",
+        "thespruce.com",
+        "homeguides.sfgate.com"
+      ]
+    },
+    {
+      "id": "l017",
+      "category": "long_tail",
+      "query": "how much caffeine in a double shot of espresso milligrams",
+      "split": "dev",
+      "acceptable_domains": [
+        "usda.gov",
+        "healthline.com",
+        "mayoclinic.org",
+        "coffeeinstitute.org"
+      ]
+    },
+    {
+      "id": "l018",
+      "category": "long_tail",
+      "query": "do house centipedes bite humans",
+      "split": "dev",
+      "acceptable_domains": [
+        "en.wikipedia.org",
+        "extension.psu.edu",
+        "orkin.com",
+        "pestworld.org",
+        "healthline.com"
+      ]
+    },
+    {
+      "id": "l019",
+      "category": "long_tail",
+      "query": "how to fix a washing machine that smells like mold",
+      "split": "dev",
+      "acceptable_domains": [
+        "familyhandyman.com",
+        "thespruce.com",
+        "goodhousekeeping.com",
+        "consumerreports.org"
+      ]
+    },
+    {
+      "id": "l020",
+      "category": "long_tail",
+      "query": "what is the difference between a loon and a grebe",
+      "split": "dev",
+      "acceptable_domains": [
+        "allaboutbirds.org",
+        "en.wikipedia.org",
+        "audubon.org",
+        "merriam-webster.com"
+      ],
+      "expected_phrases": [
+        "loon"
+      ]
+    },
+    {
+      "id": "l021",
+      "category": "long_tail",
+      "query": "how many times can you reuse frying oil safely",
+      "split": "dev",
+      "acceptable_domains": [
+        "seriouseats.com",
+        "healthline.com",
+        "usda.gov",
+        "foodsafety.gov"
+      ]
+    },
+    {
+      "id": "l022",
+      "category": "long_tail",
+      "query": "why does my dishwasher leave a white film on glassware",
+      "split": "heldout",
+      "acceptable_domains": [
+        "familyhandyman.com",
+        "goodhousekeeping.com",
+        "thespruce.com",
+        "consumerreports.org"
+      ]
+    },
+    {
+      "id": "l023",
+      "category": "long_tail",
+      "query": "oldest continuously operating restaurant in the world",
+      "split": "heldout",
+      "acceptable_domains": [
+        "guinnessworldrecords.com",
+        "en.wikipedia.org",
+        "atlasobscura.com",
+        "bbc.com"
+      ]
+    },
+    {
+      "id": "l024",
+      "category": "long_tail",
+      "query": "how long do sea turtles hold their breath",
+      "split": "heldout",
+      "acceptable_domains": [
+        "noaa.gov",
+        "en.wikipedia.org",
+        "nationalgeographic.com",
+        "seeturtles.org"
+      ]
+    },
+    {
+      "id": "l025",
+      "category": "long_tail",
+      "query": "what causes the smell of rain petrichor",
+      "split": "heldout",
+      "acceptable_domains": [
+        "en.wikipedia.org",
+        "scientificamerican.com",
+        "britannica.com",
+        "nature.com"
+      ],
+      "expected_phrases": [
+        "petrichor"
+      ]
+    },
+    {
+      "id": "l026",
+      "category": "long_tail",
+      "query": "how to keep basil alive indoors in winter",
+      "split": "heldout",
+      "acceptable_domains": [
+        "gardeningknowhow.com",
+        "bonnieplants.com",
+        "thespruce.com",
+        "rhs.org.uk"
+      ]
+    },
+    {
+      "id": "l027",
+      "category": "long_tail",
+      "query": "why does my USB-C cable only charge in one orientation",
+      "split": "heldout",
+      "acceptable_domains": [
+        "electronics.stackexchange.com",
+        "usb.org",
+        "stackoverflow.com",
+        "ifixit.com"
+      ],
+      "expected_phrases": [
+        "USB"
+      ]
+    },
+    {
+      "id": "l028",
+      "category": "long_tail",
+      "query": "how many decibels is a jet engine at takeoff",
+      "split": "heldout",
+      "acceptable_domains": [
+        "faa.gov",
+        "en.wikipedia.org",
+        "nasa.gov",
+        "icao.int"
+      ]
+    },
+    {
+      "id": "l029",
+      "category": "long_tail",
+      "query": "what happens to a shipwreck in deep water over 100 years",
+      "split": "heldout",
+      "acceptable_domains": [
+        "noaa.gov",
+        "en.wikipedia.org",
+        "nhm.ac.uk",
+        "nationalgeographic.com"
+      ]
+    },
+    {
+      "id": "l030",
+      "category": "long_tail",
+      "query": "average cost to replace a car timing belt by model",
+      "split": "heldout",
+      "acceptable_domains": [
+        "repairpal.com",
+        "kbb.com",
+        "carfax.com",
+        "consumerreports.org",
+        "yourmechanic.com"
+      ]
+    },
+    {
+      "id": "e001",
+      "category": "non_english",
+      "query": "Hauptstadt von Australien",
+      "split": "dev",
+      "acceptable_domains": [
+        "de.wikipedia.org",
+        "britannica.com",
+        "australien-info.de",
+        "planet-wissen.de"
+      ],
+      "expected_phrases": [
+        "Canberra"
+      ]
+    },
+    {
+      "id": "e002",
+      "category": "non_english",
+      "query": "meilleur restaurant ramen \u00e0 Paris",
+      "split": "dev",
+      "acceptable_domains": [
+        "fr.wikipedia.org",
+        "lefooding.com",
+        "timeout.fr",
+        "paris.fr",
+        "tripadvisor.fr"
+      ]
+    },
+    {
+      "id": "e003",
+      "category": "non_english",
+      "query": "receta de paella valenciana aut\u00e9ntica",
+      "split": "dev",
+      "acceptable_domains": [
+        "es.wikipedia.org",
+        "recetasderechupete.com",
+        "directoalpaladar.com",
+        "paellarecipes.org"
+      ],
+      "expected_phrases": [
+        "paella"
+      ]
+    },
+    {
+      "id": "e004",
+      "category": "non_english",
+      "query": "\u6771\u4eac\u90fd\u306e\u4eba\u53e3 2025",
+      "split": "dev",
+      "acceptable_domains": [
+        "ja.wikipedia.org",
+        "tokyo.lg.jp",
+        "stat.go.jp",
+        "nippon.com"
+      ],
+      "expected_phrases": [
+        "\u6771\u4eac"
+      ]
+    },
+    {
+      "id": "e005",
+      "category": "non_english",
+      "query": "\u4e2d\u56fd\u7684\u9996\u90fd\u662f\u54ea\u5ea7\u57ce\u5e02",
+      "split": "dev",
+      "acceptable_domains": [
+        "zh.wikipedia.org",
+        "baike.baidu.com",
+        "britannica.com",
+        "gov.cn"
+      ],
+      "expected_phrases": [
+        "\u5317\u4eac"
+      ]
+    },
+    {
+      "id": "e006",
+      "category": "non_english",
+      "query": "\u092d\u093e\u0930\u0924 \u0915\u093e \u0938\u092c\u0938\u0947 \u092c\u0921\u093c\u093e \u0930\u093e\u091c\u094d\u092f \u0915\u094d\u0937\u0947\u0924\u094d\u0930\u092b\u0932 \u092e\u0947\u0902",
+      "split": "dev",
+      "acceptable_domains": [
+        "hi.wikipedia.org",
+        "en.wikipedia.org",
+        "rajasthan.gov.in",
+        "india.gov.in"
+      ],
+      "expected_phrases": [
+        "\u0930\u093e\u091c\u0938\u094d\u0925\u093e\u0928",
+        "Rajasthan"
+      ]
+    },
+    {
+      "id": "e007",
+      "category": "non_english",
+      "query": "qual \u00e9 a capital do Brasil",
+      "split": "dev",
+      "acceptable_domains": [
+        "pt.wikipedia.org",
+        "brasil.gov.br",
+        "britannica.com",
+        "mundoeducacao.uol.com.br"
+      ],
+      "expected_phrases": [
+        "Bras\u00edlia"
+      ]
+    },
+    {
+      "id": "e008",
+      "category": "non_english",
+      "query": "\u043a\u0442\u043e \u043d\u0430\u043f\u0438\u0441\u0430\u043b \u0412\u043e\u0439\u043d\u0443 \u0438 \u043c\u0438\u0440",
+      "split": "dev",
+      "acceptable_domains": [
+        "ru.wikipedia.org",
+        "britannica.com",
+        "tolstoy.ru",
+        "culture.ru"
+      ],
+      "expected_phrases": [
+        "\u0422\u043e\u043b\u0441\u0442\u043e\u0439"
+      ]
+    },
+    {
+      "id": "e009",
+      "category": "non_english",
+      "query": "\u0645\u0627 \u0647\u064a \u0639\u0627\u0635\u0645\u0629 \u0627\u0644\u0645\u063a\u0631\u0628",
+      "split": "dev",
+      "acceptable_domains": [
+        "ar.wikipedia.org",
+        "britannica.com",
+        "maroc.ma",
+        "bbc.com"
+      ],
+      "expected_phrases": [
+        "\u0627\u0644\u0631\u0628\u0627\u0637"
+      ]
+    },
+    {
+      "id": "e010",
+      "category": "non_english",
+      "query": "\ub300\ud55c\ubbfc\uad6d \uc218\ub3c4\ub294 \uc5b4\ub514\uc778\uac00\uc694",
+      "split": "dev",
+      "acceptable_domains": [
+        "ko.wikipedia.org",
+        "seoul.go.kr",
+        "britannica.com",
+        "korea.net"
+      ],
+      "expected_phrases": [
+        "\uc11c\uc6b8"
+      ]
+    },
+    {
+      "id": "e011",
+      "category": "non_english",
+      "query": "T\u00fcrkiye'nin en kalabal\u0131k \u015fehri",
+      "split": "dev",
+      "acceptable_domains": [
+        "tr.wikipedia.org",
+        "britannica.com",
+        "ibar.az",
+        "turkstat.gov.tr"
+      ],
+      "expected_phrases": [
+        "\u0130stanbul"
+      ]
+    },
+    {
+      "id": "e012",
+      "category": "non_english",
+      "query": "jaka jest najd\u0142u\u017csza rzeka w Polsce",
+      "split": "dev",
+      "acceptable_domains": [
+        "pl.wikipedia.org",
+        "britannica.com",
+        "gov.pl",
+        "wisla.pl"
+      ],
+      "expected_phrases": [
+        "Wis\u0142a",
+        "Vistula"
+      ]
+    },
+    {
+      "id": "e013",
+      "category": "non_english",
+      "query": "quanto costa un biglietto del Colosseo",
+      "split": "dev",
+      "acceptable_domains": [
+        "it.wikipedia.org",
+        "colosseo.it",
+        "coopculture.it",
+        "romeguide.it"
+      ],
+      "expected_phrases": [
+        "Colosseo",
+        "euro"
+      ]
+    },
+    {
+      "id": "e014",
+      "category": "non_english",
+      "query": "wat is de hoofdstad van Belgi\u00eb",
+      "split": "dev",
+      "acceptable_domains": [
+        "nl.wikipedia.org",
+        "britannica.com",
+        "belgium.be",
+        "vlaanderen.be"
+      ],
+      "expected_phrases": [
+        "Brussel"
+      ]
+    },
+    {
+      "id": "e015",
+      "category": "non_english",
+      "query": "vad \u00e4r Sveriges h\u00f6gsta berg",
+      "split": "dev",
+      "acceptable_domains": [
+        "sv.wikipedia.org",
+        "britannica.com",
+        "smhi.se",
+        "visitsweden.com"
+      ],
+      "expected_phrases": [
+        "Kebnekaise"
+      ]
+    },
+    {
+      "id": "e016",
+      "category": "non_english",
+      "query": "berapa jumlah penduduk Indonesia 2025",
+      "split": "dev",
+      "acceptable_domains": [
+        "id.wikipedia.org",
+        "bps.go.id",
+        "worldometers.info",
+        "kemenkeu.go.id"
+      ],
+      "expected_phrases": [
+        "Indonesia"
+      ]
+    },
+    {
+      "id": "e017",
+      "category": "non_english",
+      "query": "th\u1ee7 \u0111\u00f4 c\u1ee7a Vi\u1ec7t Nam l\u00e0 g\u00ec",
+      "split": "dev",
+      "acceptable_domains": [
+        "vi.wikipedia.org",
+        "britannica.com",
+        "vietnam.gov.vn",
+        "baomoi.com"
+      ],
+      "expected_phrases": [
+        "H\u00e0 N\u1ed9i"
+      ]
+    },
+    {
+      "id": "e018",
+      "category": "non_english",
+      "query": "\u05d0\u05d9\u05da \u05d0\u05d5\u05de\u05e8\u05d9\u05dd \u05e9\u05dc\u05d5\u05dd \u05d1\u05e2\u05d1\u05e8\u05d9\u05ea",
+      "split": "heldout",
+      "acceptable_domains": [
+        "he.wikipedia.org",
+        "britannica.com",
+        "pealim.com",
+        "haaretz.co.il"
+      ],
+      "expected_phrases": [
+        "\u05e9\u05dc\u05d5\u05dd"
+      ]
+    },
+    {
+      "id": "e019",
+      "category": "non_english",
+      "query": "\u03c0\u03bf\u03b9\u03b1 \u03b5\u03af\u03bd\u03b1\u03b9 \u03b7 \u03c0\u03c1\u03c9\u03c4\u03b5\u03cd\u03bf\u03c5\u03c3\u03b1 \u03c4\u03b7\u03c2 \u0395\u03bb\u03bb\u03ac\u03b4\u03b1\u03c2",
+      "split": "heldout",
+      "acceptable_domains": [
+        "el.wikipedia.org",
+        "britannica.com",
+        "government.gr",
+        "visitgreece.gr"
+      ],
+      "expected_phrases": [
+        "\u0391\u03b8\u03ae\u03bd\u03b1"
+      ]
+    },
+    {
+      "id": "e020",
+      "category": "non_english",
+      "query": "\u044f\u043a\u0430 \u0441\u0442\u043e\u043b\u0438\u0446\u044f \u0423\u043a\u0440\u0430\u0457\u043d\u0438",
+      "split": "heldout",
+      "acceptable_domains": [
+        "uk.wikipedia.org",
+        "britannica.com",
+        "kmu.gov.ua",
+        "kyivcity.gov.ua"
+      ],
+      "expected_phrases": [
+        "\u041a\u0438\u0457\u0432"
+      ]
+    },
+    {
+      "id": "e021",
+      "category": "non_english",
+      "query": "\u067e\u0627\u06cc\u062a\u062e\u062a \u0627\u06cc\u0631\u0627\u0646 \u06a9\u062c\u0627\u0633\u062a",
+      "split": "heldout",
+      "acceptable_domains": [
+        "fa.wikipedia.org",
+        "britannica.com",
+        "tehran.ir",
+        "bbc.com"
+      ],
+      "expected_phrases": [
+        "\u062a\u0647\u0631\u0627\u0646"
+      ]
+    },
+    {
+      "id": "e022",
+      "category": "non_english",
+      "query": "Wie funktioniert eine W\u00e4rmepumpe im Altbau",
+      "split": "heldout",
+      "acceptable_domains": [
+        "de.wikipedia.org",
+        "verbraucherzentrale.de",
+        "heise.de",
+        "umweltbundesamt.de"
+      ],
+      "expected_phrases": [
+        "W\u00e4rmepumpe"
+      ]
+    },
+    {
+      "id": "e023",
+      "category": "non_english",
+      "query": "meilleure biblioth\u00e8que Python pour scraper",
+      "split": "heldout",
+      "acceptable_domains": [
+        "fr.wikipedia.org",
+        "doc.requests-html.readthedocs.io",
+        "pypi.org",
+        "github.com"
+      ],
+      "expected_phrases": [
+        "Python"
+      ]
+    },
+    {
+      "id": "e024",
+      "category": "non_english",
+      "query": "como instalar numpy en Windows",
+      "split": "heldout",
+      "acceptable_domains": [
+        "es.wikipedia.org",
+        "numpy.org",
+        "pypi.org",
+        "stackoverflow.com"
+      ],
+      "expected_phrases": [
+        "numpy"
+      ]
+    },
+    {
+      "id": "e025",
+      "category": "non_english",
+      "query": "\u65e5\u672c\u306e\u65b0\u5e79\u7dda\u306e\u6700\u9ad8\u901f\u5ea6",
+      "split": "heldout",
+      "acceptable_domains": [
+        "ja.wikipedia.org",
+        "jr-central.co.jp",
+        "mlit.go.jp",
+        "japan-guide.com"
+      ],
+      "expected_phrases": [
+        "\u65b0\u5e79\u7dda"
+      ]
+    },
+    {
+      "id": "m001",
+      "category": "multi_intent",
+      "query": "compare PostgreSQL and MySQL for JSON workloads performance and indexing",
+      "split": "dev",
+      "acceptable_domains": [
+        "postgresql.org",
+        "dev.mysql.com",
+        "stackoverflow.com",
+        "mongodb.com",
+        "dba.stackexchange.com"
+      ],
+      "expected_phrases": [
+        "PostgreSQL"
+      ]
+    },
+    {
+      "id": "m002",
+      "category": "multi_intent",
+      "query": "best way to deploy a Python app and how much does it cost on AWS",
+      "split": "dev",
+      "acceptable_domains": [
+        "docs.aws.amazon.com",
+        "aws.amazon.com",
+        "render.com",
+        "fly.io",
+        "heroku.com"
+      ],
+      "expected_phrases": [
+        "AWS"
+      ]
+    },
+    {
+      "id": "m003",
+      "category": "multi_intent",
+      "query": "difference between TCP and UDP and when to use each with examples",
+      "split": "dev",
+      "acceptable_domains": [
+        "developer.mozilla.org",
+        "en.wikipedia.org",
+        "cloudflare.com",
+        "ibm.com"
+      ],
+      "expected_phrases": [
+        "TCP"
+      ]
+    },
+    {
+      "id": "m004",
+      "category": "multi_intent",
+      "query": "is coffee good for you and how many cups per day is safe",
+      "split": "dev",
+      "acceptable_domains": [
+        "healthline.com",
+        "mayoclinic.org",
+        "harvard.edu",
+        "nih.gov",
+        "who.int"
+      ],
+      "expected_phrases": [
+        "coffee"
+      ]
+    },
+    {
+      "id": "m005",
+      "category": "multi_intent",
+      "query": "which electric car has the longest range and what does it cost",
+      "split": "dev",
+      "acceptable_domains": [
+        "caranddriver.com",
+        "motortrend.com",
+        "epa.gov",
+        "tesla.com",
+        "edmunds.com"
+      ],
+      "expected_phrases": [
+        "range"
+      ]
+    },
+    {
+      "id": "m006",
+      "category": "multi_intent",
+      "query": "how does HTTPS work and what happens during a TLS handshake",
+      "split": "dev",
+      "acceptable_domains": [
+        "developer.mozilla.org",
+        "cloudflare.com",
+        "en.wikipedia.org",
+        "rfc-editor.org",
+        "letsencrypt.org"
+      ],
+      "expected_phrases": [
+        "TLS"
+      ]
+    },
+    {
+      "id": "m007",
+      "category": "multi_intent",
+      "query": "side effects of intermittent fasting and evidence for weight loss",
+      "split": "dev",
+      "acceptable_domains": [
+        "nih.gov",
+        "mayoclinic.org",
+        "healthline.com",
+        "harvard.edu",
+        "nature.com"
+      ],
+      "expected_phrases": [
+        "fasting"
+      ]
+    },
+    {
+      "id": "m008",
+      "category": "multi_intent",
+      "query": "cost of living in Lisbon and average rent for a one bedroom",
+      "split": "dev",
+      "acceptable_domains": [
+        "numbeo.com",
+        "idealista.pt",
+        "expatica.com",
+        "ine.pt",
+        "expatistan.com"
+      ],
+      "expected_phrases": [
+        "Lisbon",
+        "rent"
+      ]
+    },
+    {
+      "id": "m009",
+      "category": "multi_intent",
+      "query": "Kubernetes vs Docker Swarm which is better for small teams and why",
+      "split": "dev",
+      "acceptable_domains": [
+        "kubernetes.io",
+        "docs.docker.com",
+        "stackoverflow.com",
+        "reddit.com",
+        "github.com"
+      ],
+      "expected_phrases": [
+        "Kubernetes"
+      ]
+    },
+    {
+      "id": "m010",
+      "category": "multi_intent",
+      "query": "what is inflation and how is CPI calculated by central banks",
+      "split": "dev",
+      "acceptable_domains": [
+        "bls.gov",
+        "ecb.europa.eu",
+        "federalreserve.gov",
+        "imf.org",
+        "investopedia.com"
+      ],
+      "expected_phrases": [
+        "inflation"
+      ]
+    },
+    {
+      "id": "m011",
+      "category": "multi_intent",
+      "query": "how to learn guitar as an adult and how long until you can play songs",
+      "split": "dev",
+      "acceptable_domains": [
+        "justinguitar.com",
+        "reddit.com",
+        "guitarworld.com",
+        "berklee.edu",
+        "youtube.com"
+      ],
+      "expected_phrases": [
+        "guitar"
+      ]
+    },
+    {
+      "id": "m012",
+      "category": "multi_intent",
+      "query": "solar panel payback period in Germany and current feed-in tariff",
+      "split": "dev",
+      "acceptable_domains": [
+        "bnetza.de",
+        "bundesnetzagentur.de",
+        "solaranlage.de",
+        "verivox.de",
+        "fraunhofer.de"
+      ],
+      "expected_phrases": [
+        "solar"
+      ]
+    },
+    {
+      "id": "m013",
+      "category": "multi_intent",
+      "query": "best noise cancelling headphones for flights and how they compare on battery life",
+      "split": "dev",
+      "acceptable_domains": [
+        "rtings.com",
+        "whathifi.com",
+        "sony.com",
+        "bose.com",
+        "techradar.com"
+      ],
+      "expected_phrases": [
+        "noise cancelling"
+      ]
+    },
+    {
+      "id": "m014",
+      "category": "multi_intent",
+      "query": "how do vaccines work and what is herd immunity threshold for measles",
+      "split": "dev",
+      "acceptable_domains": [
+        "who.int",
+        "cdc.gov",
+        "nih.gov",
+        "mayoclinic.org",
+        "nature.com"
+      ],
+      "expected_phrases": [
+        "herd immunity"
+      ]
+    },
+    {
+      "id": "m015",
+      "category": "multi_intent",
+      "query": "Python asyncio vs threading when to use each with an example",
+      "split": "dev",
+      "acceptable_domains": [
+        "docs.python.org",
+        "realpython.com",
+        "stackoverflow.com",
+        "python.org"
+      ],
+      "expected_phrases": [
+        "asyncio"
+      ]
+    },
+    {
+      "id": "m016",
+      "category": "multi_intent",
+      "query": "how much protein do I need per day and what foods have the most",
+      "split": "heldout",
+      "acceptable_domains": [
+        "nih.gov",
+        "harvard.edu",
+        "healthline.com",
+        "mayoclinic.org",
+        "usda.gov"
+      ],
+      "expected_phrases": [
+        "protein"
+      ]
+    },
+    {
+      "id": "m017",
+      "category": "multi_intent",
+      "query": "why is my Wi-Fi slow and how do I choose a better channel",
+      "split": "heldout",
+      "acceptable_domains": [
+        "netgear.com",
+        "tp-link.com",
+        "howtogeek.com",
+        "fcc.gov",
+        "intel.com"
+      ],
+      "expected_phrases": [
+        "channel"
+      ]
+    },
+    {
+      "id": "m018",
+      "category": "multi_intent",
+      "query": "what is quantum computing and which companies have working qubits today",
+      "split": "heldout",
+      "acceptable_domains": [
+        "ibm.com",
+        "google.com",
+        "nature.com",
+        "en.wikipedia.org",
+        "mit.edu"
+      ],
+      "expected_phrases": [
+        "qubit"
+      ]
+    },
+    {
+      "id": "m019",
+      "category": "multi_intent",
+      "query": "best time to visit Japan and what does a two week trip cost",
+      "split": "heldout",
+      "acceptable_domains": [
+        "japan.travel",
+        "japan-guide.com",
+        "lonelyplanet.com",
+        "numbeo.com",
+        "jnto.go.jp"
+      ],
+      "expected_phrases": [
+        "Japan"
+      ]
+    },
+    {
+      "id": "m020",
+      "category": "multi_intent",
+      "query": "difference between machine learning and deep learning with real use cases",
+      "split": "heldout",
+      "acceptable_domains": [
+        "ibm.com",
+        "mit.edu",
+        "en.wikipedia.org",
+        "coursera.org",
+        "deeplearning.ai"
+      ],
+      "expected_phrases": [
+        "deep learning"
+      ]
+    },
+    {
+      "id": "r001",
+      "category": "recent_news",
+      "query": "latest news about the European Union AI Act enforcement",
+      "split": "dev",
+      "acceptable_domains": [
+        "reuters.com",
+        "apnews.com",
+        "bbc.com",
+        "politico.eu",
+        "ec.europa.eu",
+        "theguardian.com"
+      ],
+      "recency_days": 30
+    },
+    {
+      "id": "r002",
+      "category": "recent_news",
+      "query": "Federal Reserve interest rate decision news",
+      "split": "dev",
+      "acceptable_domains": [
+        "reuters.com",
+        "federalreserve.gov",
+        "bloomberg.com",
+        "cnbc.com",
+        "apnews.com",
+        "wsj.com"
+      ],
+      "recency_days": 30
+    },
+    {
+      "id": "r003",
+      "category": "recent_news",
+      "query": "NVIDIA quarterly earnings results news",
+      "split": "dev",
+      "acceptable_domains": [
+        "reuters.com",
+        "cnbc.com",
+        "investor.nvidia.com",
+        "bloomberg.com",
+        "nasdaq.com",
+        "ft.com"
+      ],
+      "recency_days": 60
+    },
+    {
+      "id": "r004",
+      "category": "recent_news",
+      "query": "OpenAI latest model announcement",
+      "split": "dev",
+      "acceptable_domains": [
+        "openai.com",
+        "techcrunch.com",
+        "reuters.com",
+        "theverge.com",
+        "arstechnica.com"
+      ],
+      "recency_days": 60
+    },
+    {
+      "id": "r005",
+      "category": "recent_news",
+      "query": "current situation in Ukraine war reporting",
+      "split": "dev",
+      "acceptable_domains": [
+        "reuters.com",
+        "apnews.com",
+        "bbc.com",
+        "theguardian.com",
+        "aljazeera.com",
+        "kyivindependent.com"
+      ],
+      "recency_days": 14
+    },
+    {
+      "id": "r006",
+      "category": "recent_news",
+      "query": "wildfire news California evacuation",
+      "split": "dev",
+      "acceptable_domains": [
+        "reuters.com",
+        "apnews.com",
+        "fire.ca.gov",
+        "latimes.com",
+        "sfchronicle.com",
+        "bbc.com"
+      ],
+      "recency_days": 30
+    },
+    {
+      "id": "r007",
+      "category": "recent_news",
+      "query": "NASA Artemis mission latest launch schedule",
+      "split": "dev",
+      "acceptable_domains": [
+        "nasa.gov",
+        "reuters.com",
+        "spaceflightnow.com",
+        "nasaspaceflight.com",
+        "arstechnica.com"
+      ],
+      "recency_days": 90
+    },
+    {
+      "id": "r008",
+      "category": "recent_news",
+      "query": "global climate summit COP latest decisions",
+      "split": "dev",
+      "acceptable_domains": [
+        "unfccc.int",
+        "reuters.com",
+        "bbc.com",
+        "un.org",
+        "apnews.com",
+        "carbonbrief.org"
+      ],
+      "recency_days": 90
+    },
+    {
+      "id": "r009",
+      "category": "recent_news",
+      "query": "Bank of Japan monetary policy news",
+      "split": "dev",
+      "acceptable_domains": [
+        "reuters.com",
+        "boj.or.jp",
+        "bloomberg.com",
+        "nikkei.com",
+        "ft.com"
+      ],
+      "recency_days": 60
+    },
+    {
+      "id": "r010",
+      "category": "recent_news",
+      "query": "crypto regulation news SEC",
+      "split": "dev",
+      "acceptable_domains": [
+        "sec.gov",
+        "reuters.com",
+        "coindesk.com",
+        "bloomberg.com",
+        "theblock.co"
+      ],
+      "recency_days": 60
+    },
+    {
+      "id": "r011",
+      "category": "recent_news",
+      "query": "biggest technology layoffs announced this month",
+      "split": "dev",
+      "acceptable_domains": [
+        "layoffs.fyi",
+        "techcrunch.com",
+        "reuters.com",
+        "bloomberg.com",
+        "theinformation.com",
+        "cnbc.com"
+      ],
+      "recency_days": 30
+    },
+    {
+      "id": "r012",
+      "category": "recent_news",
+      "query": "hurricane season forecast Atlantic National Hurricane Center",
+      "split": "dev",
+      "acceptable_domains": [
+        "nhc.noaa.gov",
+        "noaa.gov",
+        "reuters.com",
+        "weather.com",
+        "apnews.com"
+      ],
+      "recency_days": 30
+    },
+    {
+      "id": "r013",
+      "category": "recent_news",
+      "query": "India general election results analysis",
+      "split": "dev",
+      "acceptable_domains": [
+        "eci.gov.in",
+        "reuters.com",
+        "thehindu.com",
+        "hindustantimes.com",
+        "bbc.com"
+      ],
+      "recency_days": 120
+    },
+    {
+      "id": "r014",
+      "category": "recent_news",
+      "query": "electric vehicle sales growth latest data",
+      "split": "dev",
+      "acceptable_domains": [
+        "reuters.com",
+        "iea.org",
+        "bloomberg.com",
+        "insideevs.com",
+        "cnbc.com",
+        "acea.auto"
+      ],
+      "recency_days": 60
+    },
+    {
+      "id": "r015",
+      "category": "recent_news",
+      "query": "chips act semiconductor manufacturing investment news",
+      "split": "dev",
+      "acceptable_domains": [
+        "reuters.com",
+        "commerce.gov",
+        "semiconductors.org",
+        "ft.com",
+        "bloomberg.com"
+      ],
+      "recency_days": 120
+    },
+    {
+      "id": "r016",
+      "category": "recent_news",
+      "query": "WHO disease outbreak news alerts",
+      "split": "dev",
+      "acceptable_domains": [
+        "who.int",
+        "reuters.com",
+        "cdc.gov",
+        "ecdc.europa.eu",
+        "apnews.com"
+      ],
+      "recency_days": 30
+    },
+    {
+      "id": "r017",
+      "category": "recent_news",
+      "query": "Eurozone inflation rate latest release",
+      "split": "dev",
+      "acceptable_domains": [
+        "ec.europa.eu",
+        "eurostat.ec.europa.eu",
+        "ecb.europa.eu",
+        "reuters.com",
+        "ft.com"
+      ],
+      "recency_days": 30
+    },
+    {
+      "id": "r018",
+      "category": "recent_news",
+      "query": "latest Apple product launch news",
+      "split": "heldout",
+      "acceptable_domains": [
+        "apple.com",
+        "reuters.com",
+        "theverge.com",
+        "macrumors.com",
+        "9to5mac.com",
+        "bloomberg.com"
+      ],
+      "recency_days": 90
+    },
+    {
+      "id": "r019",
+      "category": "recent_news",
+      "query": "Brazil Amazon deforestation latest figures",
+      "split": "heldout",
+      "acceptable_domains": [
+        "inpe.br",
+        "reuters.com",
+        "bbc.com",
+        "gov.br",
+        "mongabay.com",
+        "nature.com"
+      ],
+      "recency_days": 120
+    },
+    {
+      "id": "r020",
+      "category": "recent_news",
+      "query": "UK general election latest polls",
+      "split": "heldout",
+      "acceptable_domains": [
+        "parliament.uk",
+        "bbc.com",
+        "theguardian.com",
+        "reuters.com",
+        "yougov.co.uk",
+        "economist.com"
+      ],
+      "recency_days": 120
+    },
+    {
+      "id": "r021",
+      "category": "recent_news",
+      "query": "earthquake today magnitude USGS",
+      "split": "heldout",
+      "acceptable_domains": [
+        "earthquake.usgs.gov",
+        "usgs.gov",
+        "reuters.com",
+        "apnews.com",
+        "emsc-csem.org"
+      ],
+      "recency_days": 7
+    },
+    {
+      "id": "r022",
+      "category": "recent_news",
+      "query": "Airbus and Boeing order backlog news",
+      "split": "heldout",
+      "acceptable_domains": [
+        "airbus.com",
+        "boeing.com",
+        "reuters.com",
+        "flightglobal.com",
+        "ft.com"
+      ],
+      "recency_days": 120
+    },
+    {
+      "id": "r023",
+      "category": "recent_news",
+      "query": "AI safety summit government regulation news",
+      "split": "heldout",
+      "acceptable_domains": [
+        "gov.uk",
+        "reuters.com",
+        "whitehouse.gov",
+        "ec.europa.eu",
+        "politico.com",
+        "ft.com"
+      ],
+      "recency_days": 120
+    },
+    {
+      "id": "r024",
+      "category": "recent_news",
+      "query": "oil price news OPEC production decision",
+      "split": "heldout",
+      "acceptable_domains": [
+        "opec.org",
+        "reuters.com",
+        "bloomberg.com",
+        "eia.gov",
+        "ft.com"
+      ],
+      "recency_days": 30
+    },
+    {
+      "id": "r025",
+      "category": "recent_news",
+      "query": "nuclear fusion experiment net energy gain news",
+      "split": "heldout",
+      "acceptable_domains": [
+        "llnl.gov",
+        "nature.com",
+        "reuters.com",
+        "science.org",
+        "iter.org",
+        "bbc.com"
+      ],
+      "recency_days": 180
+    }
+  ]
+}

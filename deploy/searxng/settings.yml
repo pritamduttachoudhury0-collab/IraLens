@@ -1,0 +1,36 @@
+# Minimal SearXNG settings for an IraLens backend.
+# Full reference: https://docs.searxng.org/admin/settings/
+use_default_settings: true
+
+general:
+  # Replace before exposing this instance beyond localhost:
+  #   python -c "import secrets; print(secrets.token_hex(32))"
+  secret_key: "CHANGE_ME_before_exposing_this_instance"
+  instance_name: "iralens-searxng"
+  enable_metrics: false
+
+search:
+  # The JSON API is what IraLens calls; html keeps the web UI usable.
+  formats:
+    - html
+    - json
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "en"
+
+server:
+  bind_address: "0.0.0.0"
+  port: 8080
+  # A self-hosted instance talks to public upstream engines only.
+  limiter: false
+  public_instance: false
+  image_proxy: false
+
+ui:
+  static_use_hash: true
+
+outgoing:
+  request_timeout: 6.0
+  max_request_timeout: 12.0
+  pool_connections: 100
+  pool_maxsize: 20

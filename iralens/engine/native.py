@@ -16,6 +16,7 @@ import queue
 import re
 import subprocess
 import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -25,6 +26,11 @@ from .locate import find_engine
 
 _PROTOCOL_VERSION = "2024-11-05"
 _DEFAULT_TIMEOUT = 60
+#: Budget for the JSON-RPC `initialize` handshake. The browser itself starts on
+#: the first navigation, so a handshake that takes longer than this means the
+#: binary is stuck (not merely slow). Override with the
+#: `engine_startup_timeout_seconds` config key / IRALENS_ENGINE_STARTUP_TIMEOUT_SECONDS.
+_HANDSHAKE_TIMEOUT = 20
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +102,7 @@ class BrowserEngine:
         self._stderr_tail: List[str] = []
         self._lock = threading.Lock()
         self._restored_state = False
+        self._startup_failure: Optional[errors.EngineUnavailableError] = None
 
     # ------------------------------------------------------------- lifecycle
     @property
@@ -111,9 +118,25 @@ class BrowserEngine:
             )
         return path
 
+    def _handshake_timeout(self) -> int:
+        raw = self.config.get("engine_startup_timeout_seconds") if self.config is not None else None
+        if raw not in (None, ""):
+            try:
+                return max(1, int(float(raw)))
+            except (TypeError, ValueError):
+                pass
+        return _HANDSHAKE_TIMEOUT
+
     def start(self) -> None:
         if self.running:
             return
+        if self._startup_failure is not None:
+            # Remembered for this process only: a binary that just died will not
+            # start working on the next call, and respawning it per attempt
+            # multiplies the failure cost across every engine and query.
+            previous = self._startup_failure
+            raise errors.EngineUnavailableError(previous.message, hint=previous.hint,
+                                                detail=previous.detail)
         binary = self.binary_path()
         argv = [str(binary), "mcp"]
         if self.config is not None:
@@ -141,14 +164,35 @@ class BrowserEngine:
         self._reader = threading.Thread(target=self._pump_stdout, daemon=True)
         self._reader.start()
         threading.Thread(target=self._pump_stderr, daemon=True).start()
-        self._rpc("initialize", {
-            "protocolVersion": _PROTOCOL_VERSION,
-            "capabilities": {},
-            "clientInfo": {"name": "iralens", "version": "0.1.0"},
-        })
+        try:
+            self._rpc("initialize", {
+                "protocolVersion": _PROTOCOL_VERSION,
+                "capabilities": {},
+                "clientInfo": {"name": "iralens", "version": "0.1.0"},
+            }, timeout=self._handshake_timeout())
+        except errors.EngineUnavailableError as exc:
+            self._startup_failure = exc
+            self._terminate()
+            raise
         self._restore_session_state()
 
+    def _terminate(self) -> None:
+        """Drop the child process without persisting anything (failure path)."""
+        proc, self._proc = self._proc, None
+        if proc is None:
+            return
+        try:
+            if proc.stdin:
+                proc.stdin.close()
+            proc.wait(timeout=2)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
     def close(self, *, persist_state: bool = True) -> None:
+        self._startup_failure = None
         if not self._proc:
             return
         if persist_state:
@@ -191,6 +235,29 @@ class BrowserEngine:
             if len(self._stderr_tail) > 40:
                 self._stderr_tail.pop(0)
 
+    def _engine_exited_error(self, method: str) -> errors.EngineUnavailableError:
+        """Typed failure for an engine that died instead of answering.
+
+        A binary that cannot start at all — a dangling `iralens-engine` shim
+        after the cache was cleared, a wrong-architecture build, a missing
+        shared library — used to make every browser-backed call wait out the
+        full RPC timeout (60 s), which is exactly the kind of silent, slow
+        failure the reliability contract forbids. The subprocess is polled
+        while waiting, so the failure is reported as soon as the process is
+        gone, with its exit code and (sanitized) last words.
+        """
+        code = self._proc.returncode if self._proc else None
+        detail = f"{method}: engine process exited (exit {code})"
+        tail = " | ".join(line for line in self._stderr_tail[-3:] if line.strip())
+        if tail:
+            detail = f"{detail}: {public_message(tail)[:200]}"
+        return errors.EngineUnavailableError(
+            "the browser engine exited before answering",
+            hint="reinstall it (iralens install-engine --force) or set IRALENS_ENGINE_PATH "
+                 "to a working binary",
+            detail=detail,
+        )
+
     def _rpc(self, method: str, params: Optional[dict] = None, timeout: int = _DEFAULT_TIMEOUT) -> Any:
         if not self.running:
             raise errors.EngineUnavailableError(
@@ -207,18 +274,23 @@ class BrowserEngine:
                 self._proc.stdin.write(json.dumps(request) + "\n")
                 self._proc.stdin.flush()
             except (BrokenPipeError, OSError) as exc:
-                raise errors.EngineUnavailableError(
-                    "lost connection to the browser engine", detail=public_message(exc)
-                ) from exc
+                raise self._engine_exited_error(method) from exc
 
-            deadline_queue: "queue.Queue[dict]" = self._responses
+            deadline = time.monotonic() + max(0.1, timeout)
+            # Poll in short slices: a dead child must be detected immediately,
+            # not after the whole timeout.
             while True:
+                slice_timeout = max(0.05, min(1.0, deadline - time.monotonic()))
                 try:
-                    payload = deadline_queue.get(timeout=timeout)
-                except queue.Empty as exc:
-                    raise errors.OperationTimeoutError(
-                        f"browser engine did not respond within {timeout}s"
-                    ) from exc
+                    payload = self._responses.get(timeout=slice_timeout)
+                except queue.Empty:
+                    if not self.running:
+                        raise self._engine_exited_error(method) from None
+                    if time.monotonic() >= deadline:
+                        raise errors.OperationTimeoutError(
+                            f"browser engine did not respond within {timeout}s"
+                        ) from None
+                    continue
                 if payload.get("id") != req_id:
                     continue  # notification or stale frame
                 if "error" in payload:
