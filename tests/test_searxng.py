@@ -52,6 +52,7 @@ def test_parse_response_normalizes_and_filters():
 
 
 def test_search_returns_normalized_hits(monkeypatch):
+    monkeypatch.setenv("IRALENS_SEARXNG_INSTANCES", "https://one.test")
     monkeypatch.setattr(searxng_mod, "fetch_url_text",
                         lambda url, **kw: json.dumps(SAMPLE))
     backend = SearxngBackend(clock=FakeClock())
@@ -116,6 +117,27 @@ def test_failed_instance_goes_on_cooldown_and_next_is_tried(monkeypatch):
     assert any("one.test" in u for u in calls)
 
 
+def test_instance_cooldown_survives_backend_reconstruction(monkeypatch):
+    monkeypatch.setenv("IRALENS_SEARXNG_INSTANCES", "https://one.test,https://two.test")
+    clock = FakeClock()
+    seen = []
+
+    def first_fetch(url, **kwargs):
+        seen.append(url)
+        if url.startswith("https://one.test"):
+            raise SourceUnavailableError("rate limited", detail="http_429")
+        return json.dumps(SAMPLE)
+
+    monkeypatch.setattr(searxng_mod, "fetch_url_text", first_fetch)
+    SearxngBackend(clock=clock).search("q", SearchFilters(), 8, Ctx())
+    seen.clear()
+
+    # New backend object stands in for a fresh CLI process: one.test is still
+    # cooling down in the shared on-disk health database.
+    SearxngBackend(clock=clock).search("q", SearchFilters(), 8, Ctx())
+    assert len(seen) == 1 and seen[0].startswith("https://two.test")
+
+
 def test_cooldown_duration_is_configurable(monkeypatch):
     monkeypatch.setenv("IRALENS_SEARXNG_INSTANCES", "https://one.test")
     monkeypatch.setenv("IRALENS_SEARXNG_COOLDOWN_SECONDS", "10")
@@ -163,6 +185,7 @@ def test_non_json_response_is_a_failure_not_a_result(monkeypatch):
 
 
 def test_empty_result_set_is_honest_empty(monkeypatch):
+    monkeypatch.setenv("IRALENS_SEARXNG_INSTANCES", "https://one.test")
     monkeypatch.setattr(searxng_mod, "fetch_url_text",
                         lambda url, **kw: json.dumps({"results": []}))
     backend = SearxngBackend(clock=FakeClock())

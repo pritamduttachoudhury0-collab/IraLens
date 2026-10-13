@@ -287,6 +287,13 @@ def _request_host_port(req, default: int):
     return parts.hostname, (parts.port or default)
 
 
+def _url_origin(url: str) -> tuple:
+    parts = urlsplit(url)
+    scheme = parts.scheme.lower()
+    port = parts.port if parts.port is not None else (443 if scheme == "https" else 80)
+    return (scheme, (parts.hostname or "").lower().rstrip("."), port)
+
+
 class _PinnedHTTPHandler(urllib.request.HTTPHandler):
     def __init__(self, *, allow_private_hosts: bool = False) -> None:
         super().__init__()
@@ -327,12 +334,15 @@ class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Re-validates every redirect hop against the public-URL policy.
 
     A hop is rejected when it is not a clean public http(s) URL, when it
-    downgrades https to http, or when the chain is longer than MAX_REDIRECTS.
+    downgrades https to http, when an opted-in request changes origin, or when
+    the chain is longer than MAX_REDIRECTS.
     """
 
-    def __init__(self, *, allow_private_hosts: bool = False) -> None:
+    def __init__(self, *, allow_private_hosts: bool = False,
+                 same_origin_only: bool = False) -> None:
         super().__init__()
         self._allow_private = allow_private_hosts
+        self._same_origin_only = same_origin_only
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         from .errors import SecurityBlockedError
@@ -348,6 +358,11 @@ class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
         if origin.lower().startswith("https://") and newurl.lower().startswith("http://"):
             raise SecurityBlockedError("redirect downgrades https to http",
                                        detail=f"code={code}")
+        if self._same_origin_only and _url_origin(origin) != _url_origin(newurl):
+            raise SecurityBlockedError(
+                "credentialed request redirected to a different origin",
+                detail=f"code={code} cross_origin_redirect",
+            )
         # redirect_dict maps each hop URL to how often it was visited; the
         # chain length is the total, not the number of distinct URLs.
         hops = sum((getattr(req, "redirect_dict", {}) or {}).values())
@@ -356,10 +371,12 @@ class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def build_safe_opener(*, allow_private_hosts: bool = False) -> urllib.request.OpenerDirector:
+def build_safe_opener(*, allow_private_hosts: bool = False,
+                      same_origin_redirects: bool = False) -> urllib.request.OpenerDirector:
     """An opener with redirect re-validation and DNS-pinned connections."""
     return urllib.request.build_opener(
-        SafeRedirectHandler(allow_private_hosts=allow_private_hosts),
+        SafeRedirectHandler(allow_private_hosts=allow_private_hosts,
+                            same_origin_only=same_origin_redirects),
         _PinnedHTTPHandler(allow_private_hosts=allow_private_hosts),
         _PinnedHTTPSHandler(allow_private_hosts=allow_private_hosts),
     )
@@ -367,18 +384,24 @@ def build_safe_opener(*, allow_private_hosts: bool = False) -> urllib.request.Op
 
 def safe_urlopen(url: str, *, timeout: float = 30,
                  headers: Optional[Dict[str, str]] = None,
-                 allow_private_hosts: bool = False):
+                 data: Optional[bytes] = None,
+                 allow_private_hosts: bool = False,
+                 same_origin_redirects: bool = False):
     """urlopen replacement enforcing the SSRF policy end-to-end.
 
     The URL is normalized, every redirect hop is re-normalized, and each
     connection goes straight to an address that was validated after
-    resolution. Raises SecurityBlockedError for policy violations, and the
+    resolution. Credentialed clients may set ``same_origin_redirects`` to
+    prevent headers or request data from being forwarded to another origin.
+    Raises SecurityBlockedError for policy violations, and the
     usual urllib errors (URLError/HTTPError) for ordinary failures.
     """
     safe_url = normalize_public_http_url(url, allow_private_hosts=allow_private_hosts)
-    request = urllib.request.Request(safe_url, headers=headers or {})
-    return build_safe_opener(allow_private_hosts=allow_private_hosts).open(request,
-                                                                          timeout=timeout)
+    request = urllib.request.Request(safe_url, data=data, headers=headers or {})
+    return build_safe_opener(
+        allow_private_hosts=allow_private_hosts,
+        same_origin_redirects=same_origin_redirects,
+    ).open(request, timeout=timeout)
 
 
 def domain_matches(host: str, *domains: str) -> bool:

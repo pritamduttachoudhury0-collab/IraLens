@@ -25,7 +25,12 @@ Contract:
 from __future__ import annotations
 
 import io
+import re
+import shutil
+import subprocess
+import tempfile
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .errors import ExtractionError
@@ -317,13 +322,16 @@ def looks_like_pdf(body: bytes) -> bool:
 
 
 def pdf_to_text(data: bytes, *, max_pages: int = 0,
-                max_chars: int = 2_000_000) -> Tuple[str, Dict[str, Any]]:
+                max_chars: int = 2_000_000, ocr_enabled: bool = False,
+                ocr_max_pages: int = 5, ocr_language: str = "eng") -> Tuple[str, Dict[str, Any]]:
     """Extract readable text from a PDF body.
 
     Returns `(text, info)` where info carries page counts for the artifact
     metadata. Raises a typed ExtractionError when the PDF cannot be read, when
     it has no extractable text (scanned images), or when the optional PDF
-    dependency is missing — never binary noise.
+    dependency is missing — never binary noise. Optional local OCR requires
+    `pdftoppm` and `tesseract`; it is opt-in via `ocr_enabled` and sends no
+    document bytes to a remote service.
     """
     try:
         from pypdf import PdfReader
@@ -367,10 +375,88 @@ def pdf_to_text(data: bytes, *, max_pages: int = 0,
             detail=f"pdf_parse_failed: {type(exc).__name__}",
         ) from exc
     if not body.strip():
+        if ocr_enabled:
+            body = ocr_pdf_to_text(data, max_pages=ocr_max_pages,
+                                   max_chars=max_chars, language=ocr_language)
+            info = {"pages": len(pages), "pages_with_text": 0,
+                    "text_chars": len(body), "ocr": True}
+            return body, info
         raise ExtractionError(
             "the PDF contained no extractable text",
-            hint="it is probably a scan; there is no OCR in this build",
+            hint="it is probably a scan; enable local OCR and install pdftoppm plus tesseract",
             detail="pdf_no_text",
         )
     info = {"pages": len(pages), "pages_with_text": extracted, "text_chars": len(body)}
     return body, info
+
+
+def ocr_pdf_to_text(data: bytes, *, max_pages: int = 5,
+                    max_chars: int = 2_000_000, language: str = "eng") -> str:
+    """OCR a small number of scanned PDF pages locally through Poppler/Tesseract.
+
+    This optional path is deliberately subprocess-only: no shell is involved,
+    executable paths are resolved before use, the PDF is staged in a private
+    temporary directory, output size/pages are bounded, and every process has
+    a deadline. Tesseract language values are restricted to simple locale ids.
+    """
+    renderer = shutil.which("pdftoppm")
+    tesseract = shutil.which("tesseract")
+    if not renderer or not tesseract:
+        raise ExtractionError(
+            "local PDF OCR needs pdftoppm and tesseract",
+            hint="install poppler-utils and tesseract-ocr, then set IRALENS_PDF_OCR_ENABLED=true",
+            detail="pdf_ocr_support_missing",
+        )
+    if len(data) > 20 * 1024 * 1024:
+        raise ExtractionError("PDF is too large for local OCR", detail="pdf_ocr_input_too_large")
+    if not re.fullmatch(r"[A-Za-z0-9_+-]{1,64}", language or ""):
+        raise ExtractionError("invalid OCR language identifier", detail="pdf_ocr_bad_language")
+    page_limit = min(20, max(1, int(max_pages)))
+    with tempfile.TemporaryDirectory(prefix="iralens-ocr-") as temp_dir:
+        root = Path(temp_dir)
+        source = root / "document.pdf"
+        prefix = root / "page"
+        source.write_bytes(data)
+        command = [renderer, "-f", "1", "-l", str(page_limit), "-r", "150",
+                   "-scale-to", "2000", "-png", str(source), str(prefix)]
+        try:
+            rendered = subprocess.run(command, capture_output=True, timeout=90, check=False)
+        except subprocess.TimeoutExpired as exc:
+            raise ExtractionError("local PDF page rendering timed out",
+                                  detail="pdf_ocr_render_timeout") from exc
+        except OSError as exc:
+            raise ExtractionError("local PDF page rendering failed",
+                                  detail=f"pdf_ocr_render_failed:{type(exc).__name__}") from exc
+        if rendered.returncode != 0:
+            raise ExtractionError("local PDF page rendering failed",
+                                  detail=f"pdf_ocr_render_exit:{rendered.returncode}")
+        images = sorted(root.glob("page-*.png"))[:page_limit]
+        if not images:
+            raise ExtractionError("local PDF OCR produced no page images",
+                                  detail="pdf_ocr_no_pages")
+        chunks: List[str] = []
+        for image in images:
+            try:
+                recognized = subprocess.run(
+                    [tesseract, str(image), "stdout", "-l", language, "--psm", "3"],
+                    capture_output=True, timeout=60, check=False,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise ExtractionError("local PDF OCR timed out",
+                                      detail="pdf_ocr_page_timeout") from exc
+            except OSError as exc:
+                raise ExtractionError("local PDF OCR failed",
+                                      detail=f"pdf_ocr_failed:{type(exc).__name__}") from exc
+            if recognized.returncode != 0:
+                raise ExtractionError("local PDF OCR failed",
+                                      detail=f"pdf_ocr_exit:{recognized.returncode}")
+            text = recognized.stdout.decode("utf-8", errors="replace").strip()
+            if text:
+                chunks.append(text)
+            if sum(map(len, chunks)) >= max_chars:
+                break
+        result = "\n\n".join(chunks)[:max_chars].strip()
+        if not result:
+            raise ExtractionError("OCR found no readable text in the scanned PDF",
+                                  detail="pdf_ocr_no_text")
+        return result

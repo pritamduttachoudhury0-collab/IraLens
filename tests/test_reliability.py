@@ -113,3 +113,68 @@ def test_breaker_probe_failure_reopens():
 def test_is_transient_respects_message_content():
     assert is_transient(SourceUnavailableError("temporary failure"))
     assert not is_transient(SourceUnavailableError("bad input"))
+
+
+def test_persistent_breaker_survives_reconstruction_and_claims_one_probe(tmp_path):
+    from iralens.reliability import PersistentCircuitBreaker
+
+    clock = Clock()
+    path = tmp_path / "health.sqlite3"
+    first = PersistentCircuitBreaker(2, 30, state_path=path, clock=clock)
+    first.record_failure("duckduckgo", kind="unavailable")
+    assert first.state("duckduckgo") == "closed"
+    first.record_failure("duckduckgo", kind="unavailable")
+    assert first.state("duckduckgo") == "open"
+
+    restarted = PersistentCircuitBreaker(2, 30, state_path=path, clock=clock)
+    assert restarted.state("duckduckgo") == "open"
+    assert not restarted.allow("duckduckgo")
+    clock.now += 31
+    assert restarted.allow("duckduckgo")
+
+    second_process = PersistentCircuitBreaker(2, 30, state_path=path, clock=clock)
+    assert not second_process.allow("duckduckgo")
+    restarted.record_success("duckduckgo", latency_seconds=0.25)
+    assert second_process.state("duckduckgo") == "closed"
+    assert second_process.allow("duckduckgo")
+
+
+def test_persistent_breaker_reports_storage_failure_but_fails_open(tmp_path):
+    from iralens.reliability import PersistentCircuitBreaker
+
+    breaker = PersistentCircuitBreaker(2, 30, state_path=tmp_path)
+    assert not breaker.storage_available()
+    assert breaker.allow("search-engine")
+
+
+def test_persistent_breaker_refuses_symlinked_state_directory(tmp_path):
+    from iralens.reliability import PersistentCircuitBreaker
+
+    target = tmp_path / "target"
+    target.mkdir()
+    linked = tmp_path / "linked"
+    try:
+        linked.symlink_to(target, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlink creation is unavailable on this platform")
+    breaker = PersistentCircuitBreaker(2, 30, state_path=linked / "health.sqlite3")
+    assert not breaker.storage_available()
+    assert not (target / "health.sqlite3").exists()
+
+
+def test_persistent_breaker_rate_limit_opens_immediately_and_backs_off(tmp_path):
+    from iralens.reliability import KIND_RATE_LIMITED, PersistentCircuitBreaker
+
+    clock = Clock()
+    path = tmp_path / "health.sqlite3"
+    breaker = PersistentCircuitBreaker(3, 30, blocked_cooldown=60,
+                                       state_path=path, clock=clock)
+    breaker.record_failure("duckduckgo", kind=KIND_RATE_LIMITED)
+    assert breaker.state("duckduckgo") == "open"
+    snapshot = breaker.snapshot()["duckduckgo"]
+    assert snapshot["last_failure_kind"] == KIND_RATE_LIMITED
+    assert snapshot["cooldown_remaining_seconds"] == 60
+    clock.now += 61
+    assert breaker.allow("duckduckgo")
+    breaker.record_failure("duckduckgo", kind=KIND_RATE_LIMITED)
+    assert breaker.snapshot()["duckduckgo"]["cooldown_remaining_seconds"] == 120

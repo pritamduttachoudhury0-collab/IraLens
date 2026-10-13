@@ -15,27 +15,19 @@ from typing import Any, Dict, Tuple
 
 DEFAULT_AUTHORITY: Dict[str, float] = {".gov": 0.9, ".edu": 0.85, ".org": 0.6}
 
-#: Public SearXNG instances the `searxng` engine rotates across (D-078).
-#: UNVERIFIED conveniences — pin your own with IRALENS_SEARXNG_INSTANCES for
-#: anything serious (KNOWN_LIMITATIONS.md).
-DEFAULT_SEARXNG_INSTANCES: Tuple[str, ...] = (
-    "https://searx.be",
-    "https://searxng.site",
-    "https://priv.au",
-    "https://search.inetol.net",
-    "https://searx.tiekoetter.com",
-)
+#: Public SearXNG instances are intentionally not bundled as defaults: their
+#: owners' terms, uptime, and privacy policies vary. Configure a private
+#: instance explicitly with IRALENS_SEARXNG_INSTANCES.
+DEFAULT_SEARXNG_INSTANCES: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class Settings:
     # --- engines / fallback ------------------------------------------------
-    # Free engines first: search must work with no paid API key configured
-    # (D-067). The optional semantic-search bridge runs last, so it is used
-    # only when the free engines fail or more results are needed. searxng (D-078)
-    # rotates across public instances, so it sits between the two single-
-    # endpoint engines.
-    search_engines: Tuple[str, ...] = ("duckduckgo", "searxng", "bing", "semantic-search")
+    # Keyless sources first. The optional semantic bridge runs last; the
+    # operator-configured SearXNG instance is inserted before Bing, and the
+    # paid backup is appended only when explicitly configured (D-086/D-091).
+    search_engines: Tuple[str, ...] = ("duckduckgo", "bing", "wikipedia", "semantic-search")
     search_min_engines: int = 2            # engines queried for cross-engine agreement
     search_max_results: int = 8
     search_timeout_seconds: int = 45       # per engine navigation/extraction budget
@@ -71,9 +63,18 @@ class Settings:
     retry_max_attempts: int = 3
     retry_base_delay_seconds: float = 1.0
     retry_max_delay_seconds: float = 8.0
-    # --- circuit breaker (per engine, per SearchEngine instance) ---------------
+    # --- circuit breaker (persistent across CLI/API process restarts) ---------
     breaker_failure_threshold: int = 3     # consecutive failures before an engine is skipped
     breaker_cooldown_seconds: float = 300.0
+    breaker_block_cooldown_seconds: float = 900.0  # CAPTCHA / 429: stop retrying promptly
+    # --- optional emergency paid search fallback -----------------------------
+    backup_search_provider: str = ""       # brave | serper | tavily; disabled by default
+    backup_search_api_key: str = ""        # never returned by doctor/config output
+    backup_search_timeout_seconds: int = 15
+    # --- local OCR for scanned PDFs (system tools are optional) ---------------
+    pdf_ocr_enabled: bool = False
+    pdf_ocr_max_pages: int = 5
+    pdf_ocr_language: str = "eng"
     # --- caching ---------------------------------------------------------------
     cache_enabled: bool = True
     cache_search_ttl_seconds: int = 900

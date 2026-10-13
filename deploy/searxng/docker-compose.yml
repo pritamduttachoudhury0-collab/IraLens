@@ -16,7 +16,8 @@ services:
       - ./settings.yml:/etc/searxng/settings.yml:ro
       - searxng-data:/var/cache/searxng
     environment:
-      - SEARXNG_BASE_URL=http://127.0.0.1:8888/
+      SEARXNG_BASE_URL: http://127.0.0.1:8888/
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?Set SEARXNG_SECRET before starting SearXNG}
     cap_drop:
       - ALL
     cap_add:

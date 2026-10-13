@@ -147,6 +147,34 @@ def test_missing_pdf_dependency_is_typed_and_actionable(monkeypatch):
     assert "pip install" in exc_info.value.hint
 
 
+def test_scanned_pdf_can_use_bounded_local_ocr(monkeypatch):
+    import subprocess
+    from iralens import extract as extract_mod
+
+    monkeypatch.setattr(extract_mod.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    def fake_run(command, **kwargs):
+        if command[0].endswith("pdftoppm"):
+            Path(command[-1] + "-1.png").write_bytes(b"mock-png")
+            return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
+        return subprocess.CompletedProcess(command, 0, stdout=b"Recognized local OCR phrase", stderr=b"")
+
+    monkeypatch.setattr(extract_mod.subprocess, "run", fake_run)
+    text, info = pdf_to_text(make_pdf(with_text=False), ocr_enabled=True, ocr_max_pages=1)
+    assert text == "Recognized local OCR phrase"
+    assert info["ocr"] is True and info["pages"] == 1
+
+
+def test_scanned_pdf_ocr_missing_system_tools_is_typed(monkeypatch):
+    from iralens import extract as extract_mod
+
+    monkeypatch.setattr(extract_mod.shutil, "which", lambda _name: None)
+    with pytest.raises(ExtractionError) as exc_info:
+        pdf_to_text(make_pdf(with_text=False), ocr_enabled=True)
+    assert exc_info.value.detail == "pdf_ocr_support_missing"
+    assert "tesseract" in exc_info.value.hint
+
+
 def test_read_direct_returns_pdf_text_not_binary_noise(monkeypatch):
     _patch_body(monkeypatch, make_pdf(compress=True))
     text = web_mod.read_direct("https://example.org/paper.pdf")

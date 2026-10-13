@@ -352,14 +352,20 @@ def test_facade_research_end_to_end(tmp_path, monkeypatch):
                        gate=ConcurrencyGate(1, 1.0))
     monkeypatch.setattr(get_source("web-search"), "_engine", eng)
     web = get_source("web")
-    monkeypatch.setattr(web, "read_url", lambda url, ctx, mode="static": (_ for _ in ()).throw(
-        PageUnavailableError("offline test")))
+    read_modes = []
+
+    def offline_read(url, ctx, mode="auto", max_chars=20000):
+        read_modes.append(mode)
+        raise PageUnavailableError("offline test")
+
+    monkeypatch.setattr(web, "read_url", offline_read)
     monkeypatch.setattr("iralens.research.planner.DeterministicExpander.expand",
                         lambda self, question, round_no, used, contested:
                         [{"text": "q1", "strategy": "x"}] if round_no == 1 else [])
-    report = IraLens().research(Q, options={"min_sources": 3, "read_top_n": 0})
+    report = IraLens().research(Q, options={"min_sources": 3, "read_top_n": 1})
     assert report.stop_reason == "coverage_reached"
     assert report.to_dict()["untrusted"] is True
+    assert read_modes == ["auto"]
 
 
 def test_all_searches_failing_reports_search_failed_not_no_new_sources():

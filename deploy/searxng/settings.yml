@@ -3,9 +3,6 @@
 use_default_settings: true
 
 general:
-  # Replace before exposing this instance beyond localhost:
-  #   python -c "import secrets; print(secrets.token_hex(32))"
-  secret_key: "CHANGE_ME_before_exposing_this_instance"
   instance_name: "iralens-searxng"
   enable_metrics: false
 
@@ -19,6 +16,9 @@ search:
   default_lang: "en"
 
 server:
+  # The Docker deployment supplies SEARXNG_SECRET; replace this fallback before
+  # exposing a standalone instance.
+  secret_key: "CHANGE_ME_before_exposing_this_instance"
   bind_address: "0.0.0.0"
   port: 8080
   # A self-hosted instance talks to public upstream engines only.

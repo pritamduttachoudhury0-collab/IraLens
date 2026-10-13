@@ -75,9 +75,12 @@ def test_resolve_failure_is_value_error(monkeypatch):
 
 # ------------------------------------------------- redirect policy (unit)
 class _FakeReq:
-    def __init__(self, url, redirect_dict=None):
+    def __init__(self, url, redirect_dict=None, headers=None):
         self._url = url
         self.redirect_dict = redirect_dict or {}
+        self.headers = headers or {}
+        self.unredirected_hdrs = {}
+        self.data = None
 
     def get_full_url(self):
         return self._url
@@ -112,6 +115,13 @@ def test_https_to_http_downgrade_rejected():
     req = _FakeReq("https://public.example/start")
     with pytest.raises(SecurityBlockedError):
         handler.redirect_request(req, None, 302, "Found", {}, "http://public.example/x")
+
+
+def test_credentialed_request_can_require_same_origin_redirects():
+    handler = SafeRedirectHandler(same_origin_only=True)
+    req = _FakeReq("https://api.example/search", headers={"X-API-KEY": "secret"})
+    with pytest.raises(SecurityBlockedError, match="different origin"):
+        handler.redirect_request(req, None, 302, "Found", {}, "https://cdn.example/search")
 
 
 def test_redirect_chain_length_capped():

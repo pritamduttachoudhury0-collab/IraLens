@@ -240,6 +240,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser(parents=[json_flag], name="close", help="close the browser engine (persists session state)")
 
     sub.add_parser(parents=[json_flag], name="mcp", help="run the IraLens MCP server (stdio)")
+    p = sub.add_parser(parents=[json_flag], name="serve", help="run the self-hosted HTTP API")
+    p.add_argument("--host", default=None, help="bind address (default: 127.0.0.1)")
+    p.add_argument("--port", type=int, default=None, help="port (default: 8000)")
+    p.add_argument("--max-workers", type=int, default=None, help="maximum in-flight requests")
     p = sub.add_parser(parents=[json_flag], name="install-engine",
                        help="download and verify the browser engine binary")
     p.add_argument("--status", action="store_true",
@@ -286,6 +290,12 @@ def run(args: argparse.Namespace) -> tuple:
         from .mcp_server import main as mcp_main
 
         mcp_main()
+        return (None, EXIT_OK)
+
+    if command == "serve":
+        from .api import serve
+
+        serve(args.host, args.port, args.max_workers)
         return (None, EXIT_OK)
 
     with IraLens() as hil:

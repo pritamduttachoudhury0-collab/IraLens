@@ -28,7 +28,7 @@ MCP: the `research` tool takes `question` and an `options` object with the same 
 | `max_queries` | 12 | 1–50 (also capped by `research_max_queries`) | search calls in total |
 | `min_sources` | 3 | 1–20 | distinct domains needed for full coverage |
 | `max_results` | 8 | 1–50 | results per search call |
-| `read_top_n` | 3 | 0–20 | pages read per round (static reader) |
+| `read_top_n` | 3 | 0–20 | pages read per round (local-first auto mode; JS-shell pages may use the local browser) |
 
 Unknown option keys are rejected with the list of allowed keys.
 
@@ -38,8 +38,10 @@ Unknown option keys are rejected with the list of allowed keys.
    query contested subjects, with "evidence" appended.
 2. **Search.** Each query goes through `search_api` with `reformulate=False`, so
    the planner controls the queries. Failures are recorded, not dropped.
-3. **Read.** The top unread sources are fetched with the static reader. Read
-   failures fall back to snippets and are reported.
+3. **Read.** The top unread sources use local-first `auto` reading. Static HTML/PDF
+   is extracted on-device; a thin JS shell gets one local browser-render attempt
+   when the optional engine is installed. Read failures fall back to snippets
+   and are reported. The remote reader stays opt-in.
 4. **Analyze.** Page markup (HTML, markdown links, code, tables) is stripped first.
    Claims are the remaining sentences that mention question terms. Contradiction
    candidates are compared across domains. Statements are built per subject cluster.
@@ -94,7 +96,8 @@ The facade does not take one yet.
 
 ## Privacy note
 
-Research reads are local-first (D-077): each top URL is fetched directly and
-extracted locally. Only if you opt in (`IRALENS_READ_REMOTE_READER_ENABLED=1`)
-does the remote reader (`r.jina.ai`) receive those URLs. Search queries go to
-the search engines. The browser engine is not used for reads in research.
+Research reads are local-first: each top URL is fetched directly and
+extracted locally. JS-shell pages can fall back to the local browser if its
+engine is installed. Only if you opt in (`IRALENS_READ_REMOTE_READER_ENABLED=1`)
+and direct reading fails does the remote reader (`r.jina.ai`) receive a URL.
+Search queries still go to the configured search sources.

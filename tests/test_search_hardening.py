@@ -32,20 +32,19 @@ def engine(tmp_path, backends, **kw):
                         cache=ResponseCache(tmp_path / "c"), gate=ConcurrencyGate(2, 1.0), **kw)
 
 
-def test_breaker_skips_engine_after_repeated_blocks(tmp_path):
+def test_breaker_skips_engine_after_single_captcha(tmp_path):
     blocked = Counting("duckduckgo", error=SourceUnavailableError("blocked", detail="captcha"))
     good = Counting("bing", hits=[("Solar", "https://a.example.org/s")])
     eng = engine(tmp_path, [blocked, good])
     opts = SearchOptions(reformulate=False, cache="bypass")
-    for _ in range(2):
-        eng.search("solar", options=opts)
-    assert blocked.calls == 2
+    eng.search("solar", options=opts)
+    assert blocked.calls == 1                   # CAPTCHA opens immediately
     resp = eng.search("solar", options=opts)
-    assert blocked.calls == 2                      # not called while the breaker is open
+    assert blocked.calls == 1                   # skipped while the circuit is open
     skipped = [o for o in resp.outcomes if o.status == "skipped"]
     assert skipped and skipped[0].kind == "circuit_open"
     assert resp.fallbacks[0]["reason"] == "circuit_open"
-    assert resp.degraded is True                   # a skipped engine counts as degraded
+    assert resp.degraded is True                # a skipped engine counts as degraded
     assert resp.results and resp.no_results_reason == "none"
 
 

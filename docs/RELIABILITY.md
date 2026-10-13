@@ -24,18 +24,30 @@ Exponential backoff: `delay(n) = min(max_delay, base * 2^(n-1))`. Settings:
 (8.0). Only transient failures are retried. Retrying a captcha or a rate limit
 makes the block worse, so those are not retried.
 
-## Circuit breaker
+## Persistent circuit breaker and adaptive backoff
 
-Per engine, per `SearchEngine` instance:
+The search path uses `PersistentCircuitBreaker`, stored in
+`~/.iralens/state/search-health.sqlite3` (override root: `IRALENS_HOME`). It is
+shared across API threads and survives process restarts:
 
-- Opens after `breaker_failure_threshold` (3) consecutive failures.
-- While open, the engine is skipped and recorded as `status="skipped"`. It is
-  never called.
-- After `breaker_cooldown_seconds` (300), one probe call is allowed (half-open).
-  Success closes the breaker. Failure reopens it.
-- State is in memory. It resets when the process restarts. This is deliberate:
-  a persisted breaker could lock out an engine for a long time after a transient
-  outage.
+- `breaker_failure_threshold` (3) consecutive non-block failures open an
+  engine circuit for `breaker_cooldown_seconds` (300 s).
+- A detected CAPTCHA or 429 opens the circuit immediately for
+  `breaker_block_cooldown_seconds` (900 s); repeated failures increase the
+  cooldown exponentially up to six hours.
+- While open, an engine is reported as `status="skipped"`. After cooldown,
+  SQLite transactionally permits one half-open probe across processes. Success
+  closes the circuit; failure reopens it.
+- SearXNG endpoints have per-instance durable cooldowns, so one failed instance
+  is avoided while the rest of the configured pool remains usable.
+- The database holds engine/host identifiers, counters and coarse latency
+  estimates only. It never persists queries, snippets, content, or API keys.
+  If the health database is unavailable/read-only, search fails open and still
+  tries sources rather than making persistence a hard dependency.
+
+Use a private, durable volume for `IRALENS_HOME` in the HTTP deployment. The
+circuit breaker is a backoff mechanism, not a provider SLA and not proof that
+upstream automation is permitted.
 
 ## Resource management
 

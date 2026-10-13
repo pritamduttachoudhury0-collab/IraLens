@@ -54,28 +54,42 @@ environment** and no row is claimed. What was run and what it showed:
   meaningless (everything fails fast) and are not claimed as passes.
 * The offline test suite, `ruff`, and `mypy` — see the session report.
 
-### Ideas for the next loop iteration (not implemented here)
+**2026-10-13 — readiness update (not a benchmark run).** Latest full offline
+suite: 402 passed / 14 live-browser/network tests skipped. A focused run for
+persistent reliability, reference-provider, API-key, and SearXNG changes passed
+37 tests; selected Ruff checks passed, and mypy passed for all 67 `iralens`
+source files plus the reference harness. A local editable install and
+non-editable wheel build both succeeded. `scripts/verify_interfaces.py`
+reached GitHub APIs but blocked all general search engines. GitHub-only live
+research/read/replay worked, which is not a general-web availability or quality
+result. `benchmarks/run_benchmark.py --self-test` passed synthetically; the
+200-query / 100-URL real benchmark was **not run**, no row was added, and no
+consecutive passes are claimed. Docker/Podman and paid reference credentials
+were not available here.
 
-Ordered by expected effect on the thresholds, all measurable by this benchmark:
+### Next loop iteration: acceptance gaps and remaining engineering
 
-1. **Per-engine health scoring across processes.** The circuit breaker is
-   in-memory, so a CLI agent that starts a new process per query re-tries a
-   dead engine every time. Persisting a bounded per-engine score (successes,
-   last failure, EWMA latency) and ordering the chain by it — never dropping an
-   engine — would cut p95 latency and raise availability without changing the
-   result contract.
-2. **Adaptive pacing per engine.** A minimum interval per engine host, relaxed
-   when responses are fast and tightened after a `rate_limited`/`captcha`,
-   protects the load threshold (5 concurrent for 30 minutes) on shared IPs.
-3. **More independent engines.** The redundancy threshold needs 2+ engines at
-   80% solo: a self-hosted SearXNG (`deploy/searxng/`) plus DuckDuckGo is the
-   cheapest start; adding a third, genuinely independent index would make the
-   metric robust to one engine changing its layout. Verify each candidate's
-   terms of use before adding it.
+Ordered by expected effect on the frozen thresholds. Implemented code is not
+accepted behavior until it passes the real benchmark:
+
+1. **Persistent health is now present; live benefit is unmeasured.** Per-engine
+   and SearXNG-instance counters/cooldowns persist in SQLite, including
+   immediate CAPTCHA/429 backoff, exponential re-probe delays and one local
+   half-open probe. Routing does not yet order healthy sources by a learned
+   EWMA score; measure the fixed configured order first on an approved network.
+2. **Adaptive pacing is partial.** Wikimedia and the optional reference API
+   are paced at one request/second; per-source CAPTCHA/429 cooldowns prevent
+   immediate retries. General DDG/Bing per-host pacing is not implemented or
+   benchmarked. Do not probe more aggressively to work around a block.
+3. **A general independent index remains outstanding.** Wikimedia is a narrow
+   supplemental source; self-hosted SearXNG is counted as one endpoint and
+   forwards queries upstream. Review and integrate only a licensed/authorized
+   general index if the open-network redundancy results need it.
 4. **Layout-change canaries.** A scheduled fixture refresh (fetch each engine's
-   SERP weekly, diff the parser's hit count) turns "layout changed" from a
-   field report into a monitored signal.
-5. **Ranking/dedup work** only after a live run shows quality < 85%.
+   SERP weekly, diff the parser's hit count) remains unimplemented. Any refresh
+   must observe the source's terms/rate limits and avoid evading blocks.
+5. **Ranking/dedup work** only after an approved live run shows quality below
+   85%; do not tune against the held-out split or edit frozen labels/thresholds.
 
 **What must be run on an open network** (exact command):
 

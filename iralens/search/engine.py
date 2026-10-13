@@ -17,7 +17,8 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from .. import content_guard
 from ..cache import ResponseCache
-from ..reliability import CircuitBreaker, ConcurrencyGate, RetryPolicy
+from ..config import state_dir
+from ..reliability import CircuitBreaker, ConcurrencyGate, PersistentCircuitBreaker, RetryPolicy
 from ..security import normalize_public_http_url
 from ..settings import Settings
 from .dedup import dedup
@@ -58,8 +59,12 @@ class SearchEngine:
         self.synonyms = synonyms
         self.policy = RetryPolicy(settings.retry_max_attempts, settings.retry_base_delay_seconds,
                                   settings.retry_max_delay_seconds)
-        self.breaker = breaker or CircuitBreaker(settings.breaker_failure_threshold,
-                                                 settings.breaker_cooldown_seconds)
+        self.breaker = breaker or PersistentCircuitBreaker(
+            settings.breaker_failure_threshold,
+            settings.breaker_cooldown_seconds,
+            blocked_cooldown=settings.breaker_block_cooldown_seconds,
+            state_path=state_dir() / "search-health.sqlite3",
+        )
 
     # ------------------------------------------------------------ public
     def search(self, question: str, *, filters: Optional[SearchFilters] = None,
@@ -101,7 +106,17 @@ class SearchEngine:
         return response
 
     def resolve_chain(self, requested: Sequence[str] = ()) -> List[str]:
+        explicit = bool(requested)
         names = list(requested) or list(self.settings.search_engines)
+        if not explicit and self.settings.searxng_instances and "searxng" not in names:
+            # A private metasearch instance joins the free-source chain only
+            # when the operator explicitly configured one.
+            insert_at = names.index("bing") if "bing" in names else len(names)
+            names.insert(insert_at, "searxng")
+        if (not explicit and self.settings.backup_search_provider.strip()
+                and self.settings.backup_search_api_key.strip()
+                and "paid-backup" not in names):
+            names.append("paid-backup")
         expanded: List[str] = []
         for name in names:
             for real in LEGACY_ALIASES.get(name, (name,)):

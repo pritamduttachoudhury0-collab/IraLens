@@ -1,7 +1,7 @@
 # IraLens reliability benchmark
 
-This directory is the acceptance benchmark for using IraLens as a replacement
-for a paid search API. It is **frozen**: `queries.json`, `urls.json` and
+This directory is the acceptance benchmark for evaluating IraLens against a paid search API or a configured reference
+service. It is **frozen**: `queries.json`, `urls.json` and
 `thresholds.json` are hashed in `FREEZE.sha256`, the run reports any change,
 and nobody — including the authors — tunes them to make a number look better.
 
@@ -74,18 +74,26 @@ could not run, it appends nothing and says what failed.
 ## Comparing with a paid search API (optional)
 
 ```bash
-export SEARCH_API_REFERENCE_KEY=...            # Brave by default
-export SEARCH_API_REFERENCE_PROVIDER=brave     # braves | serper | google-cse | tavily | searxng
+export SEARCH_API_REFERENCE_KEY=...            # required for paid providers; Brave by default
+export SEARCH_API_REFERENCE_PROVIDER=brave     # brave | serper | google-cse | tavily | searxng
 export SEARCH_API_REFERENCE_CX=...             # only for google-cse
+# For a keyless SearXNG reference, omit the key and set its HTTPS JSON endpoint:
+# SEARCH_API_REFERENCE_PROVIDER=searxng SEARCH_API_REFERENCE_URL=https://your-host/search
 .venv/bin/python benchmarks/run_benchmark.py --all --with-reference
 ```
 
-The runner replays the same queries through that API and reports domain
-overlap at 5 results, mean Jaccard, its availability and its p50 latency. This
-is diagnostic only: no threshold depends on it, and different engines finding
-different pages is expected. What must not happen — fewer answered queries,
-silent failures, block pages returned as results — is what the real thresholds
-measure.
+The runner replays the same query IDs through that provider and records in
+`results.json`: reference HTTP availability separately from non-empty results,
+IraLens's returned-result rate, both top-5 labelled gold-hit rates, their
+difference, HTTP/transport failure rate, p50/p95 reference latency, shared-
+domain overlap, mean domain Jaccard, and per-query outcomes. The gold-hit label
+is **retrieval quality, not answer truth**; domain overlap measures similarity,
+not correctness. The reference call is paced at one
+request per second, and raw provider bodies/keys are not saved. This remains
+diagnostic: no threshold depends on it, and no paid-parity claim follows from
+one provider or one run. Obtain permission for the provider comparison, run the
+same frozen 200 queries on both systems, and document cost/quotas before
+interpreting a match percentage.
 
 ## Rules for changing this directory
 

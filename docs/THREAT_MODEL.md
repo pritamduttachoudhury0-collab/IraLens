@@ -32,6 +32,13 @@ data, or point the agent at internal targets.
    (`IRALENS_READ_REMOTE_READER_ENABLED=1`) does the remote reader
    (`r.jina.ai`) receive the URL and return markdown; page URLs then leave the
    machine. Use the default (off) or `mode=browser` to avoid it.
+6. **Paid backup credentials.** Optional paid-provider keys are sent in
+   HTTPS headers and are excluded from health state and result reports. These
+   requests reject redirects that change origin, so `urllib` cannot forward the
+   credential header to a redirect destination. The optional Google CSE
+   reference benchmark must place its key in a provider-required query
+   parameter; it uses the same-origin redirect guard and must not run where
+   request URLs are retained by untrusted logs/proxies.
 
 ## Known gaps
 

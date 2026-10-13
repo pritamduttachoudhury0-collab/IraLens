@@ -206,6 +206,9 @@ def read_direct(
     *,
     max_bytes: Optional[int] = None,
     deadline_seconds: Optional[float] = None,
+    ocr_enabled: bool = False,
+    ocr_max_pages: int = 5,
+    ocr_language: str = "eng",
 ) -> str:
     """Fetch *url* directly and return markdown (or plain text) -- local-first.
 
@@ -243,7 +246,9 @@ def read_direct(
         )
     if looks_like_pdf(body):
         # PDF bodies used to be decoded as UTF-8 and returned as binary noise.
-        text, _info = pdf_to_text(body)
+        # Optional OCR runs locally only; it is off unless explicitly enabled.
+        text, _info = pdf_to_text(body, ocr_enabled=ocr_enabled,
+                                  ocr_max_pages=ocr_max_pages, ocr_language=ocr_language)
     elif _looks_like_html(body):
         html = body.decode("utf-8", errors="replace")
         text = html_to_markdown(html)
@@ -348,6 +353,9 @@ class WebSource(Source):
                 url,
                 max_bytes=settings.read_max_bytes,
                 deadline_seconds=settings.read_total_timeout_seconds,
+                ocr_enabled=settings.pdf_ocr_enabled,
+                ocr_max_pages=settings.pdf_ocr_max_pages,
+                ocr_language=settings.pdf_ocr_language,
             ), "direct"
         except (PageUnavailableError, OperationTimeoutError, ExtractionError):
             if not settings.read_remote_reader_enabled:
