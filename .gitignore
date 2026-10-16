@@ -2,6 +2,8 @@ __pycache__/
 *.pyc
 *.egg-info/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 tools/engine/
 dist/
 build/
@@ -10,3 +12,13 @@ build/
 # benchmark output and its isolated home are per-run, not source
 benchmarks/results/
 benchmarks/.home/
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# local run state
+results.json
