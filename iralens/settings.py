@@ -41,7 +41,8 @@ class Settings:
     search_acquire_timeout_seconds: int = 60
     search_parallel_queries: bool = True   # run reformulated query variants in parallel (D-069)
     # --- page reading --------------------------------------------------------
-    read_max_bytes: int = 5 * 1024 * 1024        # response size cap on every read
+    read_max_bytes: int = 5 * 1024 * 1024        # general response cap
+    read_pdf_max_bytes: int = 20 * 1024 * 1024  # only PDF MIME/paths; same time deadline
     read_total_timeout_seconds: int = 60         # overall deadline per read (slow-drip guard)
     # Local-first reading (D-077): direct fetch + stdlib extraction is the
     # default; the remote reader (r.jina.ai) is OFF and opt-in only.

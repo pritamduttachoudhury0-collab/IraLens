@@ -30,6 +30,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import unicodedata
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -338,8 +339,45 @@ def pdf_capabilities(*, ocr_enabled: bool = True) -> Dict[str, Any]:
 
 
 def looks_like_pdf(body: bytes) -> bool:
-    """True when the body starts with the PDF header (magic-byte sniff)."""
-    return (body or b"")[:1024].lstrip()[:5] == PDF_MAGIC
+    """Find a PDF header within the first 1024 bytes, even after a UTF-8 BOM.
+
+    Some valid PDFs contain leading transport junk; HTML containing an example
+    `%PDF-` string must not accidentally be parsed as a real PDF.
+    """
+    prefix = (body or b"")[:1024]
+    offset = prefix.find(PDF_MAGIC)
+    return offset >= 0 and b"<" not in prefix[:offset]
+
+
+def _normalize_pdf_text(text: str) -> str:
+    """Repair copy/paste artifacts that hide otherwise present PDF phrases."""
+    text = unicodedata.normalize("NFKC", text.replace("\u00ad", "").replace("\x00", ""))
+    return re.sub(r"(?<=\w)-[ \t]*\n(?=\w)", "", text).strip()
+
+
+def _poppler_pdf_text(data: bytes, max_pages: int, max_chars: int) -> str:
+    """Bounded local text-PDF fallback; absent Poppler is not an error."""
+    executable = shutil.which("pdftotext")
+    if not executable or len(data) > 20 * 1024 * 1024:
+        return ""
+    page_limit = min(200, max(1, max_pages or 200))
+    with tempfile.TemporaryDirectory(prefix="iralens-pdf-text-") as temp_dir:
+        source = Path(temp_dir) / "document.pdf"
+        output = Path(temp_dir) / "text.txt"
+        source.write_bytes(data)
+        try:
+            with output.open("wb") as sink:
+                proc = subprocess.run(
+                    [executable, "-f", "1", "-l", str(page_limit), "-enc", "UTF-8",
+                     "-layout", str(source), "-"],
+                    stdout=sink, stderr=subprocess.DEVNULL, timeout=45, check=False,
+                )
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+        if proc.returncode != 0:
+            return ""
+        with output.open("rb") as handle:
+            return _normalize_pdf_text(handle.read(max_chars * 4).decode("utf-8", "replace"))[:max_chars]
 
 
 def pdf_to_text(data: bytes, *, max_pages: int = 0,
@@ -366,27 +404,37 @@ def pdf_to_text(data: bytes, *, max_pages: int = 0,
         reader = PdfReader(io.BytesIO(data))
         if reader.is_encrypted:
             try:
-                reader.decrypt("")           # many PDFs are only "owner" encrypted
+                unlocked = reader.decrypt("")  # some PDFs permit empty user passwords
             except Exception as exc:
                 raise ExtractionError(
                     "the PDF is encrypted", hint="decrypt it first, or open it in a browser",
                     detail="pdf_encrypted",
                 ) from exc
+            # pypdf returns 0/NOT_DECRYPTED for a *wrong* password without
+            # raising. Do not misreport the resulting empty pages as scans.
+            if not unlocked:
+                raise ExtractionError(
+                    "the PDF requires a password", hint="decrypt it first",
+                    detail="pdf_encrypted",
+                )
         pages = list(reader.pages)
         wanted = pages[:max_pages] if max_pages > 0 else pages
         chunks: List[str] = []
         extracted = 0
+        total_chars = 0
         for page in wanted:
             try:
                 text = page.extract_text() or ""
             except Exception:
                 text = ""                    # one broken page must not lose the document
-            if text.strip():
+            text = _normalize_pdf_text(text)
+            if text:
                 extracted += 1
             chunks.append(text)
-            if sum(len(c) for c in chunks) >= max_chars:
+            total_chars += len(text)
+            if total_chars >= max_chars:
                 break
-        body = "\n\n".join(c.strip() for c in chunks if c.strip())
+        body = "\n\n".join(c for c in chunks if c)[:max_chars]
     except ExtractionError:
         raise
     except Exception as exc:
@@ -395,19 +443,30 @@ def pdf_to_text(data: bytes, *, max_pages: int = 0,
             hint="the file may be truncated or corrupt",
             detail=f"pdf_parse_failed: {type(exc).__name__}",
         ) from exc
+    from_poppler = False
+    if len(body) < 80:
+        # pypdf can miss a text layer (font mappings/layout); try another
+        # *local* text extractor before classifying this as an image-only scan.
+        alternate = _poppler_pdf_text(data, max_pages, max_chars)
+        if len(alternate) > len(body):
+            body = alternate
+            from_poppler = True
     if not body.strip():
         if ocr_enabled:
             body = ocr_pdf_to_text(data, max_pages=ocr_max_pages,
                                    max_chars=max_chars, language=ocr_language)
-            info = {"pages": len(pages), "pages_with_text": 0,
-                    "text_chars": len(body), "ocr": True}
-            return body, info
+            ocr_info: Dict[str, Any] = {"pages": len(pages), "pages_with_text": 0,
+                                        "text_chars": len(body), "ocr": True}
+            return body, ocr_info
         raise ExtractionError(
             "the PDF contained no extractable text",
             hint="it is probably a scan; enable local OCR and install pdftoppm plus tesseract",
             detail="pdf_no_text",
         )
-    info = {"pages": len(pages), "pages_with_text": extracted, "text_chars": len(body)}
+    info: Dict[str, Any] = {"pages": len(pages), "pages_with_text": extracted,
+                            "text_chars": len(body)}
+    if from_poppler:
+        info["text_extractor"] = "pdftotext"
     return body, info
 
 

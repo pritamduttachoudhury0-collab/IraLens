@@ -600,3 +600,13 @@ captcha solver, or installs OS packages. An operator can set
 `pdf_ocr_support_missing` error on scans; `doctor.pdf` lists exactly which are
 missing. `pdf_to_text()` itself retains its explicit `ocr_enabled=False`
 low-level default to avoid surprising callers who pass in-memory PDFs.
+
+**D-097 Bound PDF downloads separately and retry sparse text locally.**
+A PDF advertised by MIME or URL path may need more than the general 5 MB HTML
+cap, so it gets a separate 20 MB cap under the same overall 60 s deadline.
+`pypdf` remains primary; when it returns less than 80 characters, an
+*installed* `pdftotext` may extract a richer text layer locally before OCR.
+Nothing is downloaded to a third party. PDF text is normalized for ligatures,
+soft hyphens and line-wrap hyphenation, and encrypted PDFs that reject an
+empty password raise `pdf_encrypted` rather than being mislabelled as scans.
+This is not evidence of a 90% corpus rate until real labelled pages are run.

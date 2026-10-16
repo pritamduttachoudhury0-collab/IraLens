@@ -20,6 +20,8 @@ def test_read_direct_auto_ocr_when_tools_exist(monkeypatch):
 
     def run(command, **kwargs):
         seen.append(command[0])
+        if command[0].endswith("pdftotext"):
+            return subprocess.CompletedProcess(command, 1, stdout=b"", stderr=b"")
         if command[0].endswith("pdftoppm"):
             Path(command[-1] + "-1.png").write_bytes(b"mock page")
             return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
@@ -27,7 +29,7 @@ def test_read_direct_auto_ocr_when_tools_exist(monkeypatch):
 
     monkeypatch.setattr(extract_mod.subprocess, "run", run)
     assert web_mod.read_direct("https://example.org/scan.pdf") == "Recognized local phrase"
-    assert seen == ["/usr/bin/pdftoppm", "/usr/bin/tesseract"]
+    assert seen == ["/usr/bin/pdftotext", "/usr/bin/pdftoppm", "/usr/bin/tesseract"]
 
 
 def test_read_direct_scanned_pdf_reports_missing_tools(monkeypatch):

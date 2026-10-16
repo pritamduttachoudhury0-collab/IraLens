@@ -323,8 +323,10 @@ iralens install-engine              # install it (retries, probe-before-replace)
   empty), `filtered_out` (filters removed everything), or `engines_failed`
   (blocked/unreachable engines — check `outcomes` for `captcha`,
   `rate_limited`, `layout_changed`, …).
-- Text PDFs use the embedded text layer (`pypdf`). Scanned PDFs use free,
-  **local** OCR automatically *if* `pdftoppm` and `tesseract` are installed;
+- Text PDFs use the embedded text layer (`pypdf`) and optionally the local
+  `pdftotext` fallback for sparse text. PDFs have a separate 20 MB response
+  cap (other pages: 5 MB). Scanned PDFs use free, **local** OCR automatically
+  *if* `pdftoppm` and `tesseract` are installed;
   `iralens doctor` lists missing tools. Without them, scans fail with a typed
   `pdf_ocr_support_missing`, never as binary noise or an unannounced empty page.
   Opt out with `IRALENS_PDF_OCR_ENABLED=false`; no cloud OCR is used.

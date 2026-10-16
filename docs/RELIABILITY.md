@@ -56,8 +56,9 @@ upstream automation is permitted.
   `search_acquire_timeout_seconds` with a clear `OperationTimeoutError`. The slot
   is always released, even when the guarded code raises.
 - Each engine navigation has a timeout (`search_timeout_seconds`, 45).
-- Static page reads are bounded three ways: a response size cap
-  (`read_max_bytes`, default 5 MB), an overall read deadline
+- Static page reads are bounded three ways: a general response size cap
+  (`read_max_bytes`, default 5 MB; PDF MIME/paths get a separate bounded
+  `read_pdf_max_bytes`, default 20 MB), an overall read deadline
   (`read_total_timeout_seconds`, default 60) that defeats slow-drip responses,
   and the per-operation socket timeout. `max_chars` is then enforced when the
   content is served (both static and browser backends), and the artifact's
