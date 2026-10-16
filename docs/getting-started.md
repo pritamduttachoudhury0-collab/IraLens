@@ -43,9 +43,9 @@ iralens read https://en.wikipedia.org/wiki/Web_search_engine --max-chars 4000
 iralens research "your question" --rounds 2
 ```
 
-Then pick your interface: the [Python facade and CLI](../README.md#the-interface),
+Then pick your interface: the [CLI and Python examples](../README.md#examples),
 the [HTTP API](api.md), or the MCP server (`iralens mcp`; configuration in the
-[README](../README.md#for-ai-agents)).
+[README MCP example](../README.md#mcp)).
 
 ## Capability status
 
