@@ -10,6 +10,9 @@ during final verification was fixed.
 
 ### Fixed
 
+- The CI workflow file is now valid YAML (an unquoted step name had made it
+  unloadable, so the gate had never executed); CI passes on Python 3.10 and
+  3.12.
 - `open()` / `POST /v1/read` now fall back to the generic web reader for
   github.com URLs that are not `/<owner>/<repo>` (the GitHub source reports
   the shape as `OperationUnsupportedError` instead of a generic extraction

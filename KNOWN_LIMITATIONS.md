@@ -131,8 +131,8 @@ records at the end show exactly what was exercised and where.
 30. **Windows setup is untested.** `scripts/setup.ps1` is provided but has
     not run on a Windows machine; `scripts/setup.sh` is the tested path
     (Linux/macOS).
-31. **Python 3.11 is the tested interpreter.** `requires-python` allows
-    3.10+; older-supported versions have not run in verification.
+31. **CI verifies Python 3.10 and 3.12** (offline gates on every push and
+    pull request). The primary development interpreter is 3.11.
 32. **CI runs offline gates only.** The CI workflow runs pytest, ruff, and
     mypy. Live search, browser startup, Docker builds, and multi-day
     monitoring are not exercised in CI.
