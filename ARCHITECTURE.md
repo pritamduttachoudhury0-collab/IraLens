@@ -3,7 +3,10 @@
 IraLens is a single, unified Internet-access system. This document records
 the study of the two implementation sources and how their capabilities were
 consolidated. **The two sources are implementation details; the AI-facing
-system is IraLens only.**
+system is IraLens only.** Historical component observations in this document
+do not imply current live-provider, browser-binary, Docker, or deployment
+verification; see `docs/PHASE_STATUS.md` and `docs/CAPABILITY_MAP.md` for the
+current evidence boundary.
 
 ```
 AI
@@ -32,7 +35,8 @@ Unified Internet capabilities
 | Interfaces | `agent-reach` CLI (setup/install/doctor/configure/transcribe…), MCP server exposing only `get_status`. |
 
 ### Source B — headless browser engine
-(Rust, Apache-2.0, `sources/obscura/`, prebuilt binary v0.2.4 verified working here)
+(Rust, Apache-2.0, `sources/obscura/`; prior integration notes refer to v0.2.4,
+but no browser binary/live run is verified in the current workspace)
 
 | Aspect | Finding |
 |---|---|
@@ -46,8 +50,8 @@ Unified Internet capabilities
 
 | Area | A | B | Resolution in IraLens |
 |---|---|---|---|
-| Web page reading | Jina Reader (static markdown, remote service) | Engine rendering (local, full JS) | **One `read/open` capability** with ordered backends: specialized source → static reader → engine render. Anti-bot fallback chain instead of two products. |
-| Web search | Exa via mcporter | (none — only in-page text find) | **One `search` capability**: Exa backend if configured, otherwise engine-driven search-engine (DuckDuckGo) scraping. |
+| Web page reading | Jina Reader (remote markdown service) | Engine rendering (local, full JS) | **One `read/open` capability**: specialized source → local direct fetch/extraction → optional local browser for JS-shell failures. The remote Jina reader is a separate, explicit opt-in fallback. |
+| Web search | Exa via mcporter | (none — only in-page text find) | **One `search` capability**: configured keyless HTTP backends (DuckDuckGo/Bing/Wikimedia), optional private SearXNG, optional bridge and explicit paid backup. These sources are not an independent IraLens index; live reliability is unverified here. |
 | Reddit/WeChat-style JS-walled content | Auth-only CLIs | Engine rendering | Sources may use the **same engine** as one of their backends (e.g. reddit page read falls through to browser). |
 | SSRF protection | Python URL normalization | Rust `obscura-ssrf` crate | Both kept: facade normalizes every URL; engine enforces its own guard. |
 | Cookies/auth | Cookie import helpers, child env credential injection | Cookie jar + storage state export/import | Unified session: engine holds live cookies; storage state persisted by IraLens across runs; source CLIs get credentials via child env only. |
@@ -59,7 +63,10 @@ Unified Internet capabilities
 - Both original CLI/MCP identities and the "agent calls upstream CLIs directly via skill docs" pattern → replaced by native IraLens operations.
 - Duplicate web-reading paths (reader vs. browser as separate products) → consolidated into one backend chain.
 - Agent Reach's installer/setup wizard scope (system-package installation) → out of scope; IraLens probes what exists and degrades gracefully.
-- Nothing was dropped capability-wise: every channel's access method survives as a backend of a IraLens source.
+- The registry preserves the documented channel surface, but it does not
+  guarantee that every external CLI, credentialed source, provider, or live
+  workflow is installed, authorized, or available. See the capability map's
+  per-source verification status and `KNOWN_LIMITATIONS.md`.
 
 ---
 
@@ -127,29 +134,33 @@ and source operations see the same session bookkeeping.
 - No auto-login: authenticated sources require user-provided credentials or
   the user's own browser sessions.
 
-### Deliberate non-goals (this version)
+### Deliberate non-goals
 
-No source-quality/credibility ranking, no research planning/synthesis, no
-custom search index, no vector DBs or background services. IraLens is the
-Internet-access foundation; a future intelligence layer can sit above the
-facade without knowing anything below it.
+IraLens contains heuristic search ranking and a deterministic research layer
+(planning, evidence, claim synthesis, contradiction candidates, provenance,
+and replay); these provide leads, not fact-checking verdicts. It does not
+operate an independently crawled search index or vector database, a managed
+background scheduler, or a hosted service with an uptime/support promise.
+Live quality, deployment and legal review are separate acceptance work.
 
 ## IraLens layers (search, reliability, research on top of the access core)
 
 ```
 IraLens facade (core.py) — search(), search_api(), research(), open(), …
- ├── search/            Phase 1: schemas, reformulation, fallback chain, filters,
- │                      dedup, ranking, engines (duckduckgo, bing, exa)
- ├── reliability.py     Phase 2: failure taxonomy, retries, circuit breaker, gate
- ├── cache.py           Phase 2: TTL disk cache (search responses, static pages)
- ├── content_guard.py   Phase 2: injection / invisible-character flags
- ├── settings.py        all tunables (config.yaml or IRALENS_* env)
- └── research/          Phase 3: planner loop, evidence, contradictions,
-                        synthesis, provenance graph, replay, LLM adapters
+ ├── search/            schema, reformulation, fallback, filters, dedup, ranking,
+ │                      HTTP/official API, optional SearXNG/Exa/paid adapters
+ ├── reliability.py     failure taxonomy, retries, persistent circuit state, gate
+ ├── cache.py           TTL disk cache (search responses, local reads)
+ ├── content_guard.py   injection / invisible-character advisory flags
+ ├── api.py             optional single-node HTTP API and Prometheus metrics
+ ├── settings.py        tunables (config.yaml or IRALENS_* env)
+ └── research/          planner loop, evidence, contradictions, synthesis,
+                        provenance graph, replay, optional LLM adapters
 ```
 
 Data flow for `research()`: question → expander → `search_api` per query →
-top sources read (static reader) → claims → contradiction candidates →
-statements (cited) → provenance graph and trace. Every stage is deterministic
-except the optional LLM adapters, and the trace replays the whole run.
+top sources read locally, with optional local-browser fallback → claims →
+contradiction candidates → cited statements → provenance graph and trace. The
+pipeline is deterministic unless an optional LLM adapter is enabled. Its
+heuristic conclusions are not independently verified facts.
 

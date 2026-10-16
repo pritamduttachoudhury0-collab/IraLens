@@ -517,3 +517,124 @@ thresholds, and the run reports if they changed. The harness itself is
 validated offline by `--self-test` (synthetic system at known pass/fail rates).
 Corpus or thresholds must never be edited to raise a score; label fixes are
 allowed only with a regenerated freeze file and a note in `BENCHMARKS.md`.
+
+## Readiness work (2026-10-13)
+
+**D-086 No unverified public meta-search defaults.** Public SearXNG instances
+are no longer bundled as defaults. The configured default chain tries
+DuckDuckGo, Bing, Wikimedia's official supplemental API, and the semantic-search
+bridge; the bridge may be absent/unavailable, and a private SearXNG is inserted
+only when configured. This reduces dependence on unknown third-party SearXNG
+operators but does not certify the remaining public HTML sources as permitted
+for a given scale. Search source/legal review remains a deployment gate.
+
+**D-087 Durable adaptive circuit backoff.** Search now uses a local SQLite
+circuit state in `IRALENS_HOME/state/search-health.sqlite3`; per-engine and
+SearXNG-instance failures persist across CLI/API restarts. CAPTCHA/429 opens a
+cooldown immediately; repeat failures exponentially extend the cooldown, and a
+transaction permits only one half-open probe across local processes. The store
+contains host/engine labels and counters, not queries, content, or keys. It
+fails open if persistence is unavailable; it is not a distributed health store.
+
+**D-088 Wikimedia supplemental search API.** Add the official MediaWiki search
+API as a no-key, narrow-coverage supplemental engine. It uses an identifying
+User-Agent and at least one second between requests in-process. It is not a
+replacement general web index; live behavior and current API policy are not
+verified from this network.
+
+**D-089 Local scanned-PDF OCR is optional.** When `IRALENS_PDF_OCR_ENABLED`
+is true and host-installed Poppler (`pdftoppm`) and Tesseract are available,
+scanned PDFs can be OCRed locally, with subprocess deadlines and a page cap.
+Default remains off; no OCR executable or real scanned-PDF corpus was run here.
+
+**D-090 Standard-library HTTP API and container entry point.** Add
+`iralens-api` / `iralens serve` with native `/v1/search`, a Serper-shaped
+`/search`, `/v1/read`, liveness, authenticated Prometheus metrics, a bounded
+worker count, and mandatory service auth for non-loopback binds. Root Docker
+files run the API with private-network SearXNG. This is single-node code, not a
+hosted service or SLA; Docker build, TLS deployment and uptime remain unverified.
+
+**D-091 Explicit optional paid backup and comparative reporting.** A configured
+Brave, Serper, or Tavily adapter is appended only when both provider and key are
+set; it is not part of the normal keyless path. The adapter sends keys in
+headers and refuses cross-origin redirects. The frozen benchmark's optional
+reference phase now reports both systems' top-5 labelled gold hit rates,
+availability, failures, p50/p95, overlap and per-query IDs. The gold label is
+retrieval relevance, not answer truth; no paid key/open-network run occurred,
+so it yields no current parity claim.
+
+**D-092 Source-law review remains open.** Add `docs/SOURCE_POLICY.md` inventory,
+data-flow notes, technical safeguards and a pre-release review checklist.
+No counsel/current source-terms review was available in the sandbox; this is
+explicitly not a legal clearance and high-volume automation is not authorized
+by these code changes.
+
+**D-093 Credentialed search requests do not follow cross-origin redirects.**
+Paid fallback requests carry provider keys in headers; the reference benchmark
+can also carry a Google CSE key in its provider-required query parameter.
+`safe_urlopen` therefore supports an explicit same-origin redirect policy, and
+credential-bearing provider calls enable it. Same-origin redirects retain the
+existing public-host/DNS-pinning policy; cross-origin redirects fail visibly
+instead of forwarding credentials or queries to a redirect target.
+
+**D-094 Public API tokens need a minimum length.** The self-hosted HTTP API
+continues to allow unauthenticated loopback development, but a non-loopback
+bind requires a service key of at least 32 characters. This is a basic guard
+against accidentally exposing the service with a trivial token; operators must
+still generate high-entropy keys, use TLS, and configure network controls.
+
+**D-095 A daily watch is a small, auditable canary, not an acceptance test.**
+The scheduled/manual GitHub Actions workflow makes only two sequential public
+GitHub page reads per day, bypasses IraLens's cache, and uploads a per-run JSON
+artifact on both success and failure (no page body or credentials). It makes
+no public search queries pending source-policy review. It cannot substitute
+for the missing 60-page audit, the frozen 100-URL benchmark, or a multi-day
+availability result. Actions schedules and manual dispatch are registered
+only after the workflow file is present on the repository's default branch.
+
+**D-096 Local OCR attempts scans by default when tools are available.**
+`read` now tries bounded Poppler/Tesseract OCR for image-only PDFs without
+requiring an opt-in setting; it still never uploads document data, runs a
+captcha solver, or installs OS packages. An operator can set
+`IRALENS_PDF_OCR_ENABLED=false`. Missing tools produce a typed
+`pdf_ocr_support_missing` error on scans; `doctor.pdf` lists exactly which are
+missing. `pdf_to_text()` itself retains its explicit `ocr_enabled=False`
+low-level default to avoid surprising callers who pass in-memory PDFs.
+
+**D-097 Bound PDF downloads separately and retry sparse text locally.**
+A PDF advertised by MIME or URL path may need more than the general 5 MB HTML
+cap, so it gets a separate 20 MB cap under the same overall 60 s deadline.
+`pypdf` remains primary; when it returns less than 80 characters, an
+*installed* `pdftotext` may extract a richer text layer locally before OCR.
+Nothing is downloaded to a third party. PDF text is normalized for ligatures,
+soft hyphens and line-wrap hyphenation, and encrypted PDFs that reject an
+empty password raise `pdf_encrypted` rather than being mislabelled as scans.
+This is not evidence of a 90% corpus rate until real labelled pages are run.
+
+**D-098 Obscura browser engine configuration and localhost-only control binding.**
+Obscura (`github.com/h4ckf0r0day/obscura`) is configured as the primary optional
+browser engine, pinned to fixed release `v0.2.4` and installed via `iralens
+install-engine`. The previous `iralens-engine` binary is retained as the backup
+in `ENGINE_BINARY_NAMES`. Obscura's anti-detection stealth features remain OFF
+by default (enabled only via explicit `stealth: true` configuration). Any
+control or CDP socket binds to localhost (`127.0.0.1`) only. `install-engine
+--status` reports the active engine, backup engine presence, stealth state,
+and control host binding.
+
+**D-099 Search concurrency expansion, polite per-site limits, and answer cache.**
+The global search concurrency gate is raised from 2 to 20 (`search_max_concurrent`),
+and HTTP API server worker capacity is expanded to 32, eliminating queueing
+bottlenecks during 20-way bursts. To protect upstream backends and stay polite,
+a new `PerSiteConcurrencyGate` (`search_per_site_concurrent`, default 3) bounds
+simultaneous connections to any single provider/site. A short-term answer cache
+(`cache_search_ttl_seconds`, default 300s) answers repeated queries before
+acquiring engine slots. Self-hosted SearXNG is the recommended foundation; search
+continues operating reliably if DuckDuckGo, Bing, or both are switched off.
+
+**D-100 Serper-shaped compatibility documentation and v0.2.0 packaging bump.**
+The `/search` endpoint provides basic web search compatibility for Serper clients,
+documented in README.md with an explicit table distinguishing covered features
+from unsupported proprietary Google features (knowledgeGraph, news/image tabs).
+Packaging bumped to v0.2.0 with Docker Compose stack configurations and clean
+Quick Start instructions. Docker is documented as unavailable in the current
+restricted build environment.

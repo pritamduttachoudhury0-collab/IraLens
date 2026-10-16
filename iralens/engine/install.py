@@ -199,7 +199,14 @@ def _extract(archive: Path, asset: str, binary_name: str, stage: Path) -> Path:
 def engine_status() -> Dict[str, object]:
     """Report the current engine installation state without installing anything."""
     path = find_engine()
-    report: Dict[str, object] = {"installed": path is not None}
+    engine_name = "obscura" if path and "obscura" in path.name.lower() else ("iralens-engine" if path else "obscura (primary, not installed)")
+    report: Dict[str, object] = {
+        "engine": engine_name,
+        "backup_engine": "iralens-engine",
+        "installed": path is not None,
+        "stealth": "off (default)",
+        "control_host": "127.0.0.1 (localhost only)",
+    }
     shim = _default_bin_dir() / "iralens-engine"
     report["shim"] = str(shim) if os.name != "nt" and shim.is_file() else None
     if path is None:

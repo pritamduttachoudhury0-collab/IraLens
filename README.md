@@ -34,7 +34,77 @@ iralens install-engine      # optional: the local headless browser engine
 iralens doctor              # see exactly what is available right now
 ```
 
-Plain `pip install -e .` also works. `./scripts/setup.sh --no-dev` skips the test tools.
+Plain `pip install -e .` also works from the checkout. `./scripts/setup.sh --no-dev` skips the test tools. The package is not published to PyPI yet.
+
+## Quick Start
+
+### 1. Fast CLI usage
+```bash
+# Search the web (keyless by default, using polite concurrent discovery)
+iralens search "solar cell efficiency" --limit 5
+
+# Read any web page or PDF into clean text/markdown locally
+iralens read "https://arxiv.org/pdf/1706.03762"
+
+# Inspect system capabilities and backend health
+iralens doctor
+```
+
+### 2. Python API
+```python
+from iralens import IraLens
+
+lens = IraLens()
+
+# Search
+artifacts = lens.search("distributed consensus algorithms", limit=5)
+for a in artifacts:
+    print(f"[{a.title}]({a.url}): {a.content[:100]}...")
+
+# Read a page or PDF
+content = lens.read("https://en.wikipedia.org/wiki/Raft_(algorithm)")
+```
+
+### 3. Self-Hosted SearXNG Search Service (Recommended Default)
+Self-hosted SearXNG is the recommended foundation for reliable keyless search. It runs locally or on your LAN via Docker Compose, eliminating reliance on individual public search portals:
+```bash
+# Generate secrets
+export IRALENS_API_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+export SEARXNG_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
+
+# Start the stack (IraLens API + SearXNG on private network)
+docker compose up --build -d
+
+# Verify health and execute a search via the Serper-compatible endpoint
+curl -s http://127.0.0.1:8000/health
+curl -s -H "X-API-KEY: $IRALENS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"q": "quantum computing", "num": 5}' \
+  http://127.0.0.1:8000/search
+```
+*(Note: If Docker is unavailable in your environment, run `iralens` directly on the host with Python 3.10+; see without Docker instructions in deploy/searxng/README.md).*
+
+**Run as a self-hosted search service (Docker Compose).** This starts IraLens'
+HTTP API and a private SearXNG metasearch instance on one Docker network; only
+the IraLens API port is published. It needs Docker Compose and an API token:
+
+```bash
+export IRALENS_API_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+export SEARXNG_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
+docker compose up --build -d
+curl -sS http://127.0.0.1:8000/health
+curl -sS -H "X-API-KEY: $IRALENS_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"q":"solar cell efficiency","num":5}' \
+  http://127.0.0.1:8000/search
+```
+
+`POST /search` uses a Serper-shaped basic request/response. The native,
+fully diagnostic contract is `POST /v1/search`; page reading is `POST /v1/read`;
+Prometheus metrics are at `/metrics` (authenticated). See
+[`docs/API.md`](docs/API.md). Use TLS via a reverse proxy before exposing this
+service outside a trusted network. Docker build/runtime were not available for
+verification in this workspace; see `docs/PHASE_STATUS.md`.
 
 ## For AI agents (Claude Code, Codex, OpenClaw, any terminal agent)
 
@@ -102,8 +172,8 @@ with IraLens() as lens:
     # Web discovery
     results = lens.search("rust headless browser", limit=5)
 
-    # Open anything — specialized platforms are handled natively,
-    # everything else gets a real browser. One call, one system.
+    # Open anything — specialized sources first, then local static reading;
+    # a local browser fallback handles JS-heavy pages when installed.
     page = lens.open(results[0].url)
 
     # Full browser interaction
@@ -135,7 +205,47 @@ iralens click "a.next" && iralens extract '{"rows[]": "tr"}'
 iralens screenshot page.png
 iralens sources | doctor | session
 iralens mcp                                    # start the MCP server
+iralens serve                                  # local HTTP API on 127.0.0.1:8000
 ```
+
+### HTTP API
+
+```bash
+export IRALENS_API_KEY="replace-with-a-long-random-token"
+IRALENS_API_HOST=0.0.0.0 iralens-api --port 8000
+curl -H "Authorization: Bearer $IRALENS_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"solar cell efficiency","max_results":5}' \
+  http://localhost:8000/v1/search
+```
+
+A non-loopback bind requires `IRALENS_API_KEY` with at least 32 characters.
+The service exposes native
+`POST /v1/search`, Serper-shaped `POST /search`, `POST /v1/read`, `GET /health`,
+authenticated `GET /v1/health/search`, and authenticated Prometheus `/metrics`.
+It is a single-node service; use a TLS reverse proxy, resource limits, and
+persistent local state in production. See the [`API reference`](docs/API.md) and
+[`operations guide`](docs/OPERATIONS.md).
+
+#### Serper Compatibility Coverage (`POST /search`)
+
+The `/search` endpoint provides drop-in replacement support for agents configured for the Serper search API:
+
+| Capability / Field | Supported in IraLens `/search` | Behavior & Details |
+|---|:---:|---|
+| **Endpoint** `POST /search` | Yes | Direct URL swap for Serper clients (`{"q": "...", "num": 10}`) |
+| **Endpoint** `GET /search` | Yes | Query-string support (`/search?q=...&num=10`) |
+| **Auth Headers** | Yes | Accepts `X-API-KEY: <key>` or `Authorization: Bearer <key>` |
+| **Parameter** `q` / `query` | Yes | Sanitized query string with length boundaries |
+| **Parameter** `num` / `limit` | Yes | Bounded result limits (default 8, max 50) |
+| **Output** `searchParameters` | Yes | Formatted as `{"q": ..., "num": ..., "type": "search"}` |
+| **Output** `organic` | Yes | Array of `{title, link, snippet, position, date}` |
+| **Diagnostic metadata** | Yes | Extended `iralens` object with summary and engine status |
+| **Direct read** `POST /v1/read` | Yes | Direct page reading (local HTML/PDF extraction, SSRF-safe) |
+| **Vertical tabs** (`/news`, `/images`, `/videos`) | No | General web search only; specialized tabs not emulated |
+| **Knowledge Graph** (`knowledgeGraph`) | No | Proprietary Google feature; not synthesized |
+| **People Also Ask** (`peopleAlsoAsk`) | No | Proprietary Google feature; not synthesized |
+| **Direct Answer Card** (`answerBox`) | No | Use IraLens Research mode for synthesized answers |
 
 ### MCP
 
@@ -162,7 +272,7 @@ iralens mcp                                    # start the MCP server
 
 | Group | What you get |
 |---|---|
-| **Web discovery** | Web search (semantic bridge if configured, otherwise the built-in browser drives a public search engine), ranked results with provenance |
+| **Web discovery** | Keyless search chain (DuckDuckGo/Bing public HTML endpoints, Wikipedia's official API, optional private SearXNG), ranked results with provenance; browser rendering is a fallback, not a search index |
 | **Page reading** | Any URL: specialized platform reader → fast static markdown (HTML **and PDF**) → full local browser rendering, with anti-bot and JS-shell fallback |
 | **Browser** | navigate/back/forward/reload, snapshot, markdown, links, click, fill, type, keys, select, scroll, JS eval, waits, in-page find, forms, structured CSS extraction, tabs, cookies, storage state, network log, console log, screenshots, PDF |
 | **Specialized sources** | GitHub, YouTube, Twitter/X, Reddit, Bilibili, XiaoHongShu, V2EX, Xueqiu, Boss直聘, LinkedIn, Facebook, Instagram, RSS, podcast transcription — each with honest health status and multi-backend fallbacks |
@@ -172,24 +282,34 @@ iralens mcp                                    # start the MCP server
 
 ## How search works without a paid search API key
 
-You do not need to sign up for a search API. The default chain drives public
-search engines through free endpoints (DuckDuckGo HTML/lite, SearXNG
-instances, then Bing as a fallback); an optional semantic bridge (Exa via
-`mcporter`) is used only if you install it and only when the free engines fail.
-Results from all engines are deduplicated, ranked with an explainable score
-breakdown, and returned with per-engine outcomes. If every engine is blocked or
-unreachable, the response says so (`no_results_reason`, `summary`) instead of
-failing silently.
+You can run IraLens without a search-provider key. The default chain is
+DuckDuckGo HTML/lite, Bing HTML (experimental), Wikipedia's official MediaWiki
+API, and the optional `mcporter`/Exa bridge when installed. A SearXNG backend is
+inserted only when you explicitly configure an instance; IraLens no longer
+contacts bundled public SearXNG instances by default. A separately configured
+Brave, Serper, or Tavily key can enable one **optional paid emergency fallback**
+after free sources fail; it is disabled otherwise.
 
-**Self-hosting SearXNG (recommended for reliability).** Your own instance is
-not shared with anyone, so it does not rate-limit you the way public instances
-do, and it gives the chain a second independent engine. See
-`deploy/searxng/` (docker compose + settings) and then:
+This is a keyless federated client, **not an independently crawled search
+index**. Availability, source terms, ranking parity, and large-scale use are
+not guaranteed. Search sources receive your queries; check
+[`docs/SOURCE_POLICY.md`](docs/SOURCE_POLICY.md) before deployment. The system
+returns per-engine outcomes and an honest `engines_failed` reason rather than
+inventing results.
+
+**Private SearXNG.** Run the included Compose stack, or launch the standalone
+service in `deploy/searxng/`:
 
 ```bash
+export SEARXNG_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+cd deploy/searxng && docker compose up -d
 export IRALENS_SEARXNG_INSTANCES="http://127.0.0.1:8888"
-export IRALENS_ALLOWED_PRIVATE_HOSTS="127.0.0.1:8888"   # opt-in for the SEARCH transport only
+export IRALENS_ALLOWED_PRIVATE_HOSTS="127.0.0.1:8888"   # search transport only
 ```
+
+The private server still queries the upstream engines you enable in SearXNG;
+self-hosting does not remove those upstream services' terms or rate limits.
+Public instance URLs are intentionally not included as defaults.
 
 **Reliability benchmark.** `benchmarks/` is a frozen 200-query / 100-URL
 acceptance benchmark with the thresholds IraLens must hold (availability,
@@ -240,14 +360,16 @@ Security boundaries and known gaps: `docs/THREAT_MODEL.md` and
 
 ## Privacy
 
-- Reads are local-first (D-077): `static` mode fetches the page directly and
-  extracts text locally. The remote reader (`r.jina.ai`) is **off by default**
-  and only used when you opt in
-  (`IRALENS_READ_REMOTE_READER_ENABLED=1`); when enabled, every URL you read
-  in `static` mode is sent to it. Use `mode=browser` for pages you do not want
-  shared with a third party.
-- Search queries go to the public search engines in the chain; the optional
-  semantic bridge sends them to its configured backend.
+- Reads are local-first: pages are fetched directly and extracted locally;
+  the browser-rendering fallback also runs locally. The remote reader
+  (`r.jina.ai`) is **off by default** and only used when you opt in
+  (`IRALENS_READ_REMOTE_READER_ENABLED=1`), and then only when the direct read
+  fails. URLs sent to it are shared with that third party. Research uses the
+  same local-first reader by default.
+- Search queries go to the configured search engines; the optional semantic
+  bridge or explicitly configured paid fallback also receives them. The
+  optional reference benchmark replays its frozen queries to the chosen
+  provider. Review `docs/SOURCE_POLICY.md` before enabling either.
 - Nothing is sent to the project authors. Session state and caches stay in
   `~/.iralens` (or `IRALENS_HOME`).
 
@@ -269,8 +391,13 @@ iralens install-engine              # install it (retries, probe-before-replace)
   empty), `filtered_out` (filters removed everything), or `engines_failed`
   (blocked/unreachable engines — check `outcomes` for `captcha`,
   `rate_limited`, `layout_changed`, …).
-- PDFs are read with their text layer (`pypdf`); image-only scans fail with a
-  typed `pdf_no_text`, never as binary noise.
+- Text PDFs use the embedded text layer (`pypdf`) and optionally the local
+  `pdftotext` fallback for sparse text. PDFs have a separate 20 MB response
+  cap (other pages: 5 MB). Scanned PDFs use free, **local** OCR automatically
+  *if* `pdftoppm` and `tesseract` are installed;
+  `iralens doctor` lists missing tools. Without them, scans fail with a typed
+  `pdf_ocr_support_missing`, never as binary noise or an unannounced empty page.
+  Opt out with `IRALENS_PDF_OCR_ENABLED=false`; no cloud OCR is used.
 - Reads that fail tell you why: `http_404`, `http_403` (bot check), `http_429`,
   `soft_404`, `antibot_challenge`, `response_too_large`, `slow_response_deadline`,
   `redirect_loop`, or `blocked_by_security_policy`.
@@ -291,12 +418,16 @@ Search/read tuning is available as config keys or `IRALENS_*` environment
 variables (the environment wins):
 
 ```bash
-IRALENS_SEARXNG_INSTANCES="https://your.instance,https://other"  # pin SearXNG instances
-IRALENS_SEARXNG_COOLDOWN_SECONDS=600     # per-instance failure cooldown
-IRALENS_SEARXNG_TIMEOUT_SECONDS=20       # per-instance request budget
-IRALENS_READ_REMOTE_READER_ENABLED=1     # opt in to the r.jina.ai reader
-IRALENS_ALLOWED_PRIVATE_HOSTS="127.0.0.1:8888"  # self-hosted search backend opt-in (search only)
-IRALENS_ENGINE_STARTUP_TIMEOUT_SECONDS=20 # engine handshake budget (a dead binary fails in ~1s)
+IRALENS_SEARXNG_INSTANCES="http://127.0.0.1:8888"  # no public instance is used by default
+IRALENS_ALLOWED_PRIVATE_HOSTS="127.0.0.1:8888"      # self-hosted search backend opt-in (search only)
+IRALENS_SEARXNG_COOLDOWN_SECONDS=600                 # durable per-instance cooldown
+IRALENS_SEARXNG_TIMEOUT_SECONDS=20                  # per-instance request budget
+IRALENS_BACKUP_SEARCH_PROVIDER=serper                # optional paid emergency fallback
+IRALENS_BACKUP_SEARCH_API_KEY=...                    # configure only if desired
+IRALENS_PDF_OCR_ENABLED=false                        # optional opt-out; local OCR auto-attempts if tools exist
+IRALENS_READ_REMOTE_READER_ENABLED=1                  # opt in to r.jina.ai after direct read fails
+IRALENS_API_KEY=... IRALENS_API_HOST=0.0.0.0            # authenticated HTTP API (TLS proxy recommended)
+IRALENS_ENGINE_STARTUP_TIMEOUT_SECONDS=20              # engine handshake budget (a dead binary fails in ~1s)
 IRALENS_BIN_DIR=~/.local/bin             # where install-engine puts the iralens-engine shim
 IRALENS_ENGINE_PATH=... IRALENS_ENGINE_SHA256=... IRALENS_ENGINE_DIR=...  # engine overrides
 ```
@@ -325,5 +456,7 @@ candidates, synthesis, provenance). The research layer is deterministic by defau
 and uses no model. Its outputs are leads with stated limits, not verified answers.
 See `docs/RESEARCH.md` and `KNOWN_LIMITATIONS.md`.
 
-Not in this release: an HTTP API, a Docker image, and a published PyPI package
-(see DECISIONS D-053 to D-054).
+Not in this release: a published PyPI package, managed endpoint, service-level
+uptime/support promise, independent web index, or demonstrated paid-provider
+parity. HTTP API and Docker files are included but still require target-host
+build/deployment verification. See `docs/PHASE_STATUS.md`.

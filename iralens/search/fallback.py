@@ -12,7 +12,7 @@ not retried, because retrying them makes the block worse.
 
 from __future__ import annotations
 
-import functools
+import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping
 
@@ -58,6 +58,7 @@ def run_chain(
     min_engines: int,
     policy: RetryPolicy,
     breaker: Optional[CircuitBreaker] = None,
+    site_gate: Optional[Any] = None,
     sleep=None,
 ) -> ChainResult:
     result = ChainResult()
@@ -73,9 +74,16 @@ def run_chain(
             ))
             _record_switch(result, name, pending, KIND_CIRCUIT_OPEN)
             continue
+        started = time.monotonic()
         try:
+            def _call_backend(b=backend, n=name):
+                if site_gate is not None:
+                    with site_gate.guard(n):
+                        return _run_backend(b, query, filters, limit, context)
+                return _run_backend(b, query, filters, limit, context)
+
             hits, attempts = call_with_retries(
-                functools.partial(_run_backend, backend, query, filters, limit, context),
+                _call_backend,
                 policy,
                 should_retry=is_transient,
                 **({"sleep": sleep} if sleep else {}),
@@ -83,7 +91,7 @@ def run_chain(
         except Exception as exc:  # classified below; the chain must keep going
             kind = failure_kind(exc)
             if breaker is not None:
-                breaker.record_failure(name)
+                breaker.record_failure(name, kind=kind)
             detail = str(getattr(exc, "detail", "") or getattr(exc, "message", "") or exc)[:300]
             result.outcomes.append(EngineOutcome(
                 engine=name, status="failed", kind=kind, detail=detail,
@@ -94,7 +102,8 @@ def run_chain(
             continue
 
         if breaker is not None:
-            breaker.record_success(name)   # an empty page still means the engine responded
+            breaker.record_success(name, latency_seconds=time.monotonic() - started)
+            # An empty page still means the engine responded successfully.
         if not hits:
             result.outcomes.append(EngineOutcome(
                 engine=name, status="empty", kind=KIND_EMPTY, filter_modes=modes, attempts=attempts,

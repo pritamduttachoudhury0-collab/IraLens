@@ -21,6 +21,7 @@ from __future__ import annotations
 import re
 import time
 import urllib.error
+import urllib.parse
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from .. import content_guard
@@ -206,6 +207,10 @@ def read_direct(
     *,
     max_bytes: Optional[int] = None,
     deadline_seconds: Optional[float] = None,
+    pdf_max_bytes: Optional[int] = None,
+    ocr_enabled: bool = True,
+    ocr_max_pages: int = 5,
+    ocr_language: str = "eng",
 ) -> str:
     """Fetch *url* directly and return markdown (or plain text) -- local-first.
 
@@ -221,8 +226,16 @@ def read_direct(
     deadline = time.monotonic() + (deadline_seconds if deadline_seconds else _DEFAULT_DEADLINE_SECONDS)
     try:
         with safe_urlopen(safe_url, timeout=timeout,
-                          headers={"User-Agent": _UA, "Accept": "text/html,*/*"}) as resp:
-            body = _read_body_with_deadline(resp, limit, deadline)
+                          headers={"User-Agent": _UA, "Accept": "text/html,application/pdf,*/*"}) as resp:
+            content_type = (getattr(resp, "headers", {}) or {}).get("Content-Type", "").lower()
+            path = urllib.parse.urlsplit(safe_url).path.lower()
+            is_pdf_target = ("application/pdf" in content_type or path.endswith(".pdf")
+                             or path.startswith("/pdf/"))
+            # Text-heavy PDFs can exceed the general HTML limit, but remain
+            # bounded by their own cap and the original wall-clock deadline.
+            body = _read_body_with_deadline(
+                resp, max(limit, pdf_max_bytes or limit) if is_pdf_target else limit, deadline
+            )
     except urllib.error.HTTPError as exc:
         raise _classify_http_error(exc) from exc
     except (OperationTimeoutError, ExtractionError):
@@ -242,8 +255,11 @@ def read_direct(
             detail="antibot_challenge",
         )
     if looks_like_pdf(body):
-        # PDF bodies used to be decoded as UTF-8 and returned as binary noise.
-        text, _info = pdf_to_text(body)
+        # PDF bodies must not be decoded as UTF-8 binary noise. Scanned-page
+        # OCR runs locally when its optional host tools are present; if missing
+        # the PDF extractor returns an explicit typed error, not fake success.
+        text, _info = pdf_to_text(body, ocr_enabled=ocr_enabled,
+                                  ocr_max_pages=ocr_max_pages, ocr_language=ocr_language)
     elif _looks_like_html(body):
         html = body.decode("utf-8", errors="replace")
         text = html_to_markdown(html)
@@ -347,7 +363,11 @@ class WebSource(Source):
             return read_direct(
                 url,
                 max_bytes=settings.read_max_bytes,
+                pdf_max_bytes=settings.read_pdf_max_bytes,
                 deadline_seconds=settings.read_total_timeout_seconds,
+                ocr_enabled=settings.pdf_ocr_enabled,
+                ocr_max_pages=settings.pdf_ocr_max_pages,
+                ocr_language=settings.pdf_ocr_language,
             ), "direct"
         except (PageUnavailableError, OperationTimeoutError, ExtractionError):
             if not settings.read_remote_reader_enabled:

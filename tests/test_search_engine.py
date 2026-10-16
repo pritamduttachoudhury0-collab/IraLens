@@ -223,6 +223,21 @@ def test_gate_releases_on_exception():
 
 
 # ------------------------------------------------ facade + CLI/MCP wiring
+def test_default_chain_uses_no_public_searx_and_includes_official_api_and_paid_opt_in():
+    from iralens.search.engines import build_backends
+
+    engine = SearchEngine(Settings(), backends=build_backends())
+    assert engine.resolve_chain() == ["duckduckgo", "bing", "wikipedia", "semantic-search"]
+
+    private = SearchEngine(Settings(searxng_instances=("http://searxng:8080",)),
+                           backends=build_backends())
+    assert private.resolve_chain() == ["duckduckgo", "searxng", "bing", "wikipedia", "semantic-search"]
+
+    paid = SearchEngine(Settings(backup_search_provider="serper", backup_search_api_key="secret"),
+                        backends=build_backends())
+    assert paid.resolve_chain()[-1] == "paid-backup"
+
+
 def test_facade_search_api_returns_structured_response(tmp_path, monkeypatch):
     from iralens import IraLens
     from iralens.sources import get_source

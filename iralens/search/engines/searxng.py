@@ -22,12 +22,13 @@ import json
 import threading
 import time
 import urllib.parse
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ... import security
 from ...errors import SourceUnavailableError
 from ...fetch import fetch_url_text
-from ...reliability import classify_block
+from ...config import state_dir
+from ...reliability import PersistentCircuitBreaker, classify_block, failure_kind
 from ...search.schema import SearchFilters, SearchHit
 from ...settings import Settings
 from .base import EMULATED, NATIVE, POST, SearchBackend
@@ -68,13 +69,35 @@ class SearxngBackend(SearchBackend):
         self._lock = threading.Lock()
         self._cooldown_until: Dict[str, float] = {}
         self._next_index = 0
+        self._persistent_health: Optional[PersistentCircuitBreaker] = None
 
     # ------------------------------------------------------------- rotation
     def _instances(self, settings: Settings) -> Tuple[str, ...]:
         return tuple(i.rstrip("/") for i in settings.searxng_instances if i.strip())
 
+    @staticmethod
+    def _health_key(instance: str) -> str:
+        parts = urllib.parse.urlsplit(instance)
+        host = (parts.hostname or "").lower()
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+        return f"searxng:{host}:{port}"
+
+    def _health_store(self, cooldown_seconds: float) -> PersistentCircuitBreaker:
+        if self._persistent_health is None:
+            # Use wall time for durable deadlines. A custom clock is retained
+            # for deterministic unit tests; monotonic timestamps never hit disk.
+            clock = time.time if self._clock is time.monotonic else self._clock
+            self._persistent_health = PersistentCircuitBreaker(
+                threshold=1,
+                cooldown=cooldown_seconds,
+                blocked_cooldown=cooldown_seconds,
+                state_path=state_dir() / "search-health.sqlite3",
+                clock=clock,
+            )
+        return self._persistent_health
+
     def _candidate_instances(self, instances: Tuple[str, ...]) -> List[str]:
-        """Rotation order (round-robin), skipping instances cooling down."""
+        """Rotation order (round-robin), skipping in-memory and durable cooldowns."""
         if not instances:
             return []
         with self._lock:
@@ -83,15 +106,22 @@ class SearxngBackend(SearchBackend):
             now = self._clock()
             cooling = {k for k, until in self._cooldown_until.items() if until > now}
         order = list(instances[start:]) + list(instances[:start])
-        return [i for i in order if i not in cooling]
+        health = self._persistent_health
+        return [i for i in order if i not in cooling and
+                (health is None or health.allow(self._health_key(i)))]
 
-    def _record_failure(self, instance: str, cooldown_seconds: float) -> None:
+    def _record_failure(self, instance: str, cooldown_seconds: float,
+                        kind: str = "unavailable") -> None:
         with self._lock:
             self._cooldown_until[instance] = self._clock() + cooldown_seconds
+        if self._persistent_health is not None:
+            self._persistent_health.record_failure(self._health_key(instance), kind=kind)
 
     def _record_success(self, instance: str) -> None:
         with self._lock:
             self._cooldown_until.pop(instance, None)
+        if self._persistent_health is not None:
+            self._persistent_health.record_success(self._health_key(instance))
 
     # --------------------------------------------------------------- search
     def build_query(self, query: str, filters: SearchFilters) -> str:
@@ -113,6 +143,7 @@ class SearxngBackend(SearchBackend):
                 hint="set IRALENS_SEARXNG_INSTANCES to a comma-separated list",
                 detail="no_instances",
             )
+        self._health_store(cooldown)
         candidates = self._candidate_instances(instances)
         if not candidates:
             raise SourceUnavailableError(
@@ -132,14 +163,14 @@ class SearxngBackend(SearchBackend):
                                       # this flag only consults that allowlist.
                                       allow_private_hosts=True)
             except Exception as exc:
-                self._record_failure(instance, cooldown)
+                self._record_failure(instance, cooldown, failure_kind(exc))
                 errors.append(f"{instance}: {exc}")
                 continue
             try:
                 payload = json.loads(text)
             except json.JSONDecodeError:
-                self._record_failure(instance, cooldown)
                 block = classify_block(text)
+                self._record_failure(instance, cooldown, block or "unavailable")
                 errors.append(f"{instance}: non-json response ({block or 'not json'})")
                 continue
             hits = parse_response(payload)

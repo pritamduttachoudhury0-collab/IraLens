@@ -42,8 +42,10 @@ Ordered by how much they can mislead a user. Read this before relying on output.
 9. **Without an LLM, statements are sentences.** The deterministic synthesizer
    quotes the best-scoring claim per cluster. It does not paraphrase or
    reconcile.
-10. **Reads are static only inside research.** Pages that need JavaScript are
-    not read; they stay snippet-only and are reported as such.
+10. **Research now uses local-first auto reading, but the browser path is
+    unverified here.** JS-shell pages trigger the local browser when its engine
+    is installed; without that optional binary, research can remain snippet-only.
+    The full JS-heavy URL benchmark has not run on an open network.
 
 ## Search behavior
 
@@ -61,8 +63,12 @@ Ordered by how much they can mislead a user. Read this before relying on output.
 
 ## Reliability and security
 
-15. **Circuit breaker state is in memory.** It resets on restart. A long-running
-    process keeps its breaker state. Separate processes do not share it.
+15. **Search cooldowns are now persisted locally, but are not a distributed
+    service.** Engine circuits and SearXNG instance cooldowns use a private
+    SQLite file under `IRALENS_HOME/state`; they survive restarts and coordinate
+    local processes. Multi-host locking, external health storage, and week-long
+    operational history are not implemented. A read-only/unavailable state
+    directory fails open.
 16. **Injection flags are heuristic.** They cover common English phrasings. They
     miss paraphrases and other languages. They are advisory, not a boundary.
 17. **Private-address check: literal plus fetch-time DNS validation.**
@@ -73,8 +79,10 @@ Ordered by how much they can mislead a user. Read this before relying on output.
     connection, and re-validates every redirect hop. Remaining gap: sources
     with their own HTTP clients (RSS via `requests`, constant GitHub API
     targets) still validate only the literal URL.
-18. **Research reads go to a third party.** Each top URL is sent to `r.jina.ai`.
-    Use the browser for pages you do not want shared.
+18. **Remote reading remains an opt-in third party.** Direct HTML/PDF reads
+    and browser rendering are local. If `IRALENS_READ_REMOTE_READER_ENABLED=1`
+    and the local direct read fails, the URL is sent to `r.jina.ai`. Search
+    queries still go to the configured search engines. See README Privacy.
 
 ## Packaging and project state
 
@@ -82,29 +90,33 @@ Ordered by how much they can mislead a user. Read this before relying on output.
     `NOTICE` keeps the MIT attribution for the adapted Agent Reach code.
 20. **`xiaoyuzhou` is not implemented.** `ARCHITECTURE.md` used to list it as a
     source. It has no module in this bundle.
-21. **Not pushed to `main`.** Work is on `arena/a44d3b38-iralens`, and a PR
-    into `main` is the route (DECISIONS D-002, D-055).
+21. **Not published as a release.** This session's work is on
+    `arena/10d16107-iralens`; a reviewed pull request and release are still
+    required before end users can install a stable published version.
 22. **Web-search and specialized-source tests cover offline behavior only.**
     Parsers, filters, ranking, and the pipeline are tested offline with fakes and
     fixtures. End-to-end behavior against the live web is not tested.
 
 ## Not built in this release
 
-23. **No HTTP API.** Access is through the Python facade, the CLI, and the MCP
-    server over stdio. See DECISIONS D-053.
-24. **No Docker image.** Docker is not available in the build sandbox, so an image
-    could not be built or tested. See DECISIONS D-054.
+23. **HTTP API exists but is not a managed service.** The `iralens-api`
+    executable and `iralens serve` command expose `/v1/search`, Serper-shaped
+    `/search`, `/v1/read`, `/health`, authenticated `/v1/health/search`, and
+    authenticated `/metrics`. Non-loopback binds require a 32-character
+    service key. It is a single-node standard-library server;
+    it has no hosted URL, SLA, customer support, TLS termination, or multi-node
+    health store.
+24. **Docker files exist, but the image/Compose stack are unverified here.**
+    `Dockerfile` and root `docker-compose.yml` add IraLens plus private SearXNG.
+    Build and startup must be tested on a host with Docker and outbound access.
 25. **Windows setup is untested.** `scripts/setup.ps1` was written without a
-    Windows machine. `scripts/setup.sh` was run here (Linux, Python 3.11). See D-054.
-26. **Not published to PyPI.** Install from a checkout (README). The name
-    `iralens` was checked on 2026-10-10 and is unclaimed (404 on both
-    `pypi.org/pypi/iralens/json` and `pypi.org/simple/iralens/`). Publishing
-    stays gated on full live verification (items 1-4).
-27. **CI runs the offline gates only.** `.github/workflows/ci.yml` (added
-    2026-10-10) runs pytest + ruff (E9,F,B) + mypy on every PR. Live checks
-    and the browser engine are not exercised in CI; run
-    `scripts/verify_interfaces.py` somewhere with open Internet before a
-    release.
+    Windows machine. `scripts/setup.sh` is Linux/macOS-oriented.
+26. **Not published to PyPI.** Install from a checkout (README). Publishing
+    remains gated on the open-network benchmark, security review, source/legal
+    review, and a release decision.
+27. **CI runs offline gates only.** `.github/workflows/ci.yml` runs pytest,
+    ruff, and mypy. Live search, browser startup, Docker, and seven-day
+    monitoring are not exercised in CI.
 28. **Packaging metadata warnings: resolved** (D-061). The SPDX license form is
     used and the build requires setuptools 77 or newer.
 
@@ -173,11 +185,11 @@ Ordered by how much they can mislead a user. Read this before relying on output.
 
 ## Added with the D-076...D-079 hardening (2026-10-10)
 
-43. **Bundled SearXNG instances are unverified conveniences.** They are public
-    instances known to the SearXNG project; this sandbox cannot reach them, so
-    none has been checked for availability, honesty of results, or logging
-    policy. Pin your own with `IRALENS_SEARXNG_INSTANCES` for production
-    (D-078).
+43. **SearXNG must be explicitly configured.** Public instances have been
+    removed from defaults because their owners' availability, privacy policy,
+    terms, and upstream mix vary. The compose stack supplies a private instance,
+    but its upstream engines, terms, and normal-network behavior are not
+    verified here.
 44. **Direct-fetch User-Agents may hit bot walls.** The free engines and the
     direct reader fetch with a browser-like UA; some sites answer such fetches
     with a challenge. The chain classifies the block honestly (`captcha`,
@@ -187,13 +199,14 @@ Ordered by how much they can mislead a user. Read this before relying on output.
     extractor (D-077) has no DOM, CSS layout, or JavaScript. Tables become
     pipe rows, widgets disappear. Use `mode=browser` when fidelity matters.
 46. **The remote reader is opt-in and third-party.** With
-    `IRALENS_READ_REMOTE_READER_ENABLED=1` every static URL is sent to
-    r.jina.ai (README Privacy). It is off by default precisely to keep reads
-    local.
-47. **Ranking is not benchmarked against commercial search APIs.** The
-    replacement benchmark (item 38) compares the new scorer against the
-    verbatim legacy scorer only; no claim about parity with Google/Bing/Brave
-    ranking can be made from this environment.
+    `IRALENS_READ_REMOTE_READER_ENABLED=1`, URLs that fail the direct local read
+    may be sent to r.jina.ai. It is off by default.
+47. **Paid-provider comparison is implemented but not measured.** The optional
+    reference phase now reports the same labelled top-5 gold hit rate for IraLens
+    and the configured paid provider, plus availability, errors, p50/p95, and
+    domain overlap. No key was configured and this environment cannot reach the
+    provider; therefore no parity percentage or ranking-equivalence claim can
+    be made.
 
 ## Verification record (2026-10-10, sandbox with allowlisted egress)
 
@@ -239,12 +252,13 @@ claim above was re-tested in this environment on 2026-10-10.
     0.00 and correctly refused to claim anything. The full three-consecutive-run
     acceptance must be executed on an open network:
     `python benchmarks/run_benchmark.py --all --with-load --network home`.
-49. **PDF text extraction needs `pypdf`** (a declared dependency since D-083).
-    Without it a PDF read raises `extraction_failed`/`pdf_support_missing`
-    instead of returning text; there is **no OCR**, so scanned/image-only PDFs
-    raise `pdf_no_text`. Extraction quality depends on the PDF's own text layer
-    and fonts — verified here only on hand-built PDFs (plain and
-    FlateDecode-compressed), not on the arXiv/RFC corpus in `benchmarks/urls.json`.
+49. **PDF text extraction needs `pypdf`; scanned-page OCR needs host tools.**
+    OCR auto-attempts for image-only PDFs when `pdftoppm` and `tesseract` are
+    installed, and defaults to five pages in English (disable with
+    `IRALENS_PDF_OCR_ENABLED=false`). Without the tools, `doctor` and the
+    typed `pdf_ocr_support_missing` read error say what is missing. OCR is
+    subprocess-bounded and never uploads the PDF. Neither OCR tool is
+    installed in this workspace, and the arXiv/RFC corpus remains unverified.
 50. **The JS-shell heuristic can over-trigger.** Any static page under ~150
     visible characters (or containing an "enable JavaScript" notice) is
     re-read through the browser when the engine is installed. The cost is one
@@ -278,3 +292,48 @@ claim above was re-tested in this environment on 2026-10-10.
   (DuckDuckGo/Bing/SearXNG), the real thresholds in `benchmarks/`, PDF
   extraction on real papers, the r.jina.ai reader, and engine
   download/startup of a real binary.
+
+## Verification record (2026-10-13, restricted egress)
+
+- `.venv/bin/python -m pytest -q` — **402 passed, 14 skipped**. The latest
+  focused run of reliability, reference-provider, API-key, and SearXNG changes
+  passed (**37 tests**). Skips are live/browser integration cases; they are
+  not counted as passes.
+- `.venv/bin/ruff check --select E9,F,B iralens tests benchmarks` — **clean**.
+  `.venv/bin/mypy iralens --ignore-missing-imports` — **clean, 67 files**;
+  the new `benchmarks/reference_api.py` also passes mypy on its own.
+- `.venv/bin/python scripts/verify_interfaces.py` — **20 PASS / 0 FAIL /
+  2 BLOCKED**. Live GitHub API/source and MCP stdio contract checks succeeded;
+  the general search/research checks were BLOCKED because all configured search
+  engines were unreachable from this sandbox.
+- `.venv/bin/python scripts/live_github_research.py "headless browser"` — read
+  six GitHub pages, returned 12 heuristic claims, no contradiction candidates,
+  and `replay_matches_live_run: true`. This verifies only GitHub source access
+  and the local research/read/replay path; the claims remain unverified and it
+  does not test open-web search quality.
+- `.venv/bin/python benchmarks/run_benchmark.py --self-test` — **passed** as a
+  synthetic harness check only. No real benchmark query set was completed, so
+  there are no three consecutive passes or paid-provider parity results.
+- `docker` and `podman` are unavailable. The Docker image and Compose stack
+  were not built or started. No paid reference key was configured, no seven-day
+  operational monitoring was done, and no legal review was obtained.
+
+## Verification record (2026-10-16, v0.2.0, restricted egress)
+
+- `.venv/bin/python -m pytest -q` — **428 passed, 14 skipped, 0 failed**.
+- `.venv/bin/ruff check --select E9,F,B iralens tests scripts` — **clean**.
+- `.venv/bin/mypy iralens --ignore-missing-imports` — **clean across 67 source files**.
+- `.venv/bin/python benchmarks/run_benchmark.py --self-test` — **PASSED**.
+- `scripts/daily_watch.py` — **2/2 passed** locally against live GitHub
+  endpoints, writing JSON diagnostics.
+- Concurrency limit: raised to 20 (`search_max_concurrent`), with polite
+  per-site limits (`search_per_site_concurrent: 3`) and short-term answer
+  cache (D-099).
+- Browser engine: Obscura v0.2.4 configured as primary optional engine with
+  legacy engine backup, stealth OFF by default, localhost-only control binding
+  (D-098). Binary download from GitHub CDN remains blocked by sandbox egress.
+- PDF reading: NFKC normalization, ligature unwrapping, 20 MB bounded limit,
+  local Poppler retry, and automatic local OCR attempt with honest tool reporting (D-096, D-097).
+- Packaging: bumped to v0.2.0. Docker is unavailable in this sandbox environment
+  (`/bin/bash: docker: command not found`), so Docker images and compose stacks
+  are not claimed to have run. Live open-web benchmark remains unverified in this sandbox.

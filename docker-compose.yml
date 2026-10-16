@@ -1,0 +1,64 @@
+services:
+  iralens:
+    build: .
+    image: iralens:local
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${IRALENS_PORT:-8000}:8000"
+    environment:
+      IRALENS_API_HOST: 0.0.0.0
+      IRALENS_API_PORT: "8000"
+      IRALENS_API_KEY: ${IRALENS_API_KEY:?Set IRALENS_API_KEY before starting the service}
+      IRALENS_HOME: /data
+      IRALENS_SEARCH_ENGINES: duckduckgo,searxng,bing,wikipedia,semantic-search
+      IRALENS_SEARXNG_INSTANCES: http://searxng:8080
+      IRALENS_ALLOWED_PRIVATE_HOSTS: searxng:8080
+      IRALENS_CACHE_ENABLED: "true"
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - iralens-state:/data
+    depends_on:
+      - searxng
+    networks:
+      - backend
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  searxng:
+    image: docker.io/searxng/searxng:latest
+    restart: unless-stopped
+    environment:
+      SEARXNG_BASE_URL: http://searxng:8080/
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?Set SEARXNG_SECRET before starting the service}
+    volumes:
+      - ./deploy/searxng/settings.yml:/etc/searxng/settings.yml:ro
+      - searxng-cache:/var/cache/searxng
+    networks:
+      - backend
+    expose:
+      - "8080"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  iralens-state:
+  searxng-cache:
+
+networks:
+  backend:
+    driver: bridge

@@ -112,9 +112,10 @@ class IraLens:
     def research(self, question: str, options: Optional[Dict[str, Any]] = None) -> "ResearchReport":
         """Multi-round research with a cited report.
 
-        Plans queries, searches, reads the top sources (static reader, so each
-        URL is sent to the reader service), evaluates evidence, flags possible
-        contradictions, and returns statements that cite sources. Options:
+        Plans queries, searches, and reads top sources locally first; JS-shell
+        pages fall back to the local browser when it is installed. The optional
+        remote reader is off by default. Evidence is heuristic and cited, not
+        verified. Options:
         max_rounds, max_queries, min_sources, max_results, read_top_n.
         """
         from .research import ResearchPlanner
@@ -142,7 +143,7 @@ class IraLens:
         def reader(url: str) -> str:
             # Bound what the reader returns; the planner trims further for
             # the replay trace. This keeps a huge page out of memory.
-            return web.read_url(url, self._context, mode="static",
+            return web.read_url(url, self._context, mode="auto",
                                 max_chars=settings.research_page_chars * 4).content
 
         report = ResearchPlanner(settings, search, reader=reader).run(question, opts)
@@ -284,9 +285,14 @@ class IraLens:
         return out
 
     def doctor(self) -> Dict[str, Any]:
-        """Unified capability report: engine + every source."""
+        """Unified capability report: engine, PDF tools and every source."""
+        from .extract import pdf_capabilities
+        from .settings import Settings
+
         engine_health = self._engine_handle().health()
-        return {"browser": engine_health, "sources": self.source_status()}
+        pdf_health = pdf_capabilities(ocr_enabled=Settings.from_config(self.config).pdf_ocr_enabled)
+        return {"browser": engine_health, "pdf": pdf_health,
+                "sources": self.source_status()}
 
     # ---------------------------------------------------------------- browser
     def navigate(self, url: str, wait_until: str = "load") -> Any:

@@ -1,6 +1,6 @@
 [project]
 name = "iralens"
-version = "0.1.0"
+version = "0.2.0"
 description = "IraLens — one unified Internet-access system: search, read, browse, and specialized source access behind a single interface."
 readme = "README.md"
 license = "Apache-2.0"
@@ -29,6 +29,7 @@ dev = ["pytest>=8.0", "ruff>=0.5", "mypy>=1.10"]
 
 [project.scripts]
 iralens = "iralens.cli:main"
+iralens-api = "iralens.api:main"
 
 [build-system]
 requires = ["setuptools>=77"]

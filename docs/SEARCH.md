@@ -31,12 +31,22 @@ the same keys.
 
 ## Engine redundancy and self-hosted SearXNG
 
-The default chain is `duckduckgo -> searxng -> bing -> semantic-search`. The
-reliability benchmark requires **two engines to succeed on 80%+ of queries on
-their own**, so a single endpoint cannot be the whole system. Public SearXNG
-instances are shared and rate-limited; your own instance is not:
+The default chain is `duckduckgo -> bing -> wikipedia -> semantic-search`.
+`wikipedia` uses Wikimedia's official API, identifies itself with a User-Agent,
+and spaces requests by at least one second; it is a useful supplemental index,
+not general web search. A configured private SearXNG instance is inserted
+before Bing, and the optional `paid-backup` is appended only when both its
+provider and key are configured. No third-party public SearXNG host is queried
+by default.
+
+The reliability benchmark requires **two engines to succeed on 80%+ of queries
+on their own**, so a single endpoint cannot be the whole system. A self-hosted
+SearXNG removes dependence on a shared public SearXNG instance, but still
+forwards queries to whichever upstream engines its operator enables; see
+`docs/SOURCE_POLICY.md` for the unresolved terms and legal review.
 
 ```bash
+export SEARXNG_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
 cd deploy/searxng && docker compose up -d      # see deploy/searxng/README.md
 export IRALENS_SEARXNG_INSTANCES="http://127.0.0.1:8888"
 export IRALENS_ALLOWED_PRIVATE_HOSTS="127.0.0.1:8888"
@@ -48,16 +58,19 @@ private URL that appears in a search result or page body is still blocked;
 link-local and metadata names are refused even when allowlisted.
 
 Engine failures are classified (`captcha`, `rate_limited`, `layout_changed`,
-`transient`, `unavailable`, `empty`) and visible in `outcomes`, and the
-per-engine circuit breaker skips an engine after repeated failures instead of
-burning the latency budget on it.
+`transient`, `unavailable`, `empty`) and visible in `outcomes`. The SQLite
+circuit breaker persists counters and cooldown deadlines across CLI/API
+restarts; a captcha or 429 opens it immediately, repeated failures back off
+exponentially, and only one process can claim the half-open probe. Queries and
+result content are not stored in the health database. SearXNG instance
+cooldowns use the same durable state.
 
 ## Reading a `SearchResponse`
 
 | Field | Meaning |
 |---|---|
 | `results[]` | Deduplicated, ranked. `score_breakdown` shows relevance, authority, freshness, agreement. |
-| `outcomes[]` | One per engine attempt: `status` (results / empty / failed), `kind`, `attempts`, `filter_modes`. |
+| `outcomes[]` | One per engine attempt: `status` (results / empty / failed / skipped), `kind`, `attempts`, `filter_modes`. |
 | `fallbacks[]` | Each switch between engines, with the reason. |
 | `no_results_reason` | `none`, `no_results` (engines answered, nothing matched), or `engines_failed`. |
 | `filters.report` | What was post-filtered and how many results were dropped or kept with unknown dates. |
@@ -67,16 +80,21 @@ burning the latency budget on it.
 
 ## Filter support by engine
 
-| Filter | duckduckgo | bing | semantic-search (Exa) |
-|---|---|---|---|
-| date_from / date_to | post-filtered | post-filtered | post-filtered |
-| include_domains | emulated (`site:`, first domain) + post-filtered | same | post-filtered |
-| exclude_domains | post-filtered | post-filtered | post-filtered |
-| file_type | emulated (`filetype:`) + post-filtered | same | post-filtered |
-| region | native (`kl`) | unsupported | unsupported |
-| language | unsupported | native (`setlang`) | unsupported |
+| Filter | duckduckgo | bing | wikipedia | semantic-search (Exa) | paid-backup |
+|---|---|---|---|---|---|
+| date_from / date_to | post-filtered | post-filtered | post-filtered | post-filtered | post-filtered |
+| include_domains | emulated (`site:`, first domain) + post-filtered | same | post-filtered | post-filtered | post-filtered |
+| exclude_domains | post-filtered | post-filtered | unsupported | post-filtered | post-filtered |
+| file_type | emulated (`filetype:`) + post-filtered | same | unsupported | post-filtered | post-filtered |
+| region | native (`kl`) | unsupported | unsupported | unsupported | unsupported |
+| language | unsupported | native (`setlang`) | unsupported | unsupported | unsupported |
 
 ## Configuration
 
 Every knob is in `iralens/settings.py` and reads from `config.yaml` or
-`IRALENS_<KEY>` env vars, for example `IRALENS_SEARCH_ENGINES=duckduckgo,bing`.
+`IRALENS_<KEY>` environment variables, for example
+`IRALENS_SEARCH_ENGINES=duckduckgo,bing,wikipedia`. To add private SearXNG use
+`IRALENS_SEARXNG_INSTANCES` plus the explicit `IRALENS_ALLOWED_PRIVATE_HOSTS`
+allowlist. The optional paid fallback is configured with
+`IRALENS_BACKUP_SEARCH_PROVIDER=brave|serper|tavily` and
+`IRALENS_BACKUP_SEARCH_API_KEY`; it is not called unless both are set.

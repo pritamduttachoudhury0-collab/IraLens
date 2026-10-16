@@ -1,10 +1,11 @@
 # Self-hosted SearXNG for IraLens (recommended for reliability)
 
 SearXNG is a metasearch front end: one JSON API in front of several upstream
-engines, self-hosted by you, with no paid key. For IraLens it is the cheapest
-way to get **independent, non-rate-limited engine redundancy**: your own
-instance is not shared with anyone, so it does not rate-limit you the way a
-public instance does.
+engines, self-hosted by you, with no paid key required by IraLens. It removes
+dependence on a shared public SearXNG host, but it is **not an independent web
+index**: the upstream engines you enable still receive queries and may rate
+limit or block the instance. It does not guarantee availability or permission
+for any particular traffic level.
 
 Upstream docs: <https://docs.searxng.org/>. Check SearXNG's and each upstream
 engine's terms of use for your jurisdiction and use case; self-hosting does not
@@ -13,21 +14,23 @@ change what the upstream engines permit.
 ## 1. Run it
 
 ```bash
+export SEARXNG_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
 cd deploy/searxng
 docker compose up -d            # http://127.0.0.1:8888
 curl -s 'http://127.0.0.1:8888/search?q=test&format=json' | head -c 200
 ```
 
-`settings.yml` here enables the JSON API (`search.formats: [html, json]`) and
-sets a random `secret_key` placeholder — replace it before exposing the
-instance to anything but localhost.
+`settings.yml` enables the JSON API (`search.formats: [html, json]`). Compose
+requires `SEARXNG_SECRET` and injects it at runtime; keep the value out of
+version control and do not expose this standalone instance outside loopback
+without separate access controls.
 
 ## 2. Tell IraLens about it
 
 Two environment variables, both explicit:
 
 ```bash
-# 1) which instances to use (yours first; public ones optional fallbacks)
+# 1) select only the private instance (IraLens does not bundle public instances)
 export IRALENS_SEARXNG_INSTANCES="http://127.0.0.1:8888"
 
 # 2) permission for the SEARCH TRANSPORT to reach a private address.
@@ -56,12 +59,12 @@ Notes:
 
 ## 3. Why this matters for the benchmark
 
-The redundancy threshold needs **2+ engines above 80% solo success**. A single
-self-hosted SearXNG instance gives you one such engine and removes the public
-instances' shared rate limits; pair it with the built-in DuckDuckGo and Bing
-backends for the second and third. When your instance aggregates several
-upstream engines, treat it as one engine in the metrics — that is what the
-benchmark counts.
+The frozen benchmark's redundancy gate needs **2+ configured backends above
+80% solo success**. A self-hosted SearXNG URL is one backend as measured by
+IraLens, even when it aggregates several upstream providers; the built-in
+DuckDuckGo and Bing backends are counted separately. Whether those sources
+answer reliably, and whether their terms permit a given use, still needs
+measurement and review.
 
 ## 4. Without Docker
 
