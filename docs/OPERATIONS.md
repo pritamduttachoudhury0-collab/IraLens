@@ -81,3 +81,26 @@ search providers according to its configuration.
 
 See [`API.md`](API.md), [`SEARCH.md`](SEARCH.md),
 [`RELIABILITY.md`](RELIABILITY.md), and [`SOURCE_POLICY.md`](SOURCE_POLICY.md).
+
+## GitHub Actions daily watch
+
+`.github/workflows/daily-watch.yml` runs at most two serialized read canaries
+per scheduled day against this project's GitHub HTML/API pages. The
+`workflow_dispatch` trigger is for manual verification. Every run uploads
+`daily-watch-<run_id>` with a `daily-watch.json` record (pass/fail, method,
+latency, content length, typed error); a failed read fails the job *but still
+uploads the JSON*. Artifacts have 30-day retention. No page text is retained.
+This is not a search/60-page/PDF acceptance result. GitHub only registers
+schedule/manual dispatch after this workflow is merged to **main**; a workflow
+on an unmerged branch cannot be assumed live. To verify after merge:
+
+```bash
+gh workflow run daily-watch.yml --ref main
+gh run list --workflow daily-watch.yml --limit 3
+gh run download <run-id> --name daily-watch-<run-id> --dir /tmp/iralens-watch
+```
+
+Inspect the JSON and conclusion rather than treating a green job as a general
+web-availability claim. If GitHub rejects the manual trigger before merge,
+record it as **not run**, not a pass. See `docs/READ_FAILURES.md` for missing
+audit data and triage rules.

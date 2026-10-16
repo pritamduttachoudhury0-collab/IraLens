@@ -1,0 +1,31 @@
+name: Daily watch (GitHub-only page reads)
+
+on:
+  schedule:
+    - cron: '19 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  read-canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install IraLens
+        run: python -m pip install -e .
+      - name: Read two public GitHub pages (no search queries)
+        run: python scripts/daily_watch.py --output "$RUNNER_TEMP/daily-watch.json"
+      - name: Persist diagnostics from this run even when a read fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-watch-${{ github.run_id }}
+          path: ${{ runner.temp }}/daily-watch.json
+          if-no-files-found: error
+          retention-days: 30

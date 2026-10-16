@@ -582,3 +582,12 @@ continues to allow unauthenticated loopback development, but a non-loopback
 bind requires a service key of at least 32 characters. This is a basic guard
 against accidentally exposing the service with a trivial token; operators must
 still generate high-entropy keys, use TLS, and configure network controls.
+
+**D-095 A daily watch is a small, auditable canary, not an acceptance test.**
+The scheduled/manual GitHub Actions workflow makes only two sequential public
+GitHub page reads per day, bypasses IraLens's cache, and uploads a per-run JSON
+artifact on both success and failure (no page body or credentials). It makes
+no public search queries pending source-policy review. It cannot substitute
+for the missing 60-page audit, the frozen 100-URL benchmark, or a multi-day
+availability result. Actions schedules and manual dispatch are registered
+only after the workflow file is present on the repository's default branch.
