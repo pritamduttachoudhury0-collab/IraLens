@@ -490,7 +490,7 @@ def _loopback_host(host: str) -> bool:
 
 
 def create_server(host: str = "127.0.0.1", port: int = 8000, *,
-                  api_key: Optional[str] = None, max_workers: int = 8,
+                  api_key: Optional[str] = None, max_workers: int = 32,
                   service: Optional[APIService] = None) -> IraLensHTTPServer:
     key = api_key if api_key is not None else os.environ.get("IRALENS_API_KEY", "")
     if not _loopback_host(host) and not key:
@@ -509,7 +509,7 @@ def serve(host: Optional[str] = None, port: Optional[int] = None,
           max_workers: Optional[int] = None) -> None:
     host = host or os.environ.get("IRALENS_API_HOST", "127.0.0.1")
     port = int(port if port is not None else os.environ.get("IRALENS_API_PORT", "8000"))
-    workers = int(max_workers if max_workers is not None else os.environ.get("IRALENS_API_MAX_WORKERS", "8"))
+    workers = int(max_workers if max_workers is not None else os.environ.get("IRALENS_API_MAX_WORKERS", "32"))
     server = create_server(host, port, max_workers=workers)
     _LOG.info("IraLens API listening on %s:%s (max workers=%s)", host, server.server_address[1], workers)
     try:

@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from .. import content_guard
 from ..cache import ResponseCache
 from ..config import state_dir
-from ..reliability import CircuitBreaker, ConcurrencyGate, PersistentCircuitBreaker, RetryPolicy
+from ..reliability import CircuitBreaker, ConcurrencyGate, PerSiteConcurrencyGate, PersistentCircuitBreaker, RetryPolicy
 from ..security import normalize_public_http_url
 from ..settings import Settings
 from .dedup import dedup
@@ -49,6 +49,7 @@ class SearchEngine:
         backends: Optional[Dict[str, SearchBackend]] = None,
         cache: Optional[ResponseCache] = None,
         gate: Optional[ConcurrencyGate] = None,
+        site_gate: Optional[PerSiteConcurrencyGate] = None,
         breaker: Optional[CircuitBreaker] = None,
         synonyms: Optional[Dict[str, List[str]]] = None,
     ) -> None:
@@ -56,6 +57,7 @@ class SearchEngine:
         self.backends = backends or build_backends()
         self.cache = cache or ResponseCache(enabled=settings.cache_enabled)
         self.gate = gate or ConcurrencyGate(settings.search_max_concurrent, settings.search_acquire_timeout_seconds)
+        self.site_gate = site_gate or PerSiteConcurrencyGate(settings.search_per_site_concurrent, settings.search_acquire_timeout_seconds)
         self.synonyms = synonyms
         self.policy = RetryPolicy(settings.retry_max_attempts, settings.retry_base_delay_seconds,
                                   settings.retry_max_delay_seconds)
@@ -145,7 +147,7 @@ class SearchEngine:
             return run_chain(
                 q["text"], filters, options.max_results, chain, self.backends, context,
                 min_engines=self.settings.search_min_engines, policy=self.policy,
-                breaker=self.breaker,
+                breaker=self.breaker, site_gate=self.site_gate,
             )
 
         # Query variants run concurrently when allowed (D-069). Browser-backed

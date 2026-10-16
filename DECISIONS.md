@@ -620,3 +620,13 @@ by default (enabled only via explicit `stealth: true` configuration). Any
 control or CDP socket binds to localhost (`127.0.0.1`) only. `install-engine
 --status` reports the active engine, backup engine presence, stealth state,
 and control host binding.
+
+**D-099 Search concurrency expansion, polite per-site limits, and answer cache.**
+The global search concurrency gate is raised from 2 to 20 (`search_max_concurrent`),
+and HTTP API server worker capacity is expanded to 32, eliminating queueing
+bottlenecks during 20-way bursts. To protect upstream backends and stay polite,
+a new `PerSiteConcurrencyGate` (`search_per_site_concurrent`, default 3) bounds
+simultaneous connections to any single provider/site. A short-term answer cache
+(`cache_search_ttl_seconds`, default 300s) answers repeated queries before
+acquiring engine slots. Self-hosted SearXNG is the recommended foundation; search
+continues operating reliably if DuckDuckGo, Bing, or both are switched off.

@@ -12,7 +12,6 @@ not retried, because retrying them makes the block worse.
 
 from __future__ import annotations
 
-import functools
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping
@@ -59,6 +58,7 @@ def run_chain(
     min_engines: int,
     policy: RetryPolicy,
     breaker: Optional[CircuitBreaker] = None,
+    site_gate: Optional[Any] = None,
     sleep=None,
 ) -> ChainResult:
     result = ChainResult()
@@ -76,8 +76,14 @@ def run_chain(
             continue
         started = time.monotonic()
         try:
+            def _call_backend(b=backend, n=name):
+                if site_gate is not None:
+                    with site_gate.guard(n):
+                        return _run_backend(b, query, filters, limit, context)
+                return _run_backend(b, query, filters, limit, context)
+
             hits, attempts = call_with_retries(
-                functools.partial(_run_backend, backend, query, filters, limit, context),
+                _call_backend,
                 policy,
                 should_retry=is_transient,
                 **({"sleep": sleep} if sleep else {}),

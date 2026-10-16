@@ -393,3 +393,39 @@ class ConcurrencyGate:
 
     def __exit__(self, *exc_info) -> None:
         self._sem.release()
+
+
+class PerSiteConcurrencyGate:
+    """Polite concurrency gate per target host or engine name.
+
+    Ensures that while overall search concurrency can be high (e.g. 20+),
+    any single upstream search provider or site is accessed with polite
+    bounded concurrency (e.g. 2-3 simultaneous connections) to prevent
+    rate-limiting, bot challenges, or provider degradation.
+    """
+
+    def __init__(self, limit: int = 3, acquire_timeout: float = 15.0) -> None:
+        self.limit = max(1, limit)
+        self.acquire_timeout = acquire_timeout
+        self._sems: Dict[str, threading.BoundedSemaphore] = {}
+        self._lock = threading.Lock()
+
+    def _sem(self, key: str) -> threading.BoundedSemaphore:
+        with self._lock:
+            if key not in self._sems:
+                self._sems[key] = threading.BoundedSemaphore(self.limit)
+            return self._sems[key]
+
+    @contextmanager
+    def guard(self, key: str, timeout: Optional[float] = None) -> Iterator[None]:
+        sem = self._sem(key)
+        to = self.acquire_timeout if timeout is None else timeout
+        if not sem.acquire(timeout=to):
+            raise OperationTimeoutError(
+                f"too many concurrent requests to {key}; retry shortly",
+                hint=f"polite per-site limit is {self.limit}",
+            )
+        try:
+            yield
+        finally:
+            sem.release()

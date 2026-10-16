@@ -37,8 +37,9 @@ class Settings:
     searxng_cooldown_seconds: float = 600.0   # a failed instance is skipped this long
     searxng_timeout_seconds: int = 20         # per-instance request budget
     # --- resource management -----------------------------------------------
-    search_max_concurrent: int = 2         # simultaneous searches on the shared engine
-    search_acquire_timeout_seconds: int = 60
+    search_max_concurrent: int = 20        # simultaneous searches on the shared engine (target 20+)
+    search_per_site_concurrent: int = 3    # polite per-site limit to protect upstream backends
+    search_acquire_timeout_seconds: int = 15
     search_parallel_queries: bool = True   # run reformulated query variants in parallel (D-069)
     # --- page reading --------------------------------------------------------
     read_max_bytes: int = 5 * 1024 * 1024        # general response cap
@@ -80,7 +81,7 @@ class Settings:
     pdf_ocr_language: str = "eng"
     # --- caching ---------------------------------------------------------------
     cache_enabled: bool = True
-    cache_search_ttl_seconds: int = 900
+    cache_search_ttl_seconds: int = 300   # short-term answer cache (5 minutes)
     cache_page_ttl_seconds: int = 3600
     # --- research --------------------------------------------------------------
     research_max_rounds: int = 3
