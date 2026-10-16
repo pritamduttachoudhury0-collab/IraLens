@@ -57,8 +57,8 @@ One real example per feature; commands run in the clean environment.
 | 11 | Research mode | `iralens --json research "..." --rounds 2` | `stop_reason: search_failed`, `sources: 0`, explicit limitations, exit 4 (contract); full pipeline verified live below | PASS (contract) |
 | 12 | Research over live data | `python scripts/live_github_research.py "headless browser"` | 12 claims, cited statements with confidence, provenance graph (32 nodes/31 edges), `replay_matches_live_run: true` | PASS (live) |
 | 13 | PDF reading | `pdf_to_text` on a constructed text PDF (production call path) | 1 page extracted; `pdf_capabilities` reports state | PASS |
-| 14 | Scanned documents | image-only PDF with `ocr_enabled=True` | Typed `extraction_failed: local PDF OCR needs pdftoppm and tesseract` with install hint; `pdf_capabilities` names the missing tools. OCR execution itself: **NOT RUN** — OCR tools are not installed in this environment | PASS (honest degradation) |
-| 15 | Browser engine + backup | `iralens install-engine --status`, `iralens install-engine` | Status: `obscura (primary, not installed)`, backup `iralens-engine`, stealth off, control `127.0.0.1`. Install: typed `browser_engine_unavailable`, manual asset URL printed, exit 2 — the release CDN is unreachable from here. Engine execution: **NOT RUN** (binary unobtainable in this environment) | PASS (honest degradation) |
+| 14 | Scanned documents | image-only PDF with `ocr_enabled=True` | Typed `extraction_failed: local PDF OCR needs pdftoppm and tesseract` with install hint; `pdf_capabilities` names the missing tools. OCR execution itself: **NOT RUN** — OCR tools are not installed on the verification machine | PASS (honest degradation) |
+| 15 | Browser engine + backup | `iralens install-engine --status`, `iralens install-engine` | Status: `obscura (primary, not installed)`, backup `iralens-engine`, stealth off, control `127.0.0.1`. Install: typed `browser_engine_unavailable`, manual asset URL printed, exit 2 — the release CDN is unreachable from here. Engine execution: **NOT RUN** (binary unobtainable on the verification machine) | PASS (honest degradation) |
 | 16 | Health memory | inspect `~/.iralens/state/search-health.sqlite3` after failed searches | `engine_circuit` rows per engine with failure counters, cooldowns, `last_failure_kind`; later runs persisted/re-read the state (`circuit_open` skips across processes) | PASS |
 | 17 | Caching | two identical page reads on a fresh URL | first read 0.31 s (network), second 0.00 s (cache), identical content; cache entries in `~/.iralens/state/cache/` | PASS |
 | 18 | Daily watch | `python scripts/daily_watch.py --output /tmp/daily-watch.json` | `overall: pass` — two live GitHub reads (repo HTML 0.757 s, repo API 0.364 s), JSON artifact written | PASS (live) |
@@ -68,7 +68,7 @@ One real example per feature; commands run in the clean environment.
 | 22 | Honest degradation | `iralens navigate https://example.com` (no engine); `iralens read https://arxiv.org/pdf/1706.03762` (unreachable host); `iralens configure stealth=true` (isolated `IRALENS_HOME`) | Typed `browser_engine_unavailable` exit 2 with hint; typed `page_unavailable` exit 2; config written and echoed | PASS |
 | 23 | Session state | `iralens session`, `iralens --json sources` | Persistent navigation history across processes; 16 sources listed | PASS |
 
-Not runnable anywhere in this environment (stated in the docs, which say to
+Not runnable on the verification machine (stated in the docs, which say to
 run them on the target host/network): the Docker/Compose stack (no Docker
 daemon), the frozen 200-query/100-URL live benchmark and its load phase (no
 egress; self-test above only), the Serper vertical tabs (intentionally not

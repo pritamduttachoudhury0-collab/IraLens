@@ -46,10 +46,10 @@ during final verification was fixed.
 
 ### Housekeeping notes (release process)
 
-- Merged `arena/91334bd2-iralens` (the only branch with work not already in
-  `main`); all other working branches were already merged. The
-  `audit/paid-search-replacement-20261014-phase1` branch no longer exists on
-  GitHub; its report is the document in `docs/audits/`.
+- Merged the one working branch that still had unmerged work (cleanup
+  verification notes); all other working branches were already part of
+  `main`. The former paid-search audit branch no longer exists on GitHub;
+  its report is the document in `docs/audits/`.
 - Pre-cleanup safety point: annotated tag `archive/pre-cleanup` on the
   pre-cleanup `main` tip (a fixed-branch session cannot push a branch, so a
   tag serves as the recovery point).

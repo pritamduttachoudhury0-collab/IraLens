@@ -62,7 +62,7 @@ bundled, or mirrored**. Consequently:
 
 ## 4. Runtime dependencies (declared, pip-installed — not redistributed by us)
 
-Verified via installed metadata; versions as resolved in this environment:
+Verified via installed metadata; versions as resolved at audit time:
 
 | Package | Version | License | Copyleft? | Notes |
 |---|---|---|---|---|
