@@ -60,7 +60,12 @@ during final verification was fixed.
   untouched.
 - Manual dispatch of `daily-watch.yml` was refused by the automation token
   (HTTP 403); the script itself was verified locally (2/2 live reads) and
-  the schedule stands.
+  the schedule stands. Editing repository metadata (topics, description)
+  was refused the same way; the existing repository description is kept and
+  topics can be added in the repo settings.
+- Release tagged `v0.2.1` on the merged `main`; the eight now-merged working
+  branches were deleted only after the `archive/pre-cleanup` tag was
+  confirmed on GitHub.
 
 ### Verification (full record: `docs/audits/final-verification.md`)
 
