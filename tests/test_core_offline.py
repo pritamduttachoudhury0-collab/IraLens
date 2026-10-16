@@ -91,6 +91,24 @@ def test_open_falls_through_when_source_unavailable(hil, monkeypatch):
     assert artifact.retrieval_method == "browser"
 
 
+def test_open_non_repo_github_url_falls_back_to_web(hil, monkeypatch):
+    """github.com URLs that are not /<owner>/<repo> must not fail: the
+    specialized source reports the shape as unsupported and auto mode falls
+    back to the generic web reader (regression: extraction error -> 502 via
+    /v1/read)."""
+    def fake_web_read(self, url, context, mode="auto", max_chars=20000):
+        return Artifact(title="page", url=url, source="web", kind="page",
+                        content="body", retrieval_method="direct")
+
+    monkeypatch.setattr(type(get_source("web")), "read_url", fake_web_read)
+
+    artifact = hil.open("https://github.com/settings/profile")
+    assert artifact.source == "web"
+
+    with pytest.raises(OperationUnsupportedError):
+        hil.open("https://github.com/settings/profile", mode="source")
+
+
 def test_open_source_mode_requires_source(hil, monkeypatch):
     from iralens.errors import SourceUnavailableError
 
