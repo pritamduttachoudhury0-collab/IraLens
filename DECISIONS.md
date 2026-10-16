@@ -610,3 +610,13 @@ Nothing is downloaded to a third party. PDF text is normalized for ligatures,
 soft hyphens and line-wrap hyphenation, and encrypted PDFs that reject an
 empty password raise `pdf_encrypted` rather than being mislabelled as scans.
 This is not evidence of a 90% corpus rate until real labelled pages are run.
+
+**D-098 Obscura browser engine configuration and localhost-only control binding.**
+Obscura (`github.com/h4ckf0r0day/obscura`) is configured as the primary optional
+browser engine, pinned to fixed release `v0.2.4` and installed via `iralens
+install-engine`. The previous `iralens-engine` binary is retained as the backup
+in `ENGINE_BINARY_NAMES`. Obscura's anti-detection stealth features remain OFF
+by default (enabled only via explicit `stealth: true` configuration). Any
+control or CDP socket binds to localhost (`127.0.0.1`) only. `install-engine
+--status` reports the active engine, backup engine presence, stealth state,
+and control host binding.

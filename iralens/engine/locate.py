@@ -18,8 +18,8 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-#: Binary file name of the engine executable.
-ENGINE_BINARY_NAMES = ("iralens-engine", "obscura")
+#: Supported browser engines in priority order (Obscura primary, iralens-engine backup).
+ENGINE_BINARY_NAMES = ("obscura", "iralens-engine")
 
 
 def engine_cache_dir() -> Path:
