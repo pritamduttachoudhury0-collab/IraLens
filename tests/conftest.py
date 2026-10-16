@@ -21,7 +21,7 @@ def isolated_home(tmp_path, monkeypatch):
 def _has_network() -> bool:
     """True only when a real HTTPS response comes back.
 
-    A bare TCP connect is not enough: sandboxes can accept the TCP connection
+    A bare TCP connect is not enough: some networks can accept the TCP connection
     through a proxy while HTTPS fails, which made live tests run and fail.
     """
     try:

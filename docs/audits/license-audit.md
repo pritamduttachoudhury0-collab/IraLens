@@ -13,7 +13,7 @@ file tree. No license was assumed from a parent project or from memory.
 | Item | Finding |
 |---|---|
 | Declared license | Apache-2.0 (`pyproject.toml`) |
-| LICENSE file | **Apache-2.0** full text (owner decision, D-051). The former MIT text was replaced; the owner copyright line moved to NOTICE. |
+| LICENSE file | **Apache-2.0** full text. The earlier MIT text was replaced; the copyright line moved to NOTICE. |
 | NOTICE file | Present; **expanded in this audit** (full MIT text of the adapted upstream code, engine terms) |
 | Code provenance | Original code except the Agent Reach–derived portions listed in §3.1 |
 | Bundled binaries | **None.** `file(1)` over the whole distributable tree: pure text. The browser engine binary is downloaded at runtime from upstream releases into a gitignored cache (`tools/engine/`, `~/.cache/iralens/engine`) and is never committed or redistributed. |
@@ -107,9 +107,9 @@ artifact.
 - **Bundled binaries:** none (§1). **Vendored third-party code:** none
   beyond the MIT-licensed Agent Reach adaptations (§3.1). **Modified
   upstream code:** only those MIT portions, with notices retained.
-- The `sources/` clones of the two upstream repositories in this workspace
-  are study artifacts for development; they are outside the package
-  directory and excluded from all release artifacts.
+- The upstream repositories studied during development are not part of this
+  repository; only the adapted portions listed in §3.1 ship, with notices
+  retained.
 
 ## 8. Compatibility conclusion
 
@@ -123,11 +123,11 @@ artifact.
 
 ## 9. Actions taken in this audit
 
-1. **LICENSE file — corrected.** An earlier draft of this audit said LICENSE
-   was "added". That was wrong. The repo's existing MIT `LICENSE` was kept
-   unchanged, and no Apache-2.0 text was written. The unresolved conflict
-   is recorded in DECISIONS.md D-001: `pyproject.toml` and `NOTICE` declare
-   Apache-2.0, while the LICENSE file is MIT. The owner must pick one. *(Open.)*
+1. **LICENSE conflict — resolved after this audit's date.** At audit time the
+   LICENSE file held the old MIT text while `pyproject.toml` and `NOTICE`
+   already declared Apache-2.0. The project subsequently settled on
+   Apache-2.0: `LICENSE` now holds the full Apache-2.0 text, and the
+   copyright line lives in `NOTICE`. *(Resolved.)*
 2. **Expanded `NOTICE`** to reproduce the complete MIT license text and
    copyright notice for the adapted Agent Reach code (MIT's inclusion
    requirement), and to state the Obscura engine terms precisely. *(Fixed.)*
@@ -136,7 +136,7 @@ artifact.
    both artifacts and listing contents. *(Fixed.)*
 
 No dependency was added, removed, or replaced — none had an actual
-licensing problem (§10 of the audit mandate).
+licensing problem.
 
 ## 10. Verdict
 

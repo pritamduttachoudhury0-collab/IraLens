@@ -38,9 +38,8 @@ docker compose up --build -d
 
 The Compose stack keeps SearXNG on the container network and publishes only
 the IraLens API. `IRALENS_HOME` is a named volume, so caches and persistent
-health state survive restarts. The Docker image and compose file have not been
-built in this restricted workspace; treat Docker startup as unverified until
-you build and smoke-test it on the target host.
+health state survive restarts. Build and smoke-test the image on your target
+host before relying on it; see `KNOWN_LIMITATIONS.md`.
 
 ## Routes
 

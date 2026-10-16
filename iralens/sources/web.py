@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Generic web page reading.
 
-One capability, ordered backends (local-first, D-077):
+One capability, ordered backends (local-first):
   1. direct -- SSRF-safe HTTP fetch + stdlib HTML extraction (local, private).
      This is the default; no URL leaves the machine except to the target site.
   2. static-reader -- a remote markdown reader service (r.jina.ai). OFF by
@@ -51,7 +51,7 @@ _READER_BASE = "https://r.jina.ai/"
 
 #: A client-rendered app shell is not page text. When the static read returns
 #: one of these markers (or practically nothing) and mode is "auto", the read
-#: retries through the browser engine, which executes the JavaScript (D-081).
+#: retries through the browser engine, which executes the JavaScript.
 _JS_SHELL_MARKERS = (
     "enable javascript", "javascript is required", "javascript is disabled",
     "you need to enable javascript", "must enable javascript",
@@ -192,7 +192,7 @@ def _looks_like_html(body: bytes) -> bool:
     """Sniff the body: HTML/XML-ish markup vs plain text (markdown, JSON...).
 
     Plain-text bodies (including remote-reader markdown) pass through
-    unchanged; only markup is run through the extractor (D-077).
+    unchanged; only markup is run through the extractor.
     """
     head = body[:512].lstrip().lower()
     return head.startswith((b"<!doctype", b"<html", b"<head", b"<body", b"<?xml",
@@ -354,7 +354,7 @@ class WebSource(Source):
                              max_chars=max_chars)
 
     def _fetch_static(self, url: str, settings: Settings):
-        """Static chain: direct first (D-077); remote reader only if opted in.
+        """Static chain: direct first; remote reader only if opted in.
 
         Returns (markdown, method). Raises the last PageUnavailableError when
         every enabled static backend failed.
@@ -417,7 +417,7 @@ class WebSource(Source):
 
         # A static read that succeeded but produced an app shell (or almost no
         # text) has not read the page: the useful text is rendered client-side.
-        # In auto mode the browser gets its turn automatically (D-081).
+        # In auto mode the browser gets its turn automatically.
         shell_detected = static_artifact is not None and looks_like_js_shell(static_artifact.content)
         if static_artifact is not None and (mode == "static" or not shell_detected):
             return static_artifact

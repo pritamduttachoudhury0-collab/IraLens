@@ -1,29 +1,38 @@
-# IraLens paid-search replacement audit
+# Paid-search replacement audit — 2026-10-14 (reported 2026-10-16)
 
-**Audit date:** 2026-10-16 (Asia/Calcutta)  
-**Repository/base:** `pritamduttachoudhury0-collab/IraLens`, `arena/10d16107-iralens`, product commit `b9a162763050d8c4cf2510b5914d431852612593`  
-**Audit branch:** `audit/paid-search-replacement-20261014-phase1`  
-**Network:** Google Cloud egress; no VPN intentionally used or detected.  
+**Audit date:** 2026-10-14, reported 2026-10-16 (Asia/Calcutta)
+**Network:** open Google Cloud egress; no VPN intentionally used or detected.
+**Audited revision:** product commit `b9a1627` (pre-remediation v0.2 line).
 **Question:** Can IraLens replace a paid search API key?
+
+> **Current status (2026-10-16, v0.2.1):** this audit is a dated, pre-remediation
+> record. Its failures drove the reading and concurrency repairs summarized in
+> [`page-read-triage-2026-10-14.md`](page-read-triage-2026-10-14.md) and the
+> current verification records in `KNOWN_LIMITATIONS.md`. Read the verdict
+> below as the state on the audit date, not the current state.
+
+Raw per-run artifacts (JSON logs, harness files) referenced in this report
+were not retained in the repository; the tables below are the surviving
+record. Links to files that do exist in the repository are kept as links.
 
 ## Test table
 
 | Test | Status | Key numbers / result | Evidence |
 |---|---|---|---|
-| 1. Clean install, doctor, pytest including live tests, interface verifier | **PASS** for the completed run | Clean venv; doctor/browser healthy; **416 passed, 0 failed, 0 skipped**; verifier **22/22**. The broader three-runs/two-hours-apart requirement was **NOT RUN**. | [`../2026-10-14/phase-tests-1-2/SUMMARY.md`](../2026-10-14/phase-tests-1-2/SUMMARY.md), [`../2026-10-14/phase-tests-1-2/raw/pytest-full.txt`](../2026-10-14/phase-tests-1-2/raw/pytest-full.txt) |
-| 2. Search sources alone | **PASS**, with SearXNG limits | DuckDuckGo **15/15** and Bing **15/15** worked independently. Bundled SearXNG instances: **0 / NOT RUN**. Self-hosted SearXNG: **BLOCKED**, `docker: command not found`. | [`../2026-10-14/phase-tests-1-2/SUMMARY.md`](../2026-10-14/phase-tests-1-2/SUMMARY.md) |
-| 3. Frozen search-quality benchmark | **PASS** | 100/100 returned results; exact-site top 3 **24/25 (96%)**; facts top 10 **25/25 (100%)**; recent news **20/20 (100%)**; non-English 15/15; obscure 15/15. | [`phase-test-3-100/SUMMARY.md`](phase-test-3-100/SUMMARY.md), [`phase-test-3-100/raw/all_queries_results_verdicts.json`](phase-test-3-100/raw/all_queries_results_verdicts.json) |
-| 4. Page reading | **FAIL** | Overall **33/60 (55%)**, required 90%; normal **20/25 (80%)**, required 97%; script-heavy **8/12 (66.7%)**, required 80%; text PDF **4/10 (40%)**, required 90%; scanned PDF **0/3**; dead links **2/2** correctly reported. | [`phase-tests-4-8/SUMMARY.md`](phase-tests-4-8/SUMMARY.md), [`phase-tests-4-8/raw/reading-verdicts.final.json`](phase-tests-4-8/raw/reading-verdicts.final.json) |
-| 5. Research mode | **PASS**, with citation-quality caveat | **12/12** reports contained the correct answer; **0 invented citations**; 209 statements, 225 citation links; **223 fully supporting, 2 partially supporting** compound statements. | [`phase-tests-4-8/raw/research-verdicts.final.json`](phase-tests-4-8/raw/research-verdicts.final.json), [`phase-tests-4-8/raw/research-citation-review.txt`](phase-tests-4-8/raw/research-citation-review.txt) |
-| 6. Load | **FAIL** | 226/226 completed; blocks **0%**; crashes **0**; median **1.440 s**; overall p95 **18.789 s**, required <6 s; 20-way burst median **23.655 s**; sustained-200 p95 **4.120 s**; health state survived restart. Recovery: **NOT APPLICABLE**, no block occurred. | [`phase-tests-4-8/raw/load/verdict.json`](phase-tests-4-8/raw/load/verdict.json), [`phase-tests-4-8/raw/load/records.jsonl`](phase-tests-4-8/raw/load/records.jsonl) |
-| 7. HTTP API / paid-style plug-in | **PASS** for basic Serper-shaped web search | Missing/wrong key 401; bad input 400; >1 MiB body 413; repeated calls **50/50 HTTP 200**; response shape valid; tiny paid-style agent worked after changing only URL and key. | [`phase-tests-4-8/raw/api/results.json`](phase-tests-4-8/raw/api/results.json), [`phase-tests-4-8/harness/paid_style_agent.py`](phase-tests-4-8/harness/paid_style_agent.py) |
-| 8. Safety | **PASS** for tested cases | Private/metadata/redirect attempts **15/15 blocked**; hidden-instruction samples **3/3 flagged**; bypasses **0**; secret leaks **0**. | [`phase-tests-4-8/raw/safety/results.json`](phase-tests-4-8/raw/safety/results.json) |
-| 9. Packaging | **PASS** for wheel; Docker **NOT RUN** | Wheel built, installed into a fresh environment, `--version`, `doctor`, and live keyless search worked first try. Docker absent: exact error `/bin/bash: docker: command not found` (127). | [`finalization/packaging/raw.txt`](finalization/packaging/raw.txt), [`finalization/packaging/docker.txt`](finalization/packaging/docker.txt), [`finalization/packaging/wheel/`](finalization/packaging/wheel/) |
+| 1. Clean install, doctor, pytest including live tests, interface verifier | **PASS** for the completed run | Clean venv; doctor/browser healthy; **416 passed, 0 failed, 0 skipped**; verifier **22/22**. The broader three-runs/two-hours-apart requirement was **NOT RUN**. | `../2026-10-14/phase-tests-1-2/SUMMARY.md` *(not retained)*, `../2026-10-14/phase-tests-1-2/raw/pytest-full.txt` *(not retained)* |
+| 2. Search sources alone | **PASS**, with SearXNG limits | DuckDuckGo **15/15** and Bing **15/15** worked independently. Bundled SearXNG instances: **0 / NOT RUN**. Self-hosted SearXNG: **BLOCKED**, `docker: command not found`. | `../2026-10-14/phase-tests-1-2/SUMMARY.md` *(not retained)* |
+| 3. Frozen search-quality benchmark | **PASS** | 100/100 returned results; exact-site top 3 **24/25 (96%)**; facts top 10 **25/25 (100%)**; recent news **20/20 (100%)**; non-English 15/15; obscure 15/15. | `phase-test-3-100/SUMMARY.md` *(not retained)*, `phase-test-3-100/raw/all_queries_results_verdicts.json` *(not retained)* |
+| 4. Page reading | **FAIL** | Overall **33/60 (55%)**, required 90%; normal **20/25 (80%)**, required 97%; script-heavy **8/12 (66.7%)**, required 80%; text PDF **4/10 (40%)**, required 90%; scanned PDF **0/3**; dead links **2/2** correctly reported. | `phase-tests-4-8/SUMMARY.md` *(not retained)*, `phase-tests-4-8/raw/reading-verdicts.final.json` *(not retained)* |
+| 5. Research mode | **PASS**, with citation-quality caveat | **12/12** reports contained the correct answer; **0 invented citations**; 209 statements, 225 citation links; **223 fully supporting, 2 partially supporting** compound statements. | `phase-tests-4-8/raw/research-verdicts.final.json` *(not retained)*, `phase-tests-4-8/raw/research-citation-review.txt` *(not retained)* |
+| 6. Load | **FAIL** | 226/226 completed; blocks **0%**; crashes **0**; median **1.440 s**; overall p95 **18.789 s**, required <6 s; 20-way burst median **23.655 s**; sustained-200 p95 **4.120 s**; health state survived restart. Recovery: **NOT APPLICABLE**, no block occurred. | `phase-tests-4-8/raw/load/verdict.json` *(not retained)*, `phase-tests-4-8/raw/load/records.jsonl` *(not retained)* |
+| 7. HTTP API / paid-style plug-in | **PASS** for basic Serper-shaped web search | Missing/wrong key 401; bad input 400; >1 MiB body 413; repeated calls **50/50 HTTP 200**; response shape valid; tiny paid-style agent worked after changing only URL and key. | `phase-tests-4-8/raw/api/results.json` *(not retained)*, `phase-tests-4-8/harness/paid_style_agent.py` *(not retained)* |
+| 8. Safety | **PASS** for tested cases | Private/metadata/redirect attempts **15/15 blocked**; hidden-instruction samples **3/3 flagged**; bypasses **0**; secret leaks **0**. | `phase-tests-4-8/raw/safety/results.json` *(not retained)* |
+| 9. Packaging | **PASS** for wheel; Docker **NOT RUN** | Wheel built, installed into a fresh environment, `--version`, `doctor`, and live keyless search worked first try. Docker absent: exact error `/bin/bash: docker: command not found` (127). | `finalization/packaging/raw.txt` *(not retained)*, `finalization/packaging/docker.txt` *(not retained)*, `finalization/packaging/wheel/` *(not retained)* |
 | 10. Paid comparison | **NOT RUN** | No paid or free-tier search-provider key was supplied; top-5 overlap cannot be measured. | This report |
-| 11. Seven-day watch | **NOT RUN** | Free GitHub Actions daily workflow and runner created for frozen **30 queries + 20 URLs**, with 90-day artifacts. Zero daily runs exist; seven-day result cannot be claimed. Workflow will not execute until the branch is pushed/merged. | [`../../.github/workflows/daily-watch.yml`](../../.github/workflows/daily-watch.yml), [`../../scripts/daily_watch.py`](../../scripts/daily_watch.py), [`finalization/daily-watch/verification.txt`](finalization/daily-watch/verification.txt) |
-| 12. Outside-site rules/terms inventory | **COMPLETED — HIGH-RISK FLAGS** | Default keyless search parses DuckDuckGo and Bing consumer HTML, with no clearly authorized search-API contract. Official APIs are conditional; arbitrary page/RSS reading is site-specific; several logged-in social/browser integrations look restricted without permission. | [`finalization/OUTSIDE-SITES.md`](finalization/OUTSIDE-SITES.md), [`../../docs/SOURCE_POLICY.md`](../../docs/SOURCE_POLICY.md) |
+| 11. Seven-day watch | **NOT RUN as of the audit date** | The scheduled workflow (`daily-watch.yml`) and runner were created at audit time with zero completed runs, so no multi-day stability claim was possible. The workflow has since been merged and runs daily. | [`../../.github/workflows/daily-watch.yml`](../../.github/workflows/daily-watch.yml), [`../../scripts/daily_watch.py`](../../scripts/daily_watch.py), `finalization/daily-watch/verification.txt` *(not retained)* |
+| 12. Outside-site rules/terms inventory | **COMPLETED — HIGH-RISK FLAGS** | Default keyless search parses DuckDuckGo and Bing consumer HTML, with no clearly authorized search-API contract. Official APIs are conditional; arbitrary page/RSS reading is site-specific; several logged-in social/browser integrations look restricted without permission. | `finalization/OUTSIDE-SITES.md` *(not retained)*; current policy: [`docs/search.md` (source policy)](../search.md) |
 
-## Verdict: NOT READY
+## Verdict on the audit date: NOT READY
 
 In plain language: **IraLens cannot currently replace a paid search API as a general production service.** Its keyless search is surprisingly capable at low sustained volume: two independent engines worked, the frozen quality benchmark passed, the basic Serper-shaped API swap worked, block rate was zero, and the tested safety controls held. The wheel also installed and searched successfully in a fresh environment.
 
@@ -39,10 +48,10 @@ IraLens is suitable today for **experimentation and low-volume, operator-control
 4. **Scanned-PDF reading is 0/3.** Likely cause: OCR is disabled by default and required local OCR tools were unavailable.
 5. **Normal-page reading is 80% vs the 97% requirement.** Likely cause: direct network/site denial failures and fallback not recovering enough ordinary pages.
 6. **Default keyless search has high terms/continuity risk.** Likely cause: DuckDuckGo and Bing backends parse consumer HTML pages rather than use an expressly licensed search API.
-7. **No seven-day stability evidence exists.** Likely cause: the scheduled workflow is newly created and cannot run until pushed/merged; seven completed daily artifacts are required.
-8. **The required three full-suite runs at least two hours apart were not completed.** Likely cause: the audit was executed in short requested phases, so repeatability over time remains unknown.
+7. **No seven-day stability evidence existed.** Likely cause: the scheduled workflow was newly created with zero completed runs; seven daily artifacts are required. (The workflow runs daily now; a multi-day record simply takes time to accumulate.)
+8. **The required three full-suite runs at least two hours apart were not completed.** Likely cause: the audit ran in one window, so repeatability over time remained unmeasured.
 9. **No paid-provider parity result exists.** Likely cause: no paid or free-tier provider key was supplied, so top-5 overlap is unmeasured.
-10. **Self-hosted SearXNG and Docker deployment are unverified.** Likely cause: Docker is absent in the audit sandbox; there are also zero bundled public SearXNG instances by design.
+10. **Self-hosted SearXNG and Docker deployment are unverified.** Likely cause: Docker was absent in the audit environment; there are also zero bundled public SearXNG instances by design.
 
 ## Additional limits
 
@@ -50,11 +59,3 @@ IraLens is suitable today for **experimentation and low-volume, operator-control
 - Research reports answered all 12 questions but emitted many irrelevant single-source statements; two citation links only partially supported compound wording.
 - The 100-query quality run is one cloud-network observation, not a guarantee across regions, IP reputation, or time.
 - Technical success does not establish permission to automate or redistribute third-party results/content.
-
-## Delivery status
-
-Results are committed locally on `audit/paid-search-replacement-20261014-phase1`. GitHub push remains **BLOCKED** because no GitHub credential is available in the sandbox. The exact prior error was:
-
-```text
-fatal: could not read Username for 'https://github.com': No such device or address
-```

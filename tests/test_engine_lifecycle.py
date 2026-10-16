@@ -5,7 +5,7 @@ Root cause fixed here: the browser-engine driver waited out the full RPC
 timeout (60 s) whenever the engine process had *already died*. A dangling
 `iralens-engine` shim (cache cleared, binary replaced, wrong architecture)
 therefore cost 60 s per browser-backed call — 181 s for a single search and
-12 minutes for a three-query benchmark smoke run in a blocked sandbox.
+12 minutes for a three-query benchmark smoke run on a blocked network.
 
 Everything below uses real subprocesses running tiny scripts, so the polling,
 the typed error, and the no-respawn memo are exercised for real, with no

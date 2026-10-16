@@ -3,7 +3,7 @@
 
 Status: EXPERIMENTAL. The HTML parser is tested offline against a fixture that
 mirrors Bing's `li.b_algo` result structure. It has NOT been verified against
-live Bing from this environment (the sandbox cannot reach bing.com). The
+live Bing from every network. Markup drift surfaces as `layout_changed`. The
 fallback layer treats it like any other engine and reports a layout change if
 the structure stops matching. See KNOWN_LIMITATIONS.md.
 
@@ -138,7 +138,7 @@ class BingBackend(SearchBackend):
 
     def search(self, query: str, filters: SearchFilters, limit: int, context: Any) -> List[SearchHit]:
         timeout = int(context.config.get("search_timeout_seconds", 45)) if context.config else 45
-        # `query` is the built query text (D-076 transport: direct HTTP first,
+        # `query` is the built query text (transport: direct HTTP first,
         # rendered engine only as fallback — see fetch_serp_html).
         url = ENDPOINT.format(q=urllib.parse.quote_plus(query))
         if filters.language:

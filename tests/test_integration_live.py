@@ -40,7 +40,7 @@ def test_a_web_search_open_extract(hil):
     page = hil.open(first.url, discovered_from=first.discovered_from)
     assert page.content.strip()
     assert page.discovered_from == first.discovered_from
-    # D-077: the default static path is the local `direct` fetch; the remote
+    # the default static path is the local `direct` fetch; the remote
     # `static-reader` only appears when it is explicitly opted into, and
     # `browser` when the static path fails. All three are legitimate.
     assert page.retrieval_method in ("direct", "static-reader", "browser")

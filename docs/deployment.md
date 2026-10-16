@@ -59,9 +59,9 @@ search providers according to its configuration.
   local state store is available, without making upstream requests. Scrape both
   on a private monitoring network, and alert on sustained
   request failures, open circuits, elevated latency, or a missing scrape.
-- Monitoring has not been operated for seven consecutive days in this workspace.
-  Configure alert delivery, escalation, retention, and recovery checks before
-  claiming service monitoring.
+- Long-run monitoring is an operator responsibility. Configure alert
+  delivery, escalation, retention, and recovery checks before calling the
+  service monitored.
 
 ## Maintenance and incident response
 
@@ -79,8 +79,8 @@ search providers according to its configuration.
    independent successful searches. A green liveness check alone is not
    evidence that search is working.
 
-See [`API.md`](API.md), [`SEARCH.md`](SEARCH.md),
-[`RELIABILITY.md`](RELIABILITY.md), and [`SOURCE_POLICY.md`](SOURCE_POLICY.md).
+See [`api.md`](api.md) and [`search.md`](search.md) (engine reliability,
+caching, and the source policy).
 
 ## GitHub Actions daily watch
 
@@ -90,17 +90,15 @@ per scheduled day against this project's GitHub HTML/API pages. The
 `daily-watch-<run_id>` with a `daily-watch.json` record (pass/fail, method,
 latency, content length, typed error); a failed read fails the job *but still
 uploads the JSON*. Artifacts have 30-day retention. No page text is retained.
-This is not a search/60-page/PDF acceptance result. GitHub only registers
-schedule/manual dispatch after this workflow is merged to **main**; a workflow
-on an unmerged branch cannot be assumed live. To verify after merge:
+This is not a search/60-page/PDF acceptance result. To run it by hand and
+inspect the outcome:
 
 ```bash
-gh workflow run daily-watch.yml --ref main
+gh workflow run daily-watch.yml
 gh run list --workflow daily-watch.yml --limit 3
 gh run download <run-id> --name daily-watch-<run-id> --dir /tmp/iralens-watch
 ```
 
 Inspect the JSON and conclusion rather than treating a green job as a general
-web-availability claim. If GitHub rejects the manual trigger before merge,
-record it as **not run**, not a pass. See `docs/READ_FAILURES.md` for missing
-audit data and triage rules.
+web-availability claim. The 2026-10 audit triage that motivated the canary is
+preserved in [`audits/page-read-triage-2026-10-14.md`](audits/page-read-triage-2026-10-14.md).

@@ -1,4 +1,10 @@
-# Research: usage guide (IraLens, Phase 3)
+# Research mode
+
+Research mode answers a question with a bounded, multi-round loop: it plans
+queries, reads the top sources locally, and produces a cited report whose
+statements carry provenance, confidence, and explicit limits. The core is
+deterministic — no model required — and its output is evidence leads, not
+verified answers.
 
 ## Call it
 

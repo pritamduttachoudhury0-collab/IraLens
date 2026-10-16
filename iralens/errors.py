@@ -61,7 +61,7 @@ class SourceUnavailableError(IraLensError):
 
 
 class SearchEnginesFailedError(SourceUnavailableError):
-    """Every search engine failed (blocked, unreachable, or broken) (D-079).
+    """Every search engine failed (blocked, unreachable, or broken).
 
     Distinct from an honest empty result: the query may be fine, the engines
     did not answer. The CLI exits 4 for this case so callers can tell it apart

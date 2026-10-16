@@ -110,7 +110,7 @@ def test_static_reads_are_cached_and_browser_reads_are_not(tmp_path, monkeypatch
     assert calls["browser"] == 2                         # browser reads are never cached
 
 
-# ------------------------------------------------- query hygiene (D-068)
+# ------------------------------------------------- query hygiene
 def test_query_control_chars_stripped_before_any_engine(tmp_path):
     seen = []
 
@@ -146,7 +146,7 @@ def test_empty_and_invisible_only_queries_rejected(tmp_path):
             eng.search(bad, options=SearchOptions(reformulate=False, cache="bypass"))
 
 
-# --------------------------------- concurrent query variants (D-069)
+# --------------------------------- concurrent query variants
 def test_parallel_variants_merge_and_dedup(tmp_path):
     calls = []
 

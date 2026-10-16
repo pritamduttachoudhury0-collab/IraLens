@@ -1,640 +1,329 @@
-# Decisions log — IraLens
-
-Each entry: the decision, why, and what it trades off. Newest phase last.
-Scope and ownership: the session branch is `arena/a44d3b38-iralens`. All work is
-committed there. Nothing is pushed to `main`.
-
-## Baseline (before any IraLens change)
-
-**D-000 Import the IraLens bundle as delivered, then build on it.**
-The bundle was unpacked verbatim (commit `a4b2716`). Changes are additive, so
-the existing `IraLens.search(query, limit, backend) -> List[Artifact]`,
-the CLI, the MCP server, and the existing tests keep working.
-Baseline offline result: `pytest` gave 57 passed, 7 skipped, and 3 failed. All
-3 failures are live-network tests (`test_b_scrape_bulk_mixed_results`,
-`test_b_rss_structured_data`, `test_b_v2ex_structured_data`). The sandbox can reach
-only github.com, api.github.com, registry.npmjs.org, and pypi.org. The live probe
-in `tests/conftest.py` is a bare TCP connect to `example.com:443`. That connect succeeds
-through the sandbox proxy, but HTTPS requests to those hosts fail (curl returns 000).
-So the probe passed and these tests ran instead of skipping. This is a harness weakness
-to fix (probe with an HTTP request, not a TCP connect). Recorded here, not hidden.
-
-**D-001 License conflict (resolved by D-051).**  *(Resolved by D-051 and D-061.)*
-The repo's `LICENSE` is MIT (`Copyright (c) 2026 Pritam Dutta Choudhury`). The
-bundle's `pyproject.toml`/`NOTICE` declare Apache-2.0. I kept the repo's MIT
-`LICENSE` file untouched and did not write the bundle's Apache text. The
-`pyproject.toml` license field still says Apache-2.0. The owner must choose one.
-`LICENSE_AUDIT.md` §9 wrongly says LICENSE was "added" in this audit; it was kept.
-
-**D-002 Branch.** The brief said "push to main". The session is bound to
-`arena/a44d3b38-iralens`, so all commits and the push go there. Opening a PR to
-`main` is left to the user.
-
-**D-003 `.venv/` and `*.egg-info/` added to `.gitignore`.** Local virtualenvs
-must never be committed.
-
-## Phase 1 — Unified search
-
-**D-010 Keep the legacy surface, add a structured surface beside it.**
-`IraLens.search()` returns `List[Artifact]` as before. `search_api()` returns
-a typed `SearchResponse`. The legacy `web-search` source's `fetch("query")` now
-delegates to the new engine, so the existing test monkeypatch still works.
-
-**D-011 Legacy `backend` names are aliases.** `semantic-search` maps to Exa.
-`browser-search` maps to the DuckDuckGo then Bing chain. New engine names are
-`duckduckgo` and `bing`.
-
-**D-012 Empty results return `[]` instead of raising.** Before, a query with no
-results on every backend raised `SourceUnavailableError`. Now it returns `[]`
-when every engine answered and none had hits. It still raises when engines
-failed (`no_results_reason == "engines_failed"`). This makes "no results" and
-"engine blocked" distinguishable. It is a deliberate, documented behavior change.
-
-**D-013 Failure taxonomy.** Each engine outcome has a `kind`: `ok`, `empty`,
-`captcha`, `rate_limited`, `layout_changed`, `transient`, `unavailable`.
-Captcha and rate-limit signals are never retried. Transient failures are retried
-with exponential backoff, capped by `Settings`.
-
-**D-014 Fallback and agreement.** An engine chain runs until `search_min_engines`
-engines return hits (default 2). Hits from more than one engine get
-cross-engine agreement. An engine that is empty or failed triggers a recorded
-fallback to the next one. With a single engine, the agreement factor is
-uninformative (always 1.0). The `score_breakdown` shows this.
-
-**D-015 Filters: native, emulated, post-filtered, or unsupported. Never silent.**
-Each backend declares a mode per filter, and the response reports the mode for
-every engine. `include_domains` and `file_type` are emulated through the
-`site:` and `filetype:` operators on DuckDuckGo and Bing. Exa has no verified
-argument for these, so they are post-filtered. Unknown dates are kept and counted
-(`date_unknown_kept`). `language` and `region` are reported `unsupported` where
-the engine cannot apply them. They are not faked by post-filtering.
-
-**D-016 Reformulation is deterministic.** Strategies are original, keywords,
-sub-question, and synonym, capped at `reformulate_max_queries`. Every query
-carries its strategy so results are traceable. An LLM expander can be plugged
-in later (Phase 3 interfaces); it is not the default.
-
-**D-017 Dedup in two passes.** Pass 1 merges canonical URL matches (tracking
-params, fragments, `www.`, and trailing slash removed; path case kept). Pass 2
-merges near-duplicate titles (token Jaccard ≥ 0.85) only on the same registrable
-host. Every merge is logged with its reason.
-
-**D-018 Ranking is explainable.** Score = weighted mean of relevance, authority,
-freshness, and agreement. Weights, half-life, and authority table all come from
-`Settings`. Each factor is returned in `score_breakdown`. Authority is a
-domain-suffix table (`.gov` 0.9, `.edu` 0.85, `.org` 0.6, default 0.5). This is a
-coarse heuristic, not a quality measure. It is documented as such.
-
-**D-019 Browser-driven engines parse pure HTML.** The engine returns rendered
-HTML, which is parsed offline (`html.parser`). The parsers are tested against
-saved fixtures. Live behavior of DuckDuckGo and Bing was not verified here
-(no network). Bing is EXPERIMENTAL. See KNOWN_LIMITATIONS.md.
-
-**D-020 Settings, not magic numbers.** Every limit, weight, and TTL is in
-`iralens/settings.py`, read from config or `IRALENS_<KEY>` env vars.
-
-**D-021 Artifact gets an optional `provenance` field.** It is emitted only when
-non-empty, so existing JSON consumers see no change.
-
-**D-022 Shared engine is guarded.** Concurrent searches go through a
-`ConcurrencyGate` (default 2 slots) with an acquire timeout. The slot is released
-even on error.
-
-## Phase 2 — Reliability, caching, security, resources
-
-**D-030 Failure taxonomy shared across layers.** `captcha`, `rate_limited`,
-`layout_changed`, `transient`, `unavailable`, `empty`, `circuit_open` (see
-docs/RELIABILITY.md). Only transient failures are retried. Blocks are never
-retried.
-
-**D-031 Circuit breaker per engine, in memory.** Opens after 3 consecutive
-failures and skips the engine for 300 s. One half-open probe. Not persisted, so
-one bad outage cannot lock an engine out across restarts.
-
-**D-032 Degraded searches are not cached.** A failed or skipped engine means the
-response is not stored, so the next call retries live. Empty but healthy
-responses are also not cached (`cacheable` requires results). Reason: an empty
-result from a transient block must not stick for 15 minutes.
-
-**D-033 Page cache covers static reads only.** Browser reads are never cached,
-because the browser can hold session state. Static reads are public. The cache
-TTL is 3600 s. This is a conservative choice. The brief asked for cached page
-fetches; this covers the static reader and not browser pages.
-
-**D-034 Content guard flags, does not rewrite.** Page content is returned as
-fetched. Flags are attached to provenance. Only search titles and snippets get
-invisible-character stripping and length caps, because they are short and
-rendered into result lists.
-
-**D-035 Non-public result URLs are dropped.** `normalize_public_http_url` is
-applied to every hit before ranking. It is a literal-URL check only; DNS
-rebinding and private redirects are not covered (see docs/THREAT_MODEL.md).
-
-**D-036 Breaker state lives on the SearchEngine, which the source keeps as a
-singleton.** A new facade instance shares it through the source. This was a
-choice for the single-process CLI and MCP servers. Multi-process use would need
-a shared store, and that is not built.
-
-## Phase 3 — Research intelligence
-
-**D-040 Deterministic core; LLM is an optional adapter.** The planner, claim
-extraction, contradiction detection, synthesis, and confidence formula are all
-deterministic and inspectable. `research/llm.py` takes any `complete(prompt)`
-callable. The facade does not take one yet. Reason: IraLens ships no model
-and no key, and an LLM must not be a hidden dependency of the core result.
-
-**D-041 Replayable trace.** The trace records every search response, every
-expander decision, every page read, and the date used. `ResearchPlanner.replay`
-rebuilds the report from it with no network access. Reason: research output
-has to be auditable after the fact. Replay reuses recorded decisions, so it does
-not depend on whatever expander the replaying caller has.
-
-**D-042 Stop reasons are explicit.** `coverage_reached`, `budget_exhausted`,
-`no_new_sources`, `search_failed`, `max_rounds`. `search_failed` is separate, so
-"every engine was blocked" is not reported as "nothing new to find".
-
-**D-043 Claims are sentences; years are not measurements.** Sentences that share
-a term with the question become claims. Four-digit years are excluded from the
-number comparison. Otherwise any two sources citing different years would look
-like a numeric contradiction.
-
-**D-044 Contradictions are candidates only.** Each one is labeled
-`confidence: "heuristic"`. The report and the docs state that they are not verdicts.
-
-**D-045 Statement scoring is shared by the deterministic and LLM paths.** The
-LLM may propose wording and grouping. `make_statement` computes status and
-confidence either way. An LLM proposal that cites an unknown claim id is
-rejected as a whole, and the deterministic statements are kept.
-
-**D-046 Research reads only static pages.** It does not drive the browser. This
-avoids session state and keeps reads cacheable. It also means it sends each top
-URL to `r.jina.ai` (the existing static reader). This was not a decision the
-user made explicitly; it inherits the existing reader's behavior. Recorded here
-because it is a privacy-relevant data flow. Use `read()` in browser mode for a
-URL you do not want shared.
-
-**D-047 Confidence and authority are transparent heuristics.** The formulas and
-constants are in `Settings` and `research/synthesis.py`. They are not calibrated
-against ground truth, and the docs say so.
-
-**D-048 Engine download URL verified, binary not run.** `engine/install.py` points
-at `h4ckf0r0day/obscura` release `v0.2.4`. The GitHub API confirms the release exists, and
-that the Linux, macOS, and Windows asset names match the ones the installer requests.
-The binary itself was not downloaded or executed in this environment.
-
-**D-049 Tool counts come from code.** MCP tool count is `len(TOOLS)` = 49 at
-this commit. README and CAPABILITY_MAP were updated to match. The earlier
-"46/47" figures were wrong.
-
-**D-050 Scope cut.** Not built in this pass: a LLM facade hook, a persisted
-circuit breaker, a second-language reader, and Bing live verification. Each is
-in KNOWN_LIMITATIONS.md.
-
-## Licensing (owner decision)
-
-**D-051 License set to Apache-2.0.** On the owner's instruction, `LICENSE` now holds
-the full Apache-2.0 text, fetched from GitHub's license API (`/licenses/apache-2.0`).
-This matches `pyproject.toml` and `NOTICE`. The former MIT text is replaced. Reason:
-it was the owner's explicit choice from the options offered. The copyright line
-"Copyright (c) 2026 Pritam Dutta Choudhury" moved from the MIT file into `NOTICE`.
-The MIT attribution for the adapted Agent Reach code is kept in `NOTICE`, as its
-terms require.
-
-## Release hardening
-
-Numbers D-037 to D-039 were planned for this work and never assigned. They are
-left unused rather than reused, so no entry changes meaning.
-
-Addendum to D-000: the live-probe weakness recorded above is fixed by D-052.
-
-**D-052 Live probe is a real HTTPS request.** `tests/conftest.py` now calls
-`urlopen("https://example.com/")` and counts the network as available only on a
-2xx/3xx response. The bare TCP connect let the sandbox proxy pass the probe while
-HTTPS failed, so live tests ran and failed. Now they skip with a reason. Live
-tests still need a real network to be verified.
-
-**D-053 No HTTP API in this release.** The brief asked for one. It is not built,
-because a server with auth, request limits, and error mapping needs its own
-design and tests, and none were done. The facade, CLI, and MCP stdio server are
-the supported interfaces. Revisit as a separate phase.
-
-**D-054 Setup: POSIX tested, Windows not; no Docker image.** `scripts/setup.sh`
-was run here in a fresh virtualenv on Linux (Python 3.11): install, `--version`,
-and `doctor` pass. `scripts/setup.ps1` was written but has not been run on Windows,
-so it is labeled UNTESTED in the file and in the README. Docker is not available in
-the build sandbox, so no image was built. The brief asked for one; it is deferred.
-
-**D-055 Branch and PR.** The owner asked for a push to `main`. The session is fixed
-to `arena/a44d3b38-iralens`, so the work is pushed there and a pull request into
-`main` is opened. No direct push to `main` is made.
-
-**D-056 Type and lint fixes are behavior-neutral except one bug.** mypy is clean on
-`iralens` (59 files). Ruff `E9,F,B` is clean. The real bug was
-`ProvenanceGraph.node()` receiving `kind` twice whenever a contradiction was
-recorded. That crashed any research run with contested claims. The attribute is
-renamed to `contradiction_kind`, and a regression test runs the full planner
-into that path. The other changes are type annotations and one signature fix:
-`Source.read_url` now takes `mode` in the base class and every override, as
-core.py already assumed. RSS's `limit` moved after `mode`; its only caller passes
-it by keyword.
-
-**D-057 MCP errors distinguish caller mistakes.** A missing required argument or a
-malformed value now returns `invalid_input` (new `InvalidInputError`), not
-`internal_error`. `iralens --version` was added as a top-level flag. The
-`version` subcommand is kept.
-
-## Release gate (final verification before merge)
-
-**D-058 Claims are prose, not page markup.** The first live run over real GitHub
-READMEs produced claims such as `# [PhantomJS](...)`, `<p><strong>`, a `curl`
-command, and a table row. `split_sentences` now strips fenced code, HTML, image
-and link syntax (keeping link text), heading and list markers, emphasis, table
-rows, bare URLs, and shell-like lines, and drops fragments that are mostly symbols.
-Regression test: `test_claims_are_prose_not_markup`. The old extractor produced
-three markup-bearing sentences on that input; the new one produces none.
-
-**D-059 `--json` works before and after the subcommand.** Agents write
-`iralens research "q" --json`. That was an argparse error. Every subcommand now
-inherits the flag through a parent parser with `default=SUPPRESS`, so the
-top-level default still applies when the flag is absent.
-
-**D-060 JSON output serializes results as objects.** `fetch ... --json` (and any
-command returning Artifacts) printed Python reprs such as
-`"Artifact(title='...')"`, which agents cannot parse. JSON output now converts
-objects through `to_dict()` recursively. The untrusted-content notice goes to
-stderr so stdout stays pure JSON. Regression test: `test_json_output_serializes_artifacts_as_objects`.
-
-**D-061 License: Apache-2.0, confirmed by the owner.** At the release gate the
-owner confirmed Apache-2.0 as intentional. This resolves D-001. `LICENSE` is the
-full Apache-2.0 text. `pyproject.toml` uses the SPDX form
-`license = "Apache-2.0"` with `license-files` under `[project]`, which needs
-setuptools 77 or newer, so the build requirement is `setuptools>=77`. This removes
-the deprecation warnings from the earlier build. `NOTICE` keeps the copyright
-line and the MIT attribution for the adapted Agent Reach code. The owner decision
-is recorded in D-051.
-
-**D-062 Clean installs include the lint and type tools.** The `dev` extra had only
-pytest. A fresh `./scripts/setup.sh` therefore could not run the documented
-`ruff` and `mypy` commands. The extra now lists `ruff` and `mypy`. Verified: a
-fresh clone plus setup.sh gives working ruff and mypy.
-
-**D-063 Security scan: triage and one hardening change.** Bandit on
-`iralens/` (`-lll`) reported one High finding: `extractall` in the engine
-installer. The tar path already uses `filter="data"`. The zip path now validates
-every member name (`check_archive_member`) before extraction, and rejects
-absolute, traversing, or drive-qualified names. The remaining zip call carries
-`# nosec B202` with the reason. The five Medium findings are `urlopen` calls
-(`B310`). Each target is checked: web reads go through `normalize_public_http_url`
-(http and https only), V2EX is host- and scheme-checked, and the GitHub and
-opencli targets are constants. pip-audit reports no known vulnerabilities in the
-dependency set. Not done: the engine download has no checksum verification,
-because the release does not publish one that was checked here (KNOWN_LIMITATIONS).
-
-**D-064 Real-data verification uses public GitHub operations.** The sandbox can
-reach api.github.com and github.com, but not web search engines or the web reader.
-Public web research was therefore run as far as the network allowed: the CLI
-returned `stop_reason: search_failed` with zero sources, and the report says so.
-To exercise the research code on real content, `scripts/live_github_research.py`
-feeds the real planner with the public `fetch("github", "search_repos")` and
-`fetch("github", "readme")` operations. Everything after retrieval is the real
-research code, and the run is replayed offline to confirm the report reproduces.
-This is not a public-web test, and the docs do not describe it as one.
-
-**D-065 Keyword queries for the GitHub corpus.** GitHub repository search requires
-every term to match. A long natural-language question returns no repositories
-(verified: "headless browser AI agents" returned 2, "headless browser automation AI
-agents" returned 0). The planner does not split questions, so live GitHub runs
-need keyword questions. Recorded as a limitation; not changed in the planner.
-
-**D-066 Merge policy.** PR #1 is merged into `main` only after the gates pass. The
-merge is a GitHub merge of the session branch, not a direct push to `main`, and
-it is a merge commit. No force-push, no history rewrite, and the branch is kept.
-
-## Final production remediation
-
-**D-067 Free engines first in the default chain.** The default engine order
-was `semantic-search, duckduckgo, bing`, so every search first attempted the
-optional bridge that needs user configuration (`mcporter` + Exa). The promise
-is that search works with no separately configured paid API key, so the order
-is now `duckduckgo, bing, semantic-search`. The bridge still runs when the
-free engines fail or more results are needed; nothing that worked before was
-removed.
-
-**D-068 Query hygiene before any engine.** Queries are stripped of control and
-invisible characters (bidi overrides can make a query display differently from
-what is sent), whitespace-normalized, and capped at `search_max_query_chars`
-(400). Violations raise `FilterError` (`invalid_input` over MCP). Tokenization
-is symbol-aware (`iralens/search/querytext.py`): `c++`, `c#`, `.net`,
-`f#` survive as single tokens, quoted phrases are kept intact through
-reformulation, and CJK runs are additionally split into character bigrams so
-2-character terms match longer compounds.
-
-**D-069 Concurrent query variants with serialized navigation.** Reformulated
-query variants now run in a bounded thread pool (`search_parallel_queries`,
-default on; workers capped by `search_max_concurrent`). Browser-backed engines
-serialize navigate+read on a process-wide lock in `fetch_rendered_html`
-because the shared engine has one current page; CLI-bridge backends run truly
-in parallel. Results merge in query order, so output is deterministic;
-sequential mode keeps its early-stop when enough unique URLs are found.
-
-**D-070 Atomic, honest engine installation.** `install_engine` now downloads
-with retries (transient only), optionally verifies a supplied SHA-256
-(`--checksum` / `IRALENS_ENGINE_SHA256`), extracts and startup-probes the binary
-inside a temporary directory, and only then moves it into place. A failed
-install never overwrites or deletes a working engine. Upstream publishes no
-checksum asset (verified against the GitHub API for v0.2.4), so without a
-supplied value the report says `checksum_verified: false` — it never claims a
-verification that did not happen. `install-engine --status` reports the
-current state without installing. Also fixed: `tarfile.extractall(filter=...)`
-does not exist before Python 3.12; the installer now validates tar member
-names itself and falls back where `filter` is unavailable (requires-python is
-3.10).
-
-**D-071 Reader hardening and consistent max_chars.** `read_with_static_reader`
-fetches through `safe_urlopen` (D-072), streams under an overall deadline
-(`read_total_timeout_seconds`, slow-drip protection), enforces the size cap
-(`read_max_bytes`), classifies HTTP status (404 / 403 bot-check / 429 / 5xx /
-redirect loop), and detects soft 404s (short body + not-found markers).
-`max_chars` is enforced on both read backends — it was previously ignored on
-the static path — and artifacts report `truncated` and the budget in metadata.
-The CLI `read` command and the MCP `read` tool accept `max_chars`. The cache
-stores the full text; truncation happens when serving.
-
-**D-072 Redirect-validated, DNS-pinned fetches.** `security.safe_urlopen`
-closes KNOWN_LIMITATIONS items 17/36 for the reader path: hostnames are
-resolved and every answer must be global (mixed public+private answers are
-refused as a rebinding signature), the connection goes straight to the
-validated address (no rebinding window), every redirect hop is re-validated
-against the public-URL policy, https→http downgrades are refused, and chains
-longer than 5 hops are stopped. Verified offline with a local server and
-simulated DNS; see `tests/test_ssrf_fetch.py`.
-
-**D-073 Honest no-results, summary, and demotion.** `no_results_reason`
-distinguishes `filtered_out` (hits existed but were removed by the URL guard
-or filters) from `no_results` (engines answered empty), and only reports
-`engines_failed` when no engine answered at all. `SearchResponse.summary`
-adds one honest sentence. Groups whose hits carry a `prompt_injection:*` flag
-get their relevance factor halved: flagged results are demoted, never silently
-dropped, and the flag travels with them.
-
-**D-074 Verification honesty.** `scripts/verify_interfaces.py` reports
-PASS / FAIL / BLOCKED; live checks the environment cannot reach are BLOCKED and
-listed as unverified in the summary, and the exit code reflects only real
-failures. The ranking benchmark in `scripts/ranking_benchmark.py` is a clearly
-labeled REPLACEMENT for the unrecoverable original 20-case audit benchmark
-(single-commit history; no benchmark artifact exists anywhere in the repo).
-Measured delta, new relevance vs the verbatim legacy scorer: MRR +0.1000,
-nDCG@5 +0.0738 over 20 synthetic cases.
-
-**D-075 Rename: the product is IraLens, not "Half IraLens".** By owner
-decision the "Half" prefix is dropped everywhere: package and import name
-`iralens`, distribution name `iralens`, facade class `IraLens`, error base
-`IraLensError`, CLI command `iralens`, MCP server name `iralens`, state
-directory `~/.iralens`, engine cache `~/.cache/iralens/engine`, environment
-prefixes `IRALENS_HOME` / `IRALENS_<KEY>` / `IRALENS_ENGINE_PATH` /
-`IRALENS_ENGINE_SHA256` / `IRALENS_ENGINE_DIR` (previously `HALF_IRALENS_*`
-and `HIL_*`). This is a deliberate breaking rename: the project is v0.1.0
-and not published to PyPI, so nothing external depends on the old names;
-keeping both would double the public surface forever. All tests, scripts,
-setup files, and docs were updated in the same change.
-
-**D-076 Engine-optional search over direct HTTP.** Built against an external
-critique ("not reliable enough to replace a search API key"). Single point of
-failure: every free engine previously drove the browser binary. Now the free
-engines fetch SERPs directly over SSRF-safe HTTP (`iralens/fetch.py`,
-`fetch_search_page` — DNS-pinned, redirect-validated, size-capped, with an
-overall deadline), and the browser engine is a *fallback* only: used when the
-direct transport is blocked or the page needs JavaScript. Parsing stays a pure
-function of the payload (fixture-tested). `install-engine --print-url` prints
-the exact release asset URL for manual download, a successful install drops an
-`iralens-engine` shim into `IRALENS_BIN_DIR` (default `~/.local/bin`), and
-core operation never requires the engine binary.
-
-**D-077 Local-first reading.** Privacy critique: every `static` read sent the
-URL to the remote reader (r.jina.ai). Reads are now local-first: direct fetch
-plus stdlib HTML extraction (`iralens/extract.py`) is the default; the remote
-reader is OFF and opt-in via `read_remote_reader_enabled` /
-`IRALENS_READ_REMOTE_READER_ENABLED`. Chain: direct -> remote reader (opt-in)
--> browser. Extraction is lossy for complex/JS pages (documented); the
-browser backend covers those. All transports keep the D-071/D-072 guards:
-status classification, soft-404 detection, size cap, slow-drip deadline.
-
-**D-078 SearXNG rotation.** Scaling critique: rate limits on one endpoint
-kill the chain. New `searxng` engine rotates across public SearXNG instances
-with per-instance cooldowns (600 s default; `IRALENS_SEARXNG_INSTANCES`,
-`IRALENS_SEARXNG_COOLDOWN_SECONDS`, `IRALENS_SEARXNG_TIMEOUT_SECONDS`). The
-default chain is now duckduckgo -> searxng -> bing -> semantic-search. Bundled
-instances are unverified conveniences; pin your own for production
-(KNOWN_LIMITATIONS.md). Parsing is a pure function of the JSON payload.
-
-**D-079 Exit-code contract.** Silence critique: `search-api` used to exit 0
-even when every engine failed. The CLI now guarantees: 0 = success *including
-an honest zero-results answer*; 2 = caller error (bad input, bad arguments,
-forbidden target); 3 = internal/operational error; 4 = every search engine
-failed (`SearchEnginesFailedError`, `no_results_reason=engines_failed`, or
-research `stop_reason=search_failed`); 130 = interrupted. The structured
-output is still printed for exit 4 so agents see `outcomes` and the reason.
-
-*Provenance note (2026-10-10).* D-076…D-079 were first implemented in a
-local commit (38eb955) of a previous session that was never pushed and is
-unrecoverable; GitHub never held it. The decisions were rebuilt from the
-handoff specification and re-landed on `arena/cf67ee4b-iralens` with full
-tests. Nothing from the lost commit was claimed as verified beyond what was
-re-tested here; see the verification record in KNOWN_LIMITATIONS.md.
-
-## Reliability benchmark and hardening (2026-10-11)
-
-**D-080 `install-engine` stages inside the destination directory.** The
-installer used `tempfile.TemporaryDirectory()` ($TMPDIR, often tmpfs) and then
-`os.replace()`d the probed binary into the engine cache. On any machine where
-`/tmp` is a different filesystem the install died with
-`OSError: [Errno 18] Invalid cross-device link` — and it surfaced as a raw
-traceback (exit 3), violating D-079. The staging directory is now created
-inside the destination directory, so the placement is a rename on one
-filesystem; `_place()` keeps a copy-then-rename fallback for exotic layouts,
-filesystem `OSError`s are converted into typed `EngineUnavailableError`s, and
-the stage is always removed (including after failures). Reproduced for real
-with `TMPDIR=/dev/shm` (device 21) and the cache on device 65024; five
-regression tests, two of which force a genuine cross-device move.
-
-**D-081 JS-shell reads fall back to the browser; page reads report the real
-failure.** A client-rendered app shell ("You need to enable JavaScript to run
-this app.") is served with HTTP 200, so the static reader used to return it as
-if it were the page text — the failure mode the benchmark's JS-heavy URLs
-measure. In `mode="auto"` a thin/JS-shell static result now triggers one
-rendered read automatically; the static text is kept when rendering is not
-better or the engine is unavailable, and the artifact records which happened
-(`provenance.fallback`, `metadata.static_fallback`). `mode="static"` still
-never starts the engine. In the same change, when both the static read and the
-browser fallback fail, the error raised is the *primary* static error (e.g.
-`page_unavailable/http_404`) with the fallback failure attached as a hint —
-raising the secondary error hid the real cause.
-
-**D-082 Private search backends need an explicit allowlist.** A self-hosted
-SearXNG on `127.0.0.1`/the LAN is the recommended way to get independent engine
-redundancy, but the SSRF policy blocks private targets — correctly. New
-`IRALENS_ALLOWED_PRIVATE_HOSTS` (comma-separated `host` or `host:port`) is
-consulted *only* by search transports (`fetch_url_text(allow_private_hosts=…)`,
-the searxng backend). Page reads never set the flag; credentials, non-HTTP
-schemes, link-local/metadata addresses and a hard-deny name list
-(`metadata.google.internal`, `instance-data`, `metadata`) stay blocked even
-when allowlisted; redirects are re-validated with the same rule. A blocked
-self-hosted instance now fails with a hint naming the exact variable to set.
-See `deploy/searxng/`.
-
-**D-083 PDF main text is extracted, not decoded as noise.** `read_direct`
-decoded every non-HTML body as UTF-8, so a PDF (`%PDF-`) came back as binary
-garbage while claiming success. PDFs are now detected by magic bytes and
-extracted with `pypdf` (added to the runtime dependencies; BSD-3-Clause).
-Missing dependency → typed `extraction_failed`/`pdf_support_missing` with the
-install hint; encrypted → `pdf_encrypted`; no text (a scan) → `pdf_no_text`;
-corrupt → `pdf_parse_failed`. One unreadable page never loses the document.
-
-**D-084 A dead engine fails in about a second, not in 60.** The engine driver
-waited out the whole RPC timeout when the child process had already exited, so
-a dangling `iralens-engine` shim (cache cleared, replaced binary, wrong
-architecture) cost 60 s per browser-backed call — 181 s for one search, 12
-minutes for a three-query benchmark smoke run, measured here. `_rpc` now polls
-the child while waiting and raises a typed `EngineUnavailableError`
-(`exit <code>` + sanitized last stderr lines) as soon as the process is gone;
-the failure is remembered for the process so a broken binary is not respawned
-per call; the `initialize` handshake has its own 20 s budget
-(`IRALENS_ENGINE_STARTUP_TIMEOUT_SECONDS`) separate from per-call timeouts. Nine
-regression tests run real subprocesses (dead, one-shot, hung, working).
-
-**D-085 The benchmark is the acceptance gate, and it is frozen.**
-`benchmarks/` holds 200 hand-labelled queries (140 dev / 60 held-out across
-factual, recent news, long-tail, technical, navigational, non-English,
-multi-intent) with acceptable domains or expected phrases, 100 labelled URLs
-(news, docs, wikis, blogs, JS-heavy, PDFs, walled) with required phrases, the
-Step-2 thresholds as data (`thresholds.json`) and a runner that bypasses the
-cache, paces realistically, measures availability/quality/redundancy/latency/
-load/extraction/honesty, optionally compares against a commercial API
-(`SEARCH_API_REFERENCE_KEY`), and writes `results.json`. It appends a row to
-`BENCHMARKS.md` **only when every threshold passes**; anything not run is
-`not_run` with its reason. `benchmarks/FREEZE.sha256` pins the corpus and the
-thresholds, and the run reports if they changed. The harness itself is
-validated offline by `--self-test` (synthetic system at known pass/fail rates).
-Corpus or thresholds must never be edited to raise a score; label fixes are
-allowed only with a regenerated freeze file and a note in `BENCHMARKS.md`.
-
-## Readiness work (2026-10-13)
-
-**D-086 No unverified public meta-search defaults.** Public SearXNG instances
-are no longer bundled as defaults. The configured default chain tries
-DuckDuckGo, Bing, Wikimedia's official supplemental API, and the semantic-search
-bridge; the bridge may be absent/unavailable, and a private SearXNG is inserted
-only when configured. This reduces dependence on unknown third-party SearXNG
-operators but does not certify the remaining public HTML sources as permitted
-for a given scale. Search source/legal review remains a deployment gate.
-
-**D-087 Durable adaptive circuit backoff.** Search now uses a local SQLite
-circuit state in `IRALENS_HOME/state/search-health.sqlite3`; per-engine and
-SearXNG-instance failures persist across CLI/API restarts. CAPTCHA/429 opens a
-cooldown immediately; repeat failures exponentially extend the cooldown, and a
-transaction permits only one half-open probe across local processes. The store
-contains host/engine labels and counters, not queries, content, or keys. It
-fails open if persistence is unavailable; it is not a distributed health store.
-
-**D-088 Wikimedia supplemental search API.** Add the official MediaWiki search
-API as a no-key, narrow-coverage supplemental engine. It uses an identifying
-User-Agent and at least one second between requests in-process. It is not a
-replacement general web index; live behavior and current API policy are not
-verified from this network.
-
-**D-089 Local scanned-PDF OCR is optional.** When `IRALENS_PDF_OCR_ENABLED`
-is true and host-installed Poppler (`pdftoppm`) and Tesseract are available,
-scanned PDFs can be OCRed locally, with subprocess deadlines and a page cap.
-Default remains off; no OCR executable or real scanned-PDF corpus was run here.
-
-**D-090 Standard-library HTTP API and container entry point.** Add
-`iralens-api` / `iralens serve` with native `/v1/search`, a Serper-shaped
-`/search`, `/v1/read`, liveness, authenticated Prometheus metrics, a bounded
-worker count, and mandatory service auth for non-loopback binds. Root Docker
-files run the API with private-network SearXNG. This is single-node code, not a
-hosted service or SLA; Docker build, TLS deployment and uptime remain unverified.
-
-**D-091 Explicit optional paid backup and comparative reporting.** A configured
-Brave, Serper, or Tavily adapter is appended only when both provider and key are
-set; it is not part of the normal keyless path. The adapter sends keys in
-headers and refuses cross-origin redirects. The frozen benchmark's optional
-reference phase now reports both systems' top-5 labelled gold hit rates,
-availability, failures, p50/p95, overlap and per-query IDs. The gold label is
-retrieval relevance, not answer truth; no paid key/open-network run occurred,
-so it yields no current parity claim.
-
-**D-092 Source-law review remains open.** Add `docs/SOURCE_POLICY.md` inventory,
-data-flow notes, technical safeguards and a pre-release review checklist.
-No counsel/current source-terms review was available in the sandbox; this is
-explicitly not a legal clearance and high-volume automation is not authorized
-by these code changes.
-
-**D-093 Credentialed search requests do not follow cross-origin redirects.**
-Paid fallback requests carry provider keys in headers; the reference benchmark
-can also carry a Google CSE key in its provider-required query parameter.
-`safe_urlopen` therefore supports an explicit same-origin redirect policy, and
-credential-bearing provider calls enable it. Same-origin redirects retain the
-existing public-host/DNS-pinning policy; cross-origin redirects fail visibly
-instead of forwarding credentials or queries to a redirect target.
-
-**D-094 Public API tokens need a minimum length.** The self-hosted HTTP API
-continues to allow unauthenticated loopback development, but a non-loopback
-bind requires a service key of at least 32 characters. This is a basic guard
-against accidentally exposing the service with a trivial token; operators must
-still generate high-entropy keys, use TLS, and configure network controls.
-
-**D-095 A daily watch is a small, auditable canary, not an acceptance test.**
-The scheduled/manual GitHub Actions workflow makes only two sequential public
-GitHub page reads per day, bypasses IraLens's cache, and uploads a per-run JSON
-artifact on both success and failure (no page body or credentials). It makes
-no public search queries pending source-policy review. It cannot substitute
-for the missing 60-page audit, the frozen 100-URL benchmark, or a multi-day
-availability result. Actions schedules and manual dispatch are registered
-only after the workflow file is present on the repository's default branch.
-
-**D-096 Local OCR attempts scans by default when tools are available.**
-`read` now tries bounded Poppler/Tesseract OCR for image-only PDFs without
-requiring an opt-in setting; it still never uploads document data, runs a
-captcha solver, or installs OS packages. An operator can set
-`IRALENS_PDF_OCR_ENABLED=false`. Missing tools produce a typed
-`pdf_ocr_support_missing` error on scans; `doctor.pdf` lists exactly which are
-missing. `pdf_to_text()` itself retains its explicit `ocr_enabled=False`
-low-level default to avoid surprising callers who pass in-memory PDFs.
-
-**D-097 Bound PDF downloads separately and retry sparse text locally.**
-A PDF advertised by MIME or URL path may need more than the general 5 MB HTML
-cap, so it gets a separate 20 MB cap under the same overall 60 s deadline.
-`pypdf` remains primary; when it returns less than 80 characters, an
-*installed* `pdftotext` may extract a richer text layer locally before OCR.
-Nothing is downloaded to a third party. PDF text is normalized for ligatures,
-soft hyphens and line-wrap hyphenation, and encrypted PDFs that reject an
-empty password raise `pdf_encrypted` rather than being mislabelled as scans.
-This is not evidence of a 90% corpus rate until real labelled pages are run.
-
-**D-098 Obscura browser engine configuration and localhost-only control binding.**
-Obscura (`github.com/h4ckf0r0day/obscura`) is configured as the primary optional
-browser engine, pinned to fixed release `v0.2.4` and installed via `iralens
-install-engine`. The previous `iralens-engine` binary is retained as the backup
-in `ENGINE_BINARY_NAMES`. Obscura's anti-detection stealth features remain OFF
-by default (enabled only via explicit `stealth: true` configuration). Any
-control or CDP socket binds to localhost (`127.0.0.1`) only. `install-engine
---status` reports the active engine, backup engine presence, stealth state,
-and control host binding.
-
-**D-099 Search concurrency expansion, polite per-site limits, and answer cache.**
-The global search concurrency gate is raised from 2 to 20 (`search_max_concurrent`),
-and HTTP API server worker capacity is expanded to 32, eliminating queueing
-bottlenecks during 20-way bursts. To protect upstream backends and stay polite,
-a new `PerSiteConcurrencyGate` (`search_per_site_concurrent`, default 3) bounds
-simultaneous connections to any single provider/site. A short-term answer cache
-(`cache_search_ttl_seconds`, default 300s) answers repeated queries before
-acquiring engine slots. Self-hosted SearXNG is the recommended foundation; search
-continues operating reliably if DuckDuckGo, Bing, or both are switched off.
-
-**D-100 Serper-shaped compatibility documentation and v0.2.0 packaging bump.**
-The `/search` endpoint provides basic web search compatibility for Serper clients,
-documented in README.md with an explicit table distinguishing covered features
-from unsupported proprietary Google features (knowledgeGraph, news/image tabs).
-Packaging bumped to v0.2.0 with Docker Compose stack configurations and clean
-Quick Start instructions. Docker is documented as unavailable in the current
-restricted build environment.
+# Design decisions — IraLens
+
+Why things are the way they are. Each note records a choice, the reason, and
+the trade-off. Ordered by subsystem, oldest themes first. For what is
+verified versus unverified, see `KNOWN_LIMITATIONS.md` and `BENCHMARKS.md`.
+
+## Search
+
+**Keep the legacy surface; add a structured surface beside it.**
+`IraLens.search()` returns `List[Artifact]` as it always has. `search_api()`
+returns a typed `SearchResponse` with per-engine outcomes, filters, dedup log,
+and scores. Existing callers keep working; agents get honest structure.
+
+**Legacy `backend` names are aliases.** `semantic-search` maps to the Exa
+bridge; `browser-search` maps to the DuckDuckGo-then-Bing chain. New engine
+names are `duckduckgo`, `bing`, `wikipedia`, and `searxng`.
+
+**Empty results return `[]` instead of raising.** When every engine answered
+and none had hits, the answer is honestly "nothing found". When engines
+*failed*, `search()` raises and `search_api()` reports
+`no_results_reason == "engines_failed"`. "No results" and "blocked" must be
+distinguishable.
+
+**Failure taxonomy.** Every engine attempt is classified: `ok`, `empty`,
+`captcha`, `rate_limited`, `layout_changed`, `transient`, `unavailable`,
+`circuit_open`. Captcha and rate-limit signals are never retried; transient
+failures retry with exponential backoff, capped by `Settings`.
+
+**Fallback and cross-engine agreement.** The chain runs until
+`search_min_engines` engines return hits (default 2). Hits confirmed by a
+second engine get an agreement bonus; an empty or failed engine triggers a
+recorded fallback. With a single engine the agreement factor is always 1.0
+and uninformative — the `score_breakdown` shows this rather than hiding it.
+
+**Filters are native, emulated, post-filtered, or unsupported. Never silent.**
+Each engine declares a mode per filter and the response reports it.
+`include_domains` and `file_type` are emulated with `site:`/`filetype:`
+operators on DuckDuckGo and Bing, and post-filtered on the Exa bridge.
+Undated results are kept and counted (`date_unknown_kept`). Filters an engine
+cannot apply are reported `unsupported`, never faked.
+
+**Deterministic reformulation.** Query variants are produced by fixed
+strategies (original, keywords, sub-question, synonym), capped at
+`reformulate_max_queries`, each tagged with its strategy so results are
+traceable. An LLM expander can be plugged in; it is not the default.
+
+**Dedup in two passes.** Pass 1 merges canonical URL matches (tracking
+params, fragments, `www.`, trailing slash removed; path case kept). Pass 2
+merges near-duplicate titles (token Jaccard ≥ 0.85) on the same registrable
+host only, so distinctly versioned pages (`/3.10/` vs `/3.12/`) are never
+merged. Every merge is logged with its reason.
+
+**Ranking is explainable.** Score = weighted mean of relevance, authority,
+freshness, and agreement; weights, half-life, and the authority table come
+from `Settings`, and each factor appears in `score_breakdown`. The authority
+table is a coarse domain-suffix heuristic (`.gov` 0.9, `.edu` 0.85,
+`.org` 0.6, default 0.5), documented as such — not a quality measure.
+
+**Engines fetch over HTTP; parsing is pure.** The free engines fetch results
+pages directly over SSRF-safe HTTP (`iralens/fetch.py` — DNS-pinned,
+redirect-validated, size-capped, deadline-bounded). Parsing is a pure
+function of the payload, tested against saved fixtures, so markup drift
+surfaces as `layout_changed`, never as silently wrong results. The browser
+engine is a fallback for bot walls and JavaScript pages, not the transport.
+
+**Free engines first.** The default chain is DuckDuckGo → Bing → Wikimedia's
+official API → the semantic-search bridge (when installed). Working search
+must not require a separately configured paid key. A Brave, Serper, or Tavily
+key configured by the operator enables one explicitly optional paid emergency
+fallback after the free sources fail; it is otherwise never called.
+
+**Query hygiene before any engine.** Queries are stripped of control and
+invisible characters (bidi overrides can change what a query displays as),
+whitespace-normalized, and capped at 400 characters. Tokenization is
+symbol-aware: `c++`, `c#`, `.net`, `f#` survive as single tokens, quoted
+phrases stay intact through reformulation, and CJK runs are additionally
+split into character bigrams so two-character terms match longer compounds.
+
+**Concurrent variants, serialized navigation.** Reformulated variants run in
+a bounded thread pool; browser-backed engines serialize navigate+read on a
+process-wide lock because the shared engine has one current page. Results
+merge in query order, so output is deterministic. Sequential mode keeps its
+early-stop when enough unique URLs are found.
+
+**SearXNG only when explicitly configured.** No public SearXNG instances are
+bundled as defaults: their owners' availability, privacy practices, terms,
+and upstream mix vary, and unverified third parties should not sit in the
+default path. A configured (typically self-hosted) instance is inserted into
+the chain, with per-instance cooldowns and rotation. Self-hosting does not
+remove the upstream engines' terms or rate limits.
+
+**Wikimedia as the official supplemental API.** The MediaWiki `list=search`
+API runs with an identifying User-Agent and at least one second between
+requests in a process. It is narrow but contract-clear; it is not a general
+web index.
+
+**Twenty-way concurrency with politeness.** The global search gate allows 20
+concurrent searches (`search_max_concurrent`); a per-site gate
+(`search_per_site_concurrent`, default 3) keeps simultaneous connections to
+any single provider polite, and a 300-second answer cache serves repeated
+queries before any engine slot is taken. Burst capacity and upstream
+politeness are both first-class requirements.
+
+**Settings, not magic numbers.** Every limit, weight, and TTL lives in
+`iralens/settings.py`, readable from `~/.iralens/config.yaml` or
+`IRALENS_*` environment variables.
+
+## Reliability and caching
+
+**Shared failure taxonomy across layers.** Search, reading, and the optional
+backends use the same classification so callers see one vocabulary.
+
+**Durable circuit backoff.** Engine circuits and per-instance cooldowns
+persist in a local SQLite store (`IRALENS_HOME/state/search-health.sqlite3`),
+survive restarts, and coordinate local processes: CAPTCHA/429 opens a
+cooldown immediately, repeat failures extend it exponentially, and a
+transaction permits only one half-open probe. The store holds engine/host
+labels and counters — never queries, content, or keys — and fails open if
+the state directory is unavailable. It is not a distributed health service.
+
+**Degraded searches are never cached.** A failed or skipped engine means the
+response is not stored; an empty-but-healthy response is not stored either
+(a transient block must not stick for 15 minutes). Only complete, successful
+responses enter the cache.
+
+**Page cache covers static reads only.** Cached page fetches are public,
+static reads with a one-hour TTL. Browser reads are never cached because the
+browser can hold session state.
+
+**Exit-code contract.** The CLI guarantees: 0 = success *including an honest
+zero-results answer*; 2 = caller error (bad input, bad URL, forbidden
+target); 3 = internal error; 4 = every search engine failed (the JSON output
+still explains why); 130 = interrupted. Agents can branch on it.
+
+## Reading
+
+**Local-first reading.** Reads are direct fetch plus standard-library
+extraction by default. The remote reader (`r.jina.ai`) is off by default and
+opt-in (`IRALENS_READ_REMOTE_READER_ENABLED=1`), used only after the direct
+read fails; URLs sent to it are shared with that third party. Chain: direct →
+remote reader (opt-in) → local browser.
+
+**Local extraction is honestly lossy.** The stdlib extractor has no DOM,
+CSS layout, or JavaScript: complex widgets disappear and tables become pipe
+rows. `mode=browser` exists for fidelity, and the docs say which mode to use
+when.
+
+**Hardened fetch path with consistent budgets.** Reads stream under an
+overall deadline (slow-drip protection), a 5 MB response cap (20 MB for
+PDFs), HTTP status classification (404 / bot-check 403 / 429 / 5xx / redirect
+loops), and soft-404 detection. `max_chars` is enforced on every backend and
+`truncated` is reported in metadata; the cache stores full text and truncates
+when serving.
+
+**Redirect-validated, DNS-pinned fetches.** Hostnames are resolved up front
+and every answer must be global (mixed public+private answers are refused as
+a rebinding signature); the connection is pinned to the validated address;
+every redirect hop is re-checked against the public-URL policy; https→http
+downgrades and chains over 5 hops are refused.
+
+**JS-shell pages fall back to the browser automatically.** In `mode="auto"`
+a thin or JavaScript-shell static result triggers one rendered read; the
+static text is kept when rendering is not better or the engine is
+unavailable, and provenance records which path produced the artifact. When
+both fail, the *primary* static error is raised with the fallback failure
+attached as a hint — the real cause must not be hidden.
+
+**PDFs are parsed, not decoded as noise.** PDF bodies are detected by magic
+bytes and extracted with `pypdf`. Missing dependency → typed
+`pdf_support_missing`; encrypted → `pdf_encrypted`; image-only →
+`pdf_no_text`; corrupt → `pdf_parse_failed`. One unreadable page never loses
+the document. Extracted text is normalized for ligatures, soft hyphens,
+BOMs, and line-wrap hyphenation; when `pypdf` returns sparse text an
+*installed* `pdftotext` retries locally before OCR.
+
+**Scanned PDFs get local OCR with honest status.** When `pdftoppm` and
+`tesseract` are installed, image-only PDFs are OCRed locally by default —
+bounded by subprocess deadlines and a page cap, never uploaded anywhere.
+Without the tools, a scan fails with typed `pdf_ocr_support_missing` and
+`iralens doctor` names the missing tools. No cloud OCR is used; opt out with
+`IRALENS_PDF_OCR_ENABLED=false`.
+
+## Security
+
+**Content guard flags, never rewrites.** Page content is returned as fetched
+with advisory flags (`prompt_injection:*`, invisible characters) attached to
+provenance. Flagged search hits are demoted in ranking — never silently
+dropped. Only short search titles/snippets get invisible-character
+stripping because they render into result lists.
+
+**Non-public URLs are dropped from results.** Every hit passes
+`normalize_public_http_url` before ranking; a hostile results page cannot
+route the agent at internal services. Fetch-time DNS and redirect validation
+close the rebinding window on the read path.
+
+**Private search backends need an explicit allowlist.** A self-hosted SearXNG
+on a LAN address is legitimate but private targets stay blocked unless
+`IRALENS_ALLOWED_PRIVATE_HOSTS` names them — and even then only for search
+transports, never page reads; metadata endpoints and link-local names stay
+blocked regardless.
+
+**Credentialed requests never cross origins.** Provider keys travel in
+headers; requests carrying credentials use a same-origin redirect policy so a
+redirect cannot forward a key or query to a different host.
+
+**Public API tokens have a floor.** The HTTP API tolerates unauthenticated
+loopback development, but a non-loopback bind requires a token of at least
+32 characters so the service cannot be exposed with a trivial password.
+Operators still need TLS, high-entropy keys, and network controls.
+
+## Browser engine
+
+**Atomic, honest installation.** The installer downloads with retries,
+optionally verifies a caller-supplied SHA-256, startup-probes the binary in a
+staging directory next to the destination (so placement is a same-filesystem
+rename), and only then swaps it in. A failed install can never destroy a
+working engine. Upstream publishes no checksum asset, so without a supplied
+value the report says `checksum_verified: false` — HTTPS plus the startup
+probe is the integrity story, stated plainly.
+
+**A dead engine fails in about a second.** The driver polls the child process
+while waiting on RPC and raises a typed `browser_engine_unavailable` as soon
+as the process is gone, remembers the failure for the process lifetime, and
+gives the `initialize` handshake its own 20-second budget. A dangling engine
+shim must not cost minutes per call.
+
+**Engine configuration is conservative.** The optional browser engine is
+pinned to a fixed release, installs via `iralens install-engine`, keeps a
+known-good previous binary as backup, runs with stealth features OFF unless
+explicitly enabled, and binds any control socket to localhost only.
+
+## Research
+
+**Deterministic core; LLM is an optional adapter.** Planning, claim
+extraction, contradiction detection, synthesis, and the confidence formula
+are deterministic and inspectable. `research/llm.py` accepts any
+`complete(prompt)` callable, but no model ships with IraLens and none is a
+hidden dependency of the core result.
+
+**Replayable trace.** The trace records every search response, expander
+decision, page read, and the date used; `ResearchPlanner.replay` rebuilds the
+report from it with no network access. Research output must be auditable
+after the fact.
+
+**Explicit stop reasons.** `coverage_reached`, `budget_exhausted`,
+`no_new_sources`, `search_failed`, `max_rounds`. `search_failed` is separate
+so "every engine was blocked" is not reported as "nothing new to find", and
+it exits 4 per the CLI contract.
+
+**Claims are sentences; contradictions are candidates.** Sentences sharing a
+term with the question become claims — there is no entailment check.
+Numeric and negation mismatches become contradiction *candidates* labeled
+`heuristic`, never verdicts; four-digit years are excluded from number
+comparison so differing years do not masquerade as conflicting measurements.
+
+**One scoring path for statements.** An LLM may propose wording and grouping,
+but `make_statement` computes status and confidence either way, and a
+proposal citing an unknown claim id is rejected as a whole.
+
+**Research reads static pages.** The planner does not drive the browser:
+reads stay cacheable and free of session state, at the cost of JS-heavy
+pages staying snippet-only when no engine is installed.
+
+**Confidence and authority are transparent heuristics.** The formulas and
+constants live in `Settings` and `research/synthesis.py`. They are not
+calibrated against ground truth, and the docs say so.
+
+## Interface and packaging
+
+**One facade, three surfaces.** Python (`IraLens`), CLI (`iralens`), and MCP
+stdio server share one data model (`Artifact`), one session, and one error
+taxonomy. MCP errors distinguish caller mistakes (`invalid_input`) from
+internal failures.
+
+**JSON output is real JSON.** Every command accepts `--json` before or after
+the subcommand; results serialize through `to_dict()` (never Python reprs),
+and untrusted-content notices go to stderr so stdout stays parseable.
+
+**Verification reports are honest.** `scripts/verify_interfaces.py` prints
+PASS / FAIL / BLOCKED: checks the network cannot reach are BLOCKED and listed
+as unverified, and the exit code reflects only real failures.
+
+**The ranking benchmark is a labeled replacement.** The original 20-case
+audit benchmark was never committed to the repository, so
+`scripts/ranking_benchmark.py` measures the current scorer against a verbatim
+copy of the legacy scorer on 20 synthetic cases with explicit relevance
+judgments. Its numbers are improvements over the legacy scorer on that
+synthetic set — not results from the lost original. Measured: MRR 0.875 →
+0.975 (+0.100), nDCG@5 0.908 → 0.982 (+0.074); no case regressed, and the
+one case both scorers fail is recorded as a limitation.
+
+**The acceptance benchmark is frozen.** `benchmarks/` pins 200 labeled
+queries and 100 labeled URLs plus thresholds (`FREEZE.sha256`). The runner
+bypasses the cache, paces requests realistically, appends a row to
+`BENCHMARKS.md` only when every threshold passes, and labels anything it
+could not run as `not_run` with the reason. Corpus or thresholds are never
+edited to raise a score.
+
+**A daily watch is a canary, not an acceptance test.** The scheduled workflow
+makes two low-volume public page reads per day, bypasses the cache, and
+uploads per-run diagnostics. It monitors that reading keeps working; it does
+not replace the frozen benchmark.
+
+**The HTTP API is a single node.** Standard-library server, bounded workers,
+native and Serper-compatible endpoints, authenticated metrics, mandatory
+token for non-loopback binds. No hosted URL, SLA, multi-node state, or TLS
+termination is claimed.
+
+**Setup is honest about platform coverage.** `scripts/setup.sh` is tested on
+Linux; `scripts/setup.ps1` is provided for Windows and labeled untested;
+Docker files are provided and must be built on the target host before being
+relied on.
+
+## Licensing
+
+**Apache-2.0.** The project is Apache-2.0: `LICENSE` holds the full text,
+`pyproject.toml` uses the SPDX form, and `NOTICE` carries the copyright line
+plus the MIT attribution for the open-source components adapted into the
+source layer, as their licenses require. The component inventory is in
+`docs/audits/license-audit.md`.
+
+## Scope
+
+**What IraLens is not.** Not an independently crawled search index, not a
+managed service, not a fact-checker. The research layer produces leads with
+stated limits. The scope boundary lives in the README and
+`KNOWN_LIMITATIONS.md`; deliberate non-builds (LLM-by-default, distributed
+health store, public SearXNG defaults, hosted endpoint) are recorded in the
+notes above.

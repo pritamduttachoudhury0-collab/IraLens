@@ -5,12 +5,12 @@ The engine is distributed as prebuilt release binaries. This helper fetches
 the right one for the current platform into the per-user engine cache and
 verifies it executes. No background services, no package managers required.
 
-Safety properties (D-070):
+Safety properties:
   - Atomic replacement: the archive is downloaded, extracted, and the binary
     is startup-probed *inside a staging directory*. Only after the probe
     passes is the binary moved into place. A failed install never overwrites
     or deletes an existing working engine, and no unrelated file is touched.
-  - Same-filesystem staging (D-080): the staging directory is created *inside
+  - Same-filesystem staging: the staging directory is created *inside
     the destination directory*, so the final placement is a rename on one
     filesystem. Staging under $TMPDIR (often tmpfs) and renaming into the
     engine cache (often a different mount) raises EXDEV — "Invalid cross-device
@@ -23,7 +23,7 @@ Safety properties (D-070):
     release publishes no checksum file, so without a supplied value the
     install relies on HTTPS plus the startup probe — and the status report
     says exactly that instead of claiming a verified checksum.
-  - Operator ergonomics (D-076): `engine_download_url()` (CLI `install-engine
+  - Operator ergonomics: `engine_download_url()` (CLI `install-engine
     --print-url`) prints the exact asset URL for manual download, and a
     successful install drops an `iralens-engine` shim into IRALENS_BIN_DIR
     (default ~/.local/bin) so the engine is callable without knowing the
@@ -109,7 +109,7 @@ def _default_bin_dir() -> Path:
 
 
 def install_path_shim(binary: Path, bin_dir: Optional[Path] = None) -> Optional[Path]:
-    """Put an `iralens-engine` launcher for *binary* on the user's PATH (D-076).
+    """Put an `iralens-engine` launcher for *binary* on the user's PATH.
 
     Writes an executable `iralens-engine` wrapper into IRALENS_BIN_DIR
     (default ~/.local/bin) so the engine can be invoked and probed without
@@ -288,7 +288,7 @@ def install_engine(
     checksum = expected_sha256 or os.environ.get("IRALENS_ENGINE_SHA256") or ""
     url = engine_download_url(version)
 
-    # Stage INSIDE the destination directory (D-080): the archive, its
+    # Stage INSIDE the destination directory: the archive, its
     # extraction and the probe all live on the same filesystem as the final
     # binary, so the placement below is a rename and never a cross-device move.
     # The directory is dot-prefixed so a crashed install leaves a visible but
@@ -335,7 +335,7 @@ def install_engine(
                     shim=str(shim) if shim else None)
     except OSError as exc:
         # A filesystem-level failure during staging/placement must surface as a
-        # typed error (D-079/D-080), never as a raw traceback.
+        # typed error, never as a raw traceback.
         raise EngineUnavailableError(
             f"could not install the browser engine ({type(exc).__name__})",
             hint="check free space and permissions on the engine directory",

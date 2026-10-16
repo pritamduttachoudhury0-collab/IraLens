@@ -5,13 +5,13 @@ Run from a checkout after ./scripts/setup.sh:
 
 Verdicts are honest about what could and could not be verified:
     PASS    the check ran and succeeded.
-    BLOCKED the check needs a live service this environment cannot reach;
+    BLOCKED the check needs a live service the current network cannot reach;
             it was not verified (listed again in the final summary).
     FAIL    the check ran and did not behave as specified.
 
 Local checks (CLI wiring, JSON output, MCP protocol, error taxonomy) never
 depend on the network. Checks marked (LIVE) need Internet access beyond the
-sandbox allowlist; when the network probe fails they report BLOCKED, not
+allowlisted services; when the network probe fails they report BLOCKED, not
 FAIL, and the summary lists exactly what remains unverified.
 """
 import json
@@ -47,7 +47,7 @@ def check(name, ok, detail="", live=False):
     results.append((name, verdict))
     note = f" :: {detail}" if detail else ""
     if verdict == "BLOCKED":
-        note += "  [not verified: network unreachable from this environment]"
+        note += "  [not verified: network unreachable]"
     print(f"{verdict:7s} {name}{note}", flush=True)
 
 
@@ -85,7 +85,7 @@ check("cli fetch github search_repos (LIVE)", rc == 0 and len(data) > 0,
       f"{len(data)} live repos, first={data[0]['url'] if data else None}", live=True)
 
 rc, out, _ = run(["--json", "search-api", "solar panel efficiency", "--cache", "bypass"])
-# D-079: the structured report is printed either way; exit 4 marks the
+# the structured report is printed either way; exit 4 marks the
 # every-engine-failed case and exit 0 marks an answered query (even if the
 # honest answer is zero results).
 sa = json.loads(out) if out else {}
@@ -94,9 +94,9 @@ check("cli search-api --json (structured, machine-readable)", rc in (0, 4) and "
       "engine outcomes: " + (", ".join(f"{o['engine']}={o['status']}" for o in outcomes) or "(none)")
       + f"; summary={sa.get('summary', '')!r}")
 if sa.get("no_results_reason") == "engines_failed":
-    check("cli exit-code contract (D-079): engines_failed exits 4", rc == 4, f"rc={rc}")
+    check("cli exit-code contract: engines_failed exits 4", rc == 4, f"rc={rc}")
 else:
-    check("cli exit-code contract (D-079): answered query exits 0", rc == 0, f"rc={rc}")
+    check("cli exit-code contract: answered query exits 0", rc == 0, f"rc={rc}")
 # Web engines need search-engine access; with no engine installed and no
 # network, a structured all-engines-failed response is the *honest* result.
 engines_answered = any(o["status"] in ("results", "empty") for o in outcomes)
@@ -104,7 +104,7 @@ check("cli search-api reached at least one engine (LIVE)", engines_answered,
       sa.get("summary", ""), live=True)
 
 rc, out, _ = run(["--json", "research", "solar panel efficiency 2025", "--rounds", "1"])
-# D-079: research exits 4 when every search failed; the report is still JSON.
+# research exits 4 when every search failed; the report is still JSON.
 rr = json.loads(out) if out else {}
 contract_ok = (rr.get("stop_reason") == "search_failed") == (rc == 4)
 check("cli research --json returns structured report", rc in (0, 4) and "stop_reason" in rr and contract_ok,
@@ -211,7 +211,7 @@ blocked = [n for n, v in results if v == "BLOCKED"]
 print(f"\nSUMMARY {passed} passed, {len(failed)} failed, {len(blocked)} blocked "
       f"(of {len(results)} checks)")
 if blocked:
-    print("UNVERIFIED because live services were unreachable from this environment:")
+    print("UNVERIFIED because live services were unreachable from the current network:")
     for name in blocked:
         print(f"  - {name}")
     print("These checks must run somewhere with Internet access before release.")

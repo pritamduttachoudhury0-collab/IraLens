@@ -20,7 +20,7 @@ dependencies = [
     "yt-dlp>=2024.4.9",
     # PDF main-text extraction for the read path (BSD-3-Clause). Without it a
     # PDF read fails with a typed pdf_support_missing error instead of
-    # returning binary noise (D-083).
+    # returning binary noise.
     "pypdf>=4.0",
 ]
 

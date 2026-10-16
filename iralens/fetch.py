@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Direct HTTP transport for search pages and raw fetches (D-076).
+"""Direct HTTP transport for search pages and raw fetches.
 
 `fetch_search_page` gives the free search engines a browser-independent
 transport: a plain SSRF-safe HTTP GET with a response size cap and an overall
@@ -107,7 +107,7 @@ def fetch_url_text(
       OperationTimeoutError — the overall deadline expired (slow-drip guard).
       ExtractionError — the response exceeded the size cap.
 
-    `allow_private_hosts` consults IRALENS_ALLOWED_PRIVATE_HOSTS (D-082). It is
+    `allow_private_hosts` consults IRALENS_ALLOWED_PRIVATE_HOSTS. It is
     only for search transports calling a self-hosted backend; page reads never
     set it, so a private target in page content stays blocked. Credentialed
     provider calls can set `same_origin_redirects` to avoid forwarding secrets.
@@ -152,7 +152,7 @@ def fetch_search_page(
     max_bytes: Optional[int] = None,
     deadline_seconds: Optional[float] = None,
 ) -> str:
-    """Fetch the raw HTML/text of a search-engine results page (D-076).
+    """Fetch the raw HTML/text of a search-engine results page.
 
     The transport for free engines: no browser engine and no search API key
     involved. Exactly `fetch_url_text` with a browser-like User-Agent and a

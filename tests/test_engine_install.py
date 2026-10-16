@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Safe browser-engine installation (D-070): retries, checksum policy,
+"""Safe browser-engine installation: retries, checksum policy,
 verify-before-replace atomicity, and honest status reporting. Offline."""
 
 import errno
