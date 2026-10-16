@@ -102,11 +102,11 @@ def test_open_non_repo_github_url_falls_back_to_web(hil, monkeypatch):
 
     monkeypatch.setattr(type(get_source("web")), "read_url", fake_web_read)
 
-    artifact = hil.open("https://github.com/settings/profile")
+    artifact = hil.open("https://github.com/settings")
     assert artifact.source == "web"
 
     with pytest.raises(OperationUnsupportedError):
-        hil.open("https://github.com/settings/profile", mode="source")
+        hil.open("https://github.com/settings", mode="source")
 
 
 def test_open_source_mode_requires_source(hil, monkeypatch):
