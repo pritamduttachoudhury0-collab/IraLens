@@ -591,3 +591,12 @@ no public search queries pending source-policy review. It cannot substitute
 for the missing 60-page audit, the frozen 100-URL benchmark, or a multi-day
 availability result. Actions schedules and manual dispatch are registered
 only after the workflow file is present on the repository's default branch.
+
+**D-096 Local OCR attempts scans by default when tools are available.**
+`read` now tries bounded Poppler/Tesseract OCR for image-only PDFs without
+requiring an opt-in setting; it still never uploads document data, runs a
+captcha solver, or installs OS packages. An operator can set
+`IRALENS_PDF_OCR_ENABLED=false`. Missing tools produce a typed
+`pdf_ocr_support_missing` error on scans; `doctor.pdf` lists exactly which are
+missing. `pdf_to_text()` itself retains its explicit `ocr_enabled=False`
+low-level default to avoid surprising callers who pass in-memory PDFs.

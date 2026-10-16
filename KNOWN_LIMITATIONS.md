@@ -252,12 +252,13 @@ claim above was re-tested in this environment on 2026-10-10.
     0.00 and correctly refused to claim anything. The full three-consecutive-run
     acceptance must be executed on an open network:
     `python benchmarks/run_benchmark.py --all --with-load --network home`.
-49. **PDF text extraction needs `pypdf`; scanned-page OCR is optional.** The
-    local OCR path requires `IRALENS_PDF_OCR_ENABLED=true`, `pdftoppm` and
-    `tesseract` on the host, and defaults to five pages in English. It is
-    subprocess-bounded and does not upload the PDF. OCR binaries are not
-    installed or tested in this workspace; scan quality, other languages and
-    the arXiv/RFC corpus in `benchmarks/urls.json` remain unverified.
+49. **PDF text extraction needs `pypdf`; scanned-page OCR needs host tools.**
+    OCR auto-attempts for image-only PDFs when `pdftoppm` and `tesseract` are
+    installed, and defaults to five pages in English (disable with
+    `IRALENS_PDF_OCR_ENABLED=false`). Without the tools, `doctor` and the
+    typed `pdf_ocr_support_missing` read error say what is missing. OCR is
+    subprocess-bounded and never uploads the PDF. Neither OCR tool is
+    installed in this workspace, and the arXiv/RFC corpus remains unverified.
 50. **The JS-shell heuristic can over-trigger.** Any static page under ~150
     visible characters (or containing an "enable JavaScript" notice) is
     re-read through the browser when the engine is installed. The cost is one

@@ -285,9 +285,14 @@ class IraLens:
         return out
 
     def doctor(self) -> Dict[str, Any]:
-        """Unified capability report: engine + every source."""
+        """Unified capability report: engine, PDF tools and every source."""
+        from .extract import pdf_capabilities
+        from .settings import Settings
+
         engine_health = self._engine_handle().health()
-        return {"browser": engine_health, "sources": self.source_status()}
+        pdf_health = pdf_capabilities(ocr_enabled=Settings.from_config(self.config).pdf_ocr_enabled)
+        return {"browser": engine_health, "pdf": pdf_health,
+                "sources": self.source_status()}
 
     # ---------------------------------------------------------------- browser
     def navigate(self, url: str, wait_until: str = "load") -> Any:

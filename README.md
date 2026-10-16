@@ -323,9 +323,11 @@ iralens install-engine              # install it (retries, probe-before-replace)
   empty), `filtered_out` (filters removed everything), or `engines_failed`
   (blocked/unreachable engines — check `outcomes` for `captcha`,
   `rate_limited`, `layout_changed`, …).
-- PDFs use the embedded text layer (`pypdf`). Optional local OCR for scans
-  needs `pdftoppm` and `tesseract` plus `IRALENS_PDF_OCR_ENABLED=true`; without
-  it, image-only scans fail with a typed `pdf_no_text`, never as binary noise.
+- Text PDFs use the embedded text layer (`pypdf`). Scanned PDFs use free,
+  **local** OCR automatically *if* `pdftoppm` and `tesseract` are installed;
+  `iralens doctor` lists missing tools. Without them, scans fail with a typed
+  `pdf_ocr_support_missing`, never as binary noise or an unannounced empty page.
+  Opt out with `IRALENS_PDF_OCR_ENABLED=false`; no cloud OCR is used.
 - Reads that fail tell you why: `http_404`, `http_403` (bot check), `http_429`,
   `soft_404`, `antibot_challenge`, `response_too_large`, `slow_response_deadline`,
   `redirect_loop`, or `blocked_by_security_policy`.
@@ -352,7 +354,7 @@ IRALENS_SEARXNG_COOLDOWN_SECONDS=600                 # durable per-instance cool
 IRALENS_SEARXNG_TIMEOUT_SECONDS=20                  # per-instance request budget
 IRALENS_BACKUP_SEARCH_PROVIDER=serper                # optional paid emergency fallback
 IRALENS_BACKUP_SEARCH_API_KEY=...                    # configure only if desired
-IRALENS_PDF_OCR_ENABLED=true                         # optional local OCR; needs Poppler + Tesseract
+IRALENS_PDF_OCR_ENABLED=false                        # optional opt-out; local OCR auto-attempts if tools exist
 IRALENS_READ_REMOTE_READER_ENABLED=1                  # opt in to r.jina.ai after direct read fails
 IRALENS_API_KEY=... IRALENS_API_HOST=0.0.0.0            # authenticated HTTP API (TLS proxy recommended)
 IRALENS_ENGINE_STARTUP_TIMEOUT_SECONDS=20              # engine handshake budget (a dead binary fails in ~1s)

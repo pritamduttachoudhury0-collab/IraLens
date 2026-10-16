@@ -206,7 +206,7 @@ def read_direct(
     *,
     max_bytes: Optional[int] = None,
     deadline_seconds: Optional[float] = None,
-    ocr_enabled: bool = False,
+    ocr_enabled: bool = True,
     ocr_max_pages: int = 5,
     ocr_language: str = "eng",
 ) -> str:
@@ -245,8 +245,9 @@ def read_direct(
             detail="antibot_challenge",
         )
     if looks_like_pdf(body):
-        # PDF bodies used to be decoded as UTF-8 and returned as binary noise.
-        # Optional OCR runs locally only; it is off unless explicitly enabled.
+        # PDF bodies must not be decoded as UTF-8 binary noise. Scanned-page
+        # OCR runs locally when its optional host tools are present; if missing
+        # the PDF extractor returns an explicit typed error, not fake success.
         text, _info = pdf_to_text(body, ocr_enabled=ocr_enabled,
                                   ocr_max_pages=ocr_max_pages, ocr_language=ocr_language)
     elif _looks_like_html(body):

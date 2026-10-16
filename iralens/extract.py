@@ -24,6 +24,7 @@ Contract:
 
 from __future__ import annotations
 
+import importlib.util
 import io
 import re
 import shutil
@@ -316,6 +317,26 @@ def html_to_text(html: str) -> str:
 
 
 # --------------------------------------------------------------------------- pdf
+def pdf_capabilities(*, ocr_enabled: bool = True) -> Dict[str, Any]:
+    """Non-invasive availability check for doctor; do not claim OCR was run."""
+    text_pdf = importlib.util.find_spec("pypdf") is not None
+    missing = [name for name in ("pdftoppm", "tesseract") if not shutil.which(name)]
+    available = not missing
+    if not text_pdf:
+        message = "text PDF support missing: install pypdf"
+    elif not ocr_enabled:
+        message = "text PDFs ready; local scanned-PDF OCR disabled by configuration"
+    elif missing:
+        message = ("text PDFs ready; local scanned-PDF OCR unavailable: missing "
+                   + ", ".join(missing) + " (install poppler-utils and tesseract-ocr)")
+    else:
+        message = "text PDFs ready; local scanned-PDF OCR enabled (not benchmarked)"
+    return {"status": "ok" if text_pdf and (not ocr_enabled or available) else "warn",
+            "text_pdf_available": text_pdf, "ocr_enabled": ocr_enabled,
+            "ocr_tools_available": available, "missing_tools": missing,
+            "message": message}
+
+
 def looks_like_pdf(body: bytes) -> bool:
     """True when the body starts with the PDF header (magic-byte sniff)."""
     return (body or b"")[:1024].lstrip()[:5] == PDF_MAGIC

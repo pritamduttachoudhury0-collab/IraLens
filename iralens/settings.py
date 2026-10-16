@@ -72,7 +72,9 @@ class Settings:
     backup_search_api_key: str = ""        # never returned by doctor/config output
     backup_search_timeout_seconds: int = 15
     # --- local OCR for scanned PDFs (system tools are optional) ---------------
-    pdf_ocr_enabled: bool = False
+    # Try local OCR on scans by default when both host tools exist. No cloud OCR;
+    # missing tools produce a typed, actionable error. Opt out with the env key.
+    pdf_ocr_enabled: bool = True
     pdf_ocr_max_pages: int = 5
     pdf_ocr_language: str = "eng"
     # --- caching ---------------------------------------------------------------
