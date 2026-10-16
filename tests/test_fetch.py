@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Direct HTTP transport (D-076): classification, caps, deadlines, policy.
+"""Direct HTTP transport: classification, caps, deadlines, policy.
 
 Everything is offline: safe_urlopen is replaced by fakes. The transport must
 be no weaker than the reader path it shares a threat model with.
@@ -52,7 +52,7 @@ class EndlessResponse:
 
 
 def _patch(monkeypatch, response=None, error=None, seen=None):
-    # Mirrors the real signature, including the D-082 private-host allowlist
+    # Mirrors the real signature, including the documented private-host allowlist
     # switch, so a change to the transport contract fails loudly here.
     def fake_urlopen(url, *, timeout=30, headers=None, data=None, allow_private_hosts=False,
                      same_origin_redirects=False):
@@ -145,7 +145,7 @@ class NoEngineCtx:
     config = None
 
     def engine(self):
-        raise AssertionError("browser engine must not be required (D-076)")
+        raise AssertionError("browser engine must not be required")
 
 
 class FakeEngine:

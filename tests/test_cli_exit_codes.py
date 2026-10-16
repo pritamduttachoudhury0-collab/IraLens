@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""CLI exit-code contract (D-079): 0 ok, 2 caller, 3 internal, 4 engines-failed.
+"""CLI exit-code contract: 0 ok, 2 caller, 3 internal, 4 engines-failed.
 
 Deterministic: the IraLens facade is replaced with fakes, so these run the
 same offline everywhere (including CI) with no network dependence.
@@ -87,7 +87,7 @@ def test_success_is_zero(fake_lens):
 
 
 def test_honest_zero_results_is_zero(fake_lens):
-    """An empty but answered search is success — not an error (D-079)."""
+    """An empty but answered search is success — not an error."""
     FakeLens.api_response = _response("no_results")
     assert _run(["--json", "search-api", "q"]) == cli.EXIT_OK
 

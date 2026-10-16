@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Local HTML -> markdown extraction (D-077). Pure functions, offline."""
+"""Local HTML -> markdown extraction. Pure functions, offline."""
 
 from iralens.extract import extract_title, html_to_markdown, html_to_text
 

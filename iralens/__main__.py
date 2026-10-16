@@ -4,7 +4,7 @@
 Agents and tests that cannot rely on the console script being on PATH (the
 common case inside a virtualenv that was not activated) can run the CLI as
 `python -m iralens`. Behavior and exit codes are identical; `main()` is the one
-implementation (D-079).
+implementation.
 """
 
 from .cli import main

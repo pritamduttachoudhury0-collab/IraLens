@@ -17,7 +17,8 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, TYPE_CHECKING
 
-from ..errors import AuthRequiredError, ExtractionError, PageUnavailableError, SourceUnavailableError
+from ..errors import (AuthRequiredError, ExtractionError, OperationUnsupportedError,
+                      PageUnavailableError, SourceUnavailableError)
 from ..model import Artifact
 from ..proc import probe_command, run_cli
 from ..security import host_matches, public_message
@@ -228,7 +229,9 @@ class GitHubSource(Source):
     def read_url(self, url: str, context: "Context", mode: str = "auto") -> Artifact:
         match = _REPO_RE.search(url)
         if not match:
-            raise ExtractionError("only github.com/<owner>/<repo> URLs are read natively")
+            raise OperationUnsupportedError(
+                "only github.com/<owner>/<repo> URLs are read natively",
+                hint="other github.com URLs fall back to the generic web reader in auto mode")
         repo = f"{match.group(1)}/{match.group(2).removesuffix('.git')}"
         artifact = self.fetch("repo", {"repo": repo}, context)
         try:

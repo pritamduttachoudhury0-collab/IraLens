@@ -101,7 +101,7 @@ class LinkedInSource(Source):
         )
 
     def read_url(self, url: str, context: "Context", mode: str = "auto") -> Artifact:
-        # Local-first (D-077), same policy as the web source: direct fetch
+        # Local-first, same policy as the web source: direct fetch
         # first; the remote reader is opt-in only.
         from ..settings import Settings
 

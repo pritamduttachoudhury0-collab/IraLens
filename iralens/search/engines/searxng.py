@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""SearXNG backend: JSON API over SSRF-safe HTTP with instance rotation (D-078).
+"""SearXNG backend: JSON API over SSRF-safe HTTP with instance rotation.
 
 SearXNG metasearch instances aggregate several upstream engines behind one
 JSON API, which is the cheapest way to survive a single endpoint rate-limiting
@@ -159,7 +159,7 @@ class SearxngBackend(SearchBackend):
                                       headers={"Accept": "application/json"},
                                       # A self-hosted instance on the LAN or on
                                       # 127.0.0.1 must be explicitly allowlisted
-                                      # (IRALENS_ALLOWED_PRIVATE_HOSTS, D-082);
+                                      # (IRALENS_ALLOWED_PRIVATE_HOSTS);
                                       # this flag only consults that allowlist.
                                       allow_private_hosts=True)
             except Exception as exc:

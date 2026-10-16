@@ -127,7 +127,7 @@ class DuckDuckGoBackend(SearchBackend):
 
     def search(self, query: str, filters: SearchFilters, limit: int, context: Any) -> List[SearchHit]:
         timeout = int(context.config.get("search_timeout_seconds", 45)) if context.config else 45
-        # `query` is the built query text (D-076 transport: direct HTTP first,
+        # `query` is the built query text (transport: direct HTTP first,
         # rendered engine only as fallback — see fetch_serp_html).
         encoded = urllib.parse.quote_plus(query)
         region = f"&kl={urllib.parse.quote_plus(filters.region)}" if filters.region else ""

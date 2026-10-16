@@ -102,7 +102,7 @@ def fetch_rendered_html(context: Any, url: str, timeout: int) -> str:
 
     Serialized on a process-wide lock: the engine holds one current page, so
     two navigations may not interleave even when query variants run in
-    parallel threads (D-069).
+    parallel threads.
     """
     engine = context.engine()
     with _NAV_LOCK:
@@ -113,7 +113,7 @@ def fetch_rendered_html(context: Any, url: str, timeout: int) -> str:
 def fetch_serp_html(context: Any, url: str, timeout: int) -> str:
     """SERP HTML for one URL: direct HTTP first, rendered engine as fallback.
 
-    D-076: free engines fetch results pages directly over SSRF-safe HTTP, so
+    free engines fetch results pages directly over SSRF-safe HTTP, so
     search works with no browser engine installed. The rendered engine is a
     fallback for bot walls and layout that needs JavaScript — if it is not
     installed, the direct transport's result (or error) is what the engine

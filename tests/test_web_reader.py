@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Hardened static reader: HTTP classification, soft 404s, size caps,
-slow-drip deadlines, and consistent max_chars enforcement (D-071).
+slow-drip deadlines, and consistent max_chars enforcement.
 
 Everything is offline: safe_urlopen and the response stream are fakes.
 """
@@ -261,7 +261,7 @@ def test_truncate_text_reports_omitted_chars():
     assert same == "short" and not_truncated is False
 
 
-# ------------------------------------------ local-first direct read (D-077)
+# ------------------------------------------ local-first direct read
 class _RejectEngineCtx:
     """Context whose engine must never be touched by static reads.
 

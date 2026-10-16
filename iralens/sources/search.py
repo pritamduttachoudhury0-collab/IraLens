@@ -66,7 +66,7 @@ class SearchSource(Source):
                 "semantic search bridge present; web engines also available as fallback",
                 self.active_backend,
             )
-        # D-076: free engines fetch SERPs directly over SSRF-safe HTTP, so
+        # free engines fetch SERPs directly over SSRF-safe HTTP, so
         # search works with no browser engine installed. The engine, when
         # present, is a rendered fallback for bot walls and JS layouts.
         self.active_backend = "direct-search"

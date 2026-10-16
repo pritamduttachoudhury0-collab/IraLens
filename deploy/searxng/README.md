@@ -35,7 +35,7 @@ export IRALENS_SEARXNG_INSTANCES="http://127.0.0.1:8888"
 
 # 2) permission for the SEARCH TRANSPORT to reach a private address.
 #    Without this the SSRF policy blocks loopback/LAN targets, which is
-#    correct for page reads and intentional for search too (D-082).
+#    correct for page reads and intentional for search too.
 export IRALENS_ALLOWED_PRIVATE_HOSTS="127.0.0.1:8888"
 ```
 

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Symbol-aware tokenization, quoted phrases, and query sanitizing (D-068)."""
+"""Symbol-aware tokenization, quoted phrases, and query sanitizing."""
 
 import pytest
 

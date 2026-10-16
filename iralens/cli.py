@@ -13,7 +13,7 @@ One command, one system:
     iralens mcp                     start the MCP server
     iralens install-engine          install the browser engine
 
-Exit-code contract (D-079):
+Exit-code contract:
     0    success, including an honest zero-results answer
     2    caller error (bad input, bad arguments, forbidden target)
     3    internal/operational error
@@ -34,7 +34,7 @@ from .errors import IraLensError, SearchEnginesFailedError
 from .model import Artifact
 from .security import UNTRUSTED_NOTICE, public_message
 
-# Exit codes (D-079). Agents may branch on these; keep them stable.
+# Exit codes. Agents may branch on these; keep them stable.
 EXIT_OK = 0
 EXIT_CALLER = 2
 EXIT_INTERNAL = 3
@@ -260,7 +260,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run(args: argparse.Namespace) -> tuple:
-    """Execute one command; return (result, exit_code) per the D-079 contract."""
+    """Execute one command; return (result, exit_code) per the documented exit-code contract."""
     command = args.command
 
     if command == "version":
@@ -421,7 +421,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         result, code = run(args)
     except SearchEnginesFailedError as exc:
-        # Every engine failed (D-079): distinct from caller errors so callers
+        # Every engine failed: distinct from caller errors so callers
         # can tell "your input was wrong" apart from "the web did not answer".
         print(json.dumps(exc.to_dict(), ensure_ascii=False, indent=2), file=sys.stderr)
         return EXIT_ENGINES_FAILED

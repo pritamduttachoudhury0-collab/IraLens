@@ -26,13 +26,13 @@ class Settings:
     # --- engines / fallback ------------------------------------------------
     # Keyless sources first. The optional semantic bridge runs last; the
     # operator-configured SearXNG instance is inserted before Bing, and the
-    # paid backup is appended only when explicitly configured (D-086/D-091).
+    # paid backup is appended only when explicitly configured.
     search_engines: Tuple[str, ...] = ("duckduckgo", "bing", "wikipedia", "semantic-search")
     search_min_engines: int = 2            # engines queried for cross-engine agreement
     search_max_results: int = 8
     search_timeout_seconds: int = 45       # per engine navigation/extraction budget
-    search_max_query_chars: int = 400      # longer queries are rejected (D-068)
-    # --- searxng instance rotation (D-078) ---------------------------------
+    search_max_query_chars: int = 400      # longer queries are rejected
+    # --- searxng instance rotation ---------------------------------
     searxng_instances: Tuple[str, ...] = DEFAULT_SEARXNG_INSTANCES
     searxng_cooldown_seconds: float = 600.0   # a failed instance is skipped this long
     searxng_timeout_seconds: int = 20         # per-instance request budget
@@ -40,12 +40,12 @@ class Settings:
     search_max_concurrent: int = 20        # simultaneous searches on the shared engine (target 20+)
     search_per_site_concurrent: int = 3    # polite per-site limit to protect upstream backends
     search_acquire_timeout_seconds: int = 15
-    search_parallel_queries: bool = True   # run reformulated query variants in parallel (D-069)
+    search_parallel_queries: bool = True   # run reformulated query variants in parallel
     # --- page reading --------------------------------------------------------
     read_max_bytes: int = 5 * 1024 * 1024        # general response cap
     read_pdf_max_bytes: int = 20 * 1024 * 1024  # only PDF MIME/paths; same time deadline
     read_total_timeout_seconds: int = 60         # overall deadline per read (slow-drip guard)
-    # Local-first reading (D-077): direct fetch + stdlib extraction is the
+    # Local-first reading: direct fetch + stdlib extraction is the
     # default; the remote reader (r.jina.ai) is OFF and opt-in only.
     read_remote_reader_enabled: bool = False
     # --- ranking ------------------------------------------------------------

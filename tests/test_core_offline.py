@@ -91,6 +91,24 @@ def test_open_falls_through_when_source_unavailable(hil, monkeypatch):
     assert artifact.retrieval_method == "browser"
 
 
+def test_open_non_repo_github_url_falls_back_to_web(hil, monkeypatch):
+    """github.com URLs that are not /<owner>/<repo> must not fail: the
+    specialized source reports the shape as unsupported and auto mode falls
+    back to the generic web reader (regression: extraction error -> 502 via
+    /v1/read)."""
+    def fake_web_read(self, url, context, mode="auto", max_chars=20000):
+        return Artifact(title="page", url=url, source="web", kind="page",
+                        content="body", retrieval_method="direct")
+
+    monkeypatch.setattr(type(get_source("web")), "read_url", fake_web_read)
+
+    artifact = hil.open("https://github.com/settings")
+    assert artifact.source == "web"
+
+    with pytest.raises(OperationUnsupportedError):
+        hil.open("https://github.com/settings", mode="source")
+
+
 def test_open_source_mode_requires_source(hil, monkeypatch):
     from iralens.errors import SourceUnavailableError
 
@@ -149,6 +167,6 @@ def test_open_enforces_max_chars_end_to_end(hil, monkeypatch, tmp_path):
     art = hil.open("https://example.org/big", mode="static", max_chars=300)
     assert len(art.content) <= 360
     assert art.metadata.get("truncated") is True
-    # Local-first (D-077): plain-text/markdown bodies pass through the direct
+    # Local-first: plain-text/markdown bodies pass through the direct
     # reader; only HTML bodies go through the extractor.
     assert art.retrieval_method == "direct"

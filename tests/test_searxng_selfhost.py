@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Self-hosted SearXNG support and the private-host allowlist (D-082), offline.
+"""Self-hosted SearXNG support and the private-host allowlist, offline.
 
 A self-hosted instance on 127.0.0.1 or the LAN is the recommended way to get
 independent engine redundancy — but the SSRF policy blocks private targets by

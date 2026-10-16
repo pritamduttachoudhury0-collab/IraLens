@@ -9,7 +9,7 @@ and nobody — including the authors — tunes them to make a number look better
 |---|---|
 | `queries.json` | 200 hand-labelled queries: factual, recent news, long-tail, technical/code, navigational, non-English, multi-intent. 140 dev / 60 held-out. Each entry lists acceptable result domains and/or an expected answer phrase. |
 | `urls.json` | 100 diverse URLs (news, docs, wikis, blogs, JS-heavy apps, PDFs, paywalled/login-walled) with a phrase that must appear in the extracted main text. |
-| `thresholds.json` | the Step-2 acceptance thresholds, as data |
+| `thresholds.json` | the acceptance thresholds, as data |
 | `run_benchmark.py` | the runner (one command, cache bypassed, realistic pacing) |
 | `reference_api.py` | optional comparison against a commercial search API |
 | `FREEZE.sha256` | hashes of the frozen files |
@@ -66,7 +66,7 @@ could not run, it appends nothing and says what failed.
   all-100 rate is reported too, so nothing is hidden behind the split.
   `requires_js` pages must end up on the browser backend when the static fetch
   cannot produce the text.
-* **honesty** — the D-079 exit-code contract through the real CLI, typed
+* **honesty** — the documented exit-code contract through the real CLI, typed
   errors for dead hosts/SSRF targets/unknown sources, plus a shape check over
   every response: an empty answer must name a reason and every failed engine
   outcome must carry a kind. `untyped_failures` must be 0.

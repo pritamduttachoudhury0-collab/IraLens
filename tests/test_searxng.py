@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""SearXNG backend (D-078): pure parsing plus rotation/cooldown behavior.
+"""SearXNG backend: pure parsing plus rotation/cooldown behavior.
 
 The network step is faked; a controllable clock makes cooldown expiry exact.
 """

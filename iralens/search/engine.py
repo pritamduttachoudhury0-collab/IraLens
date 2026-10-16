@@ -73,7 +73,7 @@ class SearchEngine:
                options: Optional[SearchOptions] = None, context: Any = None) -> SearchResponse:
         # Query hygiene: strip control/invisible characters (bidi overrides can
         # make a query display differently from what is sent), normalize
-        # whitespace, and enforce the length limit (D-068).
+        # whitespace, and enforce the length limit.
         try:
             question = sanitize_query(question, self.settings.search_max_query_chars)
         except ValueError as exc:
@@ -150,7 +150,7 @@ class SearchEngine:
                 breaker=self.breaker, site_gate=self.site_gate,
             )
 
-        # Query variants run concurrently when allowed (D-069). Browser-backed
+        # Query variants run concurrently when allowed. Browser-backed
         # engines serialize their navigations on the shared engine inside
         # fetch_rendered_html; independent backends (CLI bridges) run truly in
         # parallel. Results are merged in query order, so output is

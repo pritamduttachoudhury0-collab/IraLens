@@ -1,6 +1,6 @@
 [project]
 name = "iralens"
-version = "0.2.0"
+version = "0.2.1"
 description = "IraLens — one unified Internet-access system: search, read, browse, and specialized source access behind a single interface."
 readme = "README.md"
 license = "Apache-2.0"
@@ -20,7 +20,7 @@ dependencies = [
     "yt-dlp>=2024.4.9",
     # PDF main-text extraction for the read path (BSD-3-Clause). Without it a
     # PDF read fails with a typed pdf_support_missing error instead of
-    # returning binary noise (D-083).
+    # returning binary noise.
     "pypdf>=4.0",
 ]
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Content guard: sanitization and prompt-injection flagging for web content.
 
-Layer 2 of the security model (see docs/THREAT_MODEL.md). It never decides
+Layer 2 of the security model (see docs/security.md). It never decides
 what the agent does. It removes invisible/control characters, bounds length,
 and attaches *flags* to the affected item so the consumer can see the risk.
 Flagged content is still data; the untrusted envelope always applies.

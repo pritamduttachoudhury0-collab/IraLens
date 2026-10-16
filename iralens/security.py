@@ -67,7 +67,7 @@ def _literal_ip_address(host: str):
     return ipaddress.IPv4Address(packed)
 
 
-#: Explicit opt-in allowlist for the *search transport only* (D-082).
+#: Explicit opt-in allowlist for the *search transport only*.
 #: A self-hosted SearXNG instance on the LAN or on 127.0.0.1 is otherwise
 #: blocked by the SSRF policy, which is correct for page reads but must not
 #: make the recommended self-hosting option unusable.

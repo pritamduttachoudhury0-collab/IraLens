@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Local HTML -> markdown extraction with the standard library only (D-077).
+"""Local HTML -> markdown extraction with the standard library only.
 
 Local-first reading: pages are fetched directly and converted here, instead
 of sending every URL to a remote reader service. The extraction is lossy for

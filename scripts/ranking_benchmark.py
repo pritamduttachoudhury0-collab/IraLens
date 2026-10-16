@@ -3,10 +3,9 @@
 """Ranking benchmark — REPLACEMENT benchmark, clearly labeled.
 
 The original 20-case audit benchmark referenced in earlier reports was never
-committed to this repository (its git history contains a single squash-merged
-release commit; `git log --all` shows no other objects). It cannot be
-recovered, so this is a reconstructed 20-case benchmark built from the
-failure classes that motivated the ranking work: technology-symbol queries
+committed to this repository, so this is a reconstructed 20-case benchmark
+built from the failure classes that motivated the ranking work:
+technology-symbol queries
 (C++, C#, .NET), quoted phrases, Unicode queries, ambiguous queries,
 low-quality/injected results, and ordinary prose queries as controls.
 
