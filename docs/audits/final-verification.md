@@ -74,6 +74,11 @@ daemon), the frozen 200-query/100-URL live benchmark and its load phase (no
 egress; self-test above only), the Serper vertical tabs (intentionally not
 synthesized).
 
+**CI follow-up (2026-10-16).** The CI workflow file itself was found to be
+invalid YAML (an unquoted step name), so the GitHub gate had never executed.
+Fixed in this release; CI now runs pytest, ruff, and mypy on Python 3.10 and
+3.12 and passed on the release pull request.
+
 ## 4. Docs and repository hygiene
 
 - Every relative link and heading anchor in every Markdown file checked
