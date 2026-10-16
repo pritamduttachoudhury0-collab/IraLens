@@ -36,6 +36,54 @@ iralens doctor              # see exactly what is available right now
 
 Plain `pip install -e .` also works from the checkout. `./scripts/setup.sh --no-dev` skips the test tools. The package is not published to PyPI yet.
 
+## Quick Start
+
+### 1. Fast CLI usage
+```bash
+# Search the web (keyless by default, using polite concurrent discovery)
+iralens search "solar cell efficiency" --limit 5
+
+# Read any web page or PDF into clean text/markdown locally
+iralens read "https://arxiv.org/pdf/1706.03762"
+
+# Inspect system capabilities and backend health
+iralens doctor
+```
+
+### 2. Python API
+```python
+from iralens import IraLens
+
+lens = IraLens()
+
+# Search
+artifacts = lens.search("distributed consensus algorithms", limit=5)
+for a in artifacts:
+    print(f"[{a.title}]({a.url}): {a.content[:100]}...")
+
+# Read a page or PDF
+content = lens.read("https://en.wikipedia.org/wiki/Raft_(algorithm)")
+```
+
+### 3. Self-Hosted SearXNG Search Service (Recommended Default)
+Self-hosted SearXNG is the recommended foundation for reliable keyless search. It runs locally or on your LAN via Docker Compose, eliminating reliance on individual public search portals:
+```bash
+# Generate secrets
+export IRALENS_API_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+export SEARXNG_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
+
+# Start the stack (IraLens API + SearXNG on private network)
+docker compose up --build -d
+
+# Verify health and execute a search via the Serper-compatible endpoint
+curl -s http://127.0.0.1:8000/health
+curl -s -H "X-API-KEY: $IRALENS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"q": "quantum computing", "num": 5}' \
+  http://127.0.0.1:8000/search
+```
+*(Note: If Docker is unavailable in your environment, run `iralens` directly on the host with Python 3.10+; see without Docker instructions in deploy/searxng/README.md).*
+
 **Run as a self-hosted search service (Docker Compose).** This starts IraLens'
 HTTP API and a private SearXNG metasearch instance on one Docker network; only
 the IraLens API port is published. It needs Docker Compose and an API token:
@@ -178,6 +226,26 @@ authenticated `GET /v1/health/search`, and authenticated Prometheus `/metrics`.
 It is a single-node service; use a TLS reverse proxy, resource limits, and
 persistent local state in production. See the [`API reference`](docs/API.md) and
 [`operations guide`](docs/OPERATIONS.md).
+
+#### Serper Compatibility Coverage (`POST /search`)
+
+The `/search` endpoint provides drop-in replacement support for agents configured for the Serper search API:
+
+| Capability / Field | Supported in IraLens `/search` | Behavior & Details |
+|---|:---:|---|
+| **Endpoint** `POST /search` | Yes | Direct URL swap for Serper clients (`{"q": "...", "num": 10}`) |
+| **Endpoint** `GET /search` | Yes | Query-string support (`/search?q=...&num=10`) |
+| **Auth Headers** | Yes | Accepts `X-API-KEY: <key>` or `Authorization: Bearer <key>` |
+| **Parameter** `q` / `query` | Yes | Sanitized query string with length boundaries |
+| **Parameter** `num` / `limit` | Yes | Bounded result limits (default 8, max 50) |
+| **Output** `searchParameters` | Yes | Formatted as `{"q": ..., "num": ..., "type": "search"}` |
+| **Output** `organic` | Yes | Array of `{title, link, snippet, position, date}` |
+| **Diagnostic metadata** | Yes | Extended `iralens` object with summary and engine status |
+| **Direct read** `POST /v1/read` | Yes | Direct page reading (local HTML/PDF extraction, SSRF-safe) |
+| **Vertical tabs** (`/news`, `/images`, `/videos`) | No | General web search only; specialized tabs not emulated |
+| **Knowledge Graph** (`knowledgeGraph`) | No | Proprietary Google feature; not synthesized |
+| **People Also Ask** (`peopleAlsoAsk`) | No | Proprietary Google feature; not synthesized |
+| **Direct Answer Card** (`answerBox`) | No | Use IraLens Research mode for synthesized answers |
 
 ### MCP
 

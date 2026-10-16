@@ -317,3 +317,23 @@ claim above was re-tested in this environment on 2026-10-10.
 - `docker` and `podman` are unavailable. The Docker image and Compose stack
   were not built or started. No paid reference key was configured, no seven-day
   operational monitoring was done, and no legal review was obtained.
+
+## Verification record (2026-10-16, v0.2.0, restricted egress)
+
+- `.venv/bin/python -m pytest -q` — **428 passed, 14 skipped, 0 failed**.
+- `.venv/bin/ruff check --select E9,F,B iralens tests scripts` — **clean**.
+- `.venv/bin/mypy iralens --ignore-missing-imports` — **clean across 67 source files**.
+- `.venv/bin/python benchmarks/run_benchmark.py --self-test` — **PASSED**.
+- `scripts/daily_watch.py` — **2/2 passed** locally against live GitHub
+  endpoints, writing JSON diagnostics.
+- Concurrency limit: raised to 20 (`search_max_concurrent`), with polite
+  per-site limits (`search_per_site_concurrent: 3`) and short-term answer
+  cache (D-099).
+- Browser engine: Obscura v0.2.4 configured as primary optional engine with
+  legacy engine backup, stealth OFF by default, localhost-only control binding
+  (D-098). Binary download from GitHub CDN remains blocked by sandbox egress.
+- PDF reading: NFKC normalization, ligature unwrapping, 20 MB bounded limit,
+  local Poppler retry, and automatic local OCR attempt with honest tool reporting (D-096, D-097).
+- Packaging: bumped to v0.2.0. Docker is unavailable in this sandbox environment
+  (`/bin/bash: docker: command not found`), so Docker images and compose stacks
+  are not claimed to have run. Live open-web benchmark remains unverified in this sandbox.

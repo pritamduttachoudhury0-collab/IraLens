@@ -28,6 +28,14 @@ their operators' policies and availability vary.
 
 - Use official API endpoints where available (the Wikimedia supplemental
   source); send an identifying User-Agent and respect a minimum request pace.
+- Polite per-site concurrency limits (`PerSiteConcurrencyGate`, default 3
+  simultaneous requests per provider) bound upstream load even during
+  bursts of 20 concurrent searches.
+- Short-term answer caching (default 300 s) prevents duplicate requests from
+  hitting external search backends.
+- DuckDuckGo and Bing are optional extras rather than the foundation: search
+  remains functional with either or both disabled, and self-hosted SearXNG is
+  the recommended primary foundation.
 - Persist CAPTCHA/rate-limit cooldowns so a restart does not immediately repeat
   blocked traffic; do not retry CAPTCHA or 429 responses in a tight loop.
 - Do not return CAPTCHA/challenge markup as search results. Keep per-engine

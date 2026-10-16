@@ -630,3 +630,11 @@ simultaneous connections to any single provider/site. A short-term answer cache
 (`cache_search_ttl_seconds`, default 300s) answers repeated queries before
 acquiring engine slots. Self-hosted SearXNG is the recommended foundation; search
 continues operating reliably if DuckDuckGo, Bing, or both are switched off.
+
+**D-100 Serper-shaped compatibility documentation and v0.2.0 packaging bump.**
+The `/search` endpoint provides basic web search compatibility for Serper clients,
+documented in README.md with an explicit table distinguishing covered features
+from unsupported proprietary Google features (knowledgeGraph, news/image tabs).
+Packaging bumped to v0.2.0 with Docker Compose stack configurations and clean
+Quick Start instructions. Docker is documented as unavailable in the current
+restricted build environment.
