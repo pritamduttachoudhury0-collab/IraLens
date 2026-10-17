@@ -177,14 +177,11 @@ verified.
 
 **2026-10-17, restricted egress (v0.2.1 + integrated browser engine).**
 
-- `.venv/bin/python -m pytest -q` — **442 passed, 14 skipped, 0 failed** (including
-  13 end-to-end real-browser integration tests in
-  `tests/test_browser_engine_integration.py` against a local HTTP fixture
-  server exercising navigation, JS rendering, external `<script src>`, V8 JS
-  evaluation, `[ref=N]` accessibility snapshots, clicks, form POST submission,
-  301/302 redirect chains, 404/500 error classification, SSRF/redirect
-  protection, V8 script/navigation timeouts, RFC 6265 cookies/`localStorage`
-  persistence, multi-tab management, and unified `Artifact` schema).
+- `.venv/bin/python -m pytest -q` — **463 passed, 14 skipped, 0 failed** after
+  evidence-driven search changes (including 13 end-to-end real-browser
+  integration tests in `tests/test_browser_engine_integration.py` against a
+  local fixture server). The 14 skips are live-network tests without general
+  Internet egress.
 - `ruff check --select E9,F,B .` — clean. `mypy iralens` — clean (74 source
   files).
 - Package distribution sizes: wheel `1.2 MB` (`1,239,833` bytes), sdist

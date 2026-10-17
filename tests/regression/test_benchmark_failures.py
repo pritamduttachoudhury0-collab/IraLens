@@ -7,8 +7,6 @@ R5-Q283/Q297/Q267) and is marked xfail until its phase fixes it. A phase
 removes the marker in the same commit as its fix; markers must never be
 removed without the behaviour changing.
 """
-import pytest
-
 from iralens.search.ranking import relevance
 from iralens.search.querytext import term_set
 from iralens.search.schema import SearchHit

@@ -74,7 +74,9 @@ class QueryIntent:
 def classify_query(question: str) -> QueryIntent:
     text = " ".join((question or "").split())
     low = text.lower()
-    label, suffixes, domains = "", (), ()
+    label: str = ""
+    suffixes: Tuple[str, ...] = ()
+    domains: Tuple[str, ...] = ()
     for state in _INDIAN_STATES:
         if state.lower() in low:
             label = state.title()
