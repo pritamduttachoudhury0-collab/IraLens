@@ -76,9 +76,9 @@ def classify_query(question: str) -> QueryIntent:
     low = text.lower()
     label, suffixes, domains = "", (), ()
     for state in _INDIAN_STATES:
-        if state in low:
+        if state.lower() in low:
             label = state.title()
-            slug = state.replace(" ", "")
+            slug = state.lower().replace(" ", "")
             suffixes = (".gov.in", ".nic.in")
             domains = (f"{slug}.gov.in", "gov.in")
             break
