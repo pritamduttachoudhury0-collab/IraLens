@@ -18,13 +18,23 @@ def hit(title, url, engine="bing", pos=1, snippet="", published=None):
                      position=pos, published_at=published, query="q")
 
 
-@pytest.mark.xfail(reason="D1: hub with title overlap outranks specific official page", strict=False)
 def test_d1_specific_official_page_beats_hub():
+    # Realistic sparse-snippet shape from the benchmark: the hub arrives at
+    # rank 1 with a generic snippet; the specific official page at rank 2.
     q = "register a partnership firm Assam"
-    hub = relevance(1, "Professional Tax", "Professional tax in India overview", q)
-    specific = relevance(2, "Registration of Firms - Finance Department Assam",
-                         "Register a partnership firm in Assam: fee Rs 5, maximum 20 partners, apply on Sewa Setu", q)
+    hub = relevance(1, "Professional Tax", "", q, url="https://en.wikipedia.org/wiki/Professional_Tax")
+    specific = relevance(2, "Registration of Firms",
+                         "Register a partnership firm in Assam: fee Rs 5, maximum 20 partners", q,
+                         url="https://finance.assam.gov.in/registration-of-firms")
     assert specific > hub
+
+
+def test_d1_dictionary_page_demoted_for_factual_query():
+    q = "how many members in Lok Sabha"
+    dictionary = relevance(1, "many", "", q, url="https://www.merriam-webster.com/dictionary/many")
+    answer = relevance(3, "Lok Sabha - House of the People", "The Lok Sabha has 543 elected members", q,
+                       url="https://loksabha.nic.in/members")
+    assert answer > dictionary
 
 
 @pytest.mark.xfail(reason="D2: no intent/jurisdiction routing", strict=False)

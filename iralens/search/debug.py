@@ -25,7 +25,7 @@ def debug_dump(question: str, hits: List[SearchHit], *, authority_weights=None,
             "title": h.title, "url": h.url, "engine": h.engine, "best_rank": h.position,
             "flagged": bool(h.security_flags), "security_flags": list(h.security_flags),
             "factors": {
-                "relevance": relevance(h.position, h.title, h.snippet, question),
+                "relevance": relevance(h.position, h.title, h.snippet, question, url=h.url),
                 "authority": authority(h.url, weights, default_authority),
                 "freshness": freshness(h.published_at, today, half_life_days, neutral_freshness),
             },

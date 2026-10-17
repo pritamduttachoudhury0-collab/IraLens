@@ -287,7 +287,7 @@ class SearchEngine:
             dates = sorted(h.published_at for h in hits if h.published_at)
             published = dates[0] if dates else None
             flags = sorted({f for h in hits for f in h.security_flags})
-            rel = relevance(best_rank, title, snippet, question)
+            rel = relevance(best_rank, title, snippet, question, url=group.hits[0].url)
             # Low-quality handling: injection-flagged groups are demoted, not
             # dropped. The flag itself still travels with the result.
             if any(f.startswith("prompt_injection:") for f in flags):
