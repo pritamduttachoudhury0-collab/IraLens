@@ -202,9 +202,14 @@ class SearchEngine:
             reason = "filtered_out"
         else:
             reason = "no_results"
+        shortfall = ""
+        if 0 < len(results) < options.max_results:
+            merges = sum(1 for e in dedup_log if e.get("action") == "merge")
+            shortfall = "deduped" if merges >= (options.max_results - len(results)) and merges else "exhausted"
         return SearchResponse(
             query=question,
             results=results,
+            shortfall_reason=shortfall,
             queries=used_queries,
             outcomes=outcomes,
             fallbacks=fallbacks,

@@ -69,7 +69,6 @@ def test_d3_yoruba_query_terms_not_empty_and_wikipedia_language():
     assert detect_language("বাংলাদেশের রাজধানী কী").wikipedia_lang == "bn"
 
 
-@pytest.mark.xfail(reason="D4: dead first engine invisible to caller", strict=False)
 def test_d4_response_exposes_degradation_detail():
     from iralens.search.schema import SearchResponse
     assert hasattr(SearchResponse, "degradation_detail")
@@ -83,7 +82,6 @@ def test_d5_wikipedia_hub_demoted_for_procedure():
     assert official > wiki_hub
 
 
-@pytest.mark.xfail(reason="D6: short result list returned silently", strict=False)
 def test_d6_shortfall_reason_present():
     from iralens.search.schema import SearchResponse
     assert "shortfall_reason" in SearchResponse.__dataclass_fields__
@@ -116,3 +114,27 @@ def test_d5_wikipedia_capped_for_procedure_at_engine_level(tmp_path):
     wiki = [r for r in resp.results if "wikipedia.org" in r.url]
     assert len(wiki) <= 1
     assert resp.results[0].url == "https://aeda.assam.gov.in/net-metering"
+
+
+def test_d4_blocked_first_engine_still_usable_and_visible(tmp_path):
+    """Failure injection: first engine blocked -> usable results + degraded flag."""
+    from tests.test_search_engine import FakeBackend, make_engine, GOOD
+    from iralens.errors import SourceUnavailableError
+    from iralens.search.schema import SearchOptions
+    blocked = FakeBackend("duckduckgo", error=SourceUnavailableError("blocked", detail="captcha"))
+    good = FakeBackend("bing", hits=GOOD)
+    eng = make_engine(tmp_path, [blocked, good], search_engines=("duckduckgo", "bing"),
+                      search_min_engines=1)
+    resp = eng.search("solar efficiency", options=SearchOptions(reformulate=False, cache="bypass"))
+    assert resp.results and resp.degraded is True
+    detail = resp.to_dict()["degradation"]
+    assert detail["degraded"] and "duckduckgo" in detail["failed"]
+
+
+def test_d6_all_engines_empty_is_typed_not_silent(tmp_path):
+    from tests.test_search_engine import FakeBackend, make_engine
+    from iralens.search.schema import SearchOptions
+    eng = make_engine(tmp_path, [FakeBackend("duckduckgo", hits=[]), FakeBackend("bing", hits=[])],
+                      search_engines=("duckduckgo", "bing"), search_min_engines=1)
+    resp = eng.search("nothing", options=SearchOptions(reformulate=False, cache="bypass"))
+    assert resp.results == [] and resp.no_results_reason == "no_results"
