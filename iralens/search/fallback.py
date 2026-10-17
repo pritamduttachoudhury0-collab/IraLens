@@ -32,6 +32,7 @@ from .schema import EngineOutcome, SearchFilters, SearchHit
 
 
 KIND_CIRCUIT_OPEN = "circuit_open"
+KIND_NOT_CONFIGURED = "not_configured"
 
 
 @dataclass
@@ -67,6 +68,16 @@ def run_chain(
         name = pending.pop(0)
         backend = backends[name]
         modes = backend.filter_modes(filters)
+        if not backend.available():
+            # Missing prerequisite (e.g. a bridge CLI that is not installed):
+            # not an engine failure, so the breaker is not touched and every
+            # later query does not pay for a doomed call.
+            result.outcomes.append(EngineOutcome(
+                engine=name, status="skipped", kind=KIND_NOT_CONFIGURED, filter_modes=modes,
+                detail="engine not configured on this machine; install its prerequisite to enable it",
+            ))
+            _record_switch(result, name, pending, KIND_NOT_CONFIGURED)
+            continue
         if breaker is not None and not breaker.allow(name):
             result.outcomes.append(EngineOutcome(
                 engine=name, status="skipped", kind=KIND_CIRCUIT_OPEN, filter_modes=modes,

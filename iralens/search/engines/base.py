@@ -72,6 +72,14 @@ class SearchBackend(ABC):
         """Query text sent to the engine (may include operators)."""
         return query
 
+    def available(self) -> bool:
+        """False when the backend's external prerequisite is not installed.
+
+        An unavailable backend is reported as not configured and is never
+        called, so it cannot trip the circuit breaker for every query.
+        """
+        return True
+
     @abstractmethod
     def search(self, query: str, filters: SearchFilters, limit: int, context: Any) -> List[SearchHit]:
         """Return normalized hits. Raise a IraLensError on failure."""

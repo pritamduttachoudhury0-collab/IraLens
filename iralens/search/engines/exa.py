@@ -47,8 +47,11 @@ class ExaBackend(SearchBackend):
     handled = {"date_from": POST, "date_to": POST, "include_domains": POST,
                "exclude_domains": POST, "file_type": POST, "language": UNSUPPORTED, "region": UNSUPPORTED}
 
+    def available(self) -> bool:
+        return shutil.which("mcporter") is not None
+
     def search(self, query: str, filters: SearchFilters, limit: int, context: Any) -> List[SearchHit]:
-        if not shutil.which("mcporter"):
+        if not self.available():
             raise SourceUnavailableError("semantic-search bridge CLI not installed")
         expr = f"exa.web_search_exa(query: {json.dumps(query)}, numResults: {int(limit)})"
         result = run_cli(["mcporter", "call", expr], timeout=60)

@@ -199,7 +199,7 @@ class SearchEngine:
 
         flags = sorted({f for r in results for f in r.security_flags})
         engine_answered = any(o.status in ("results", "empty") for o in outcomes)
-        any_failed = any(o.status in ("failed", "skipped") for o in outcomes)
+        any_failed = any(o.status in ("failed", "skipped") and o.kind != "not_configured" for o in outcomes)
         if results:
             reason = "none"
         elif not engine_answered and any_failed:
@@ -385,7 +385,8 @@ def _summarize(question: str, results: List[RankedResult], outcomes: List[Any],
     that only reads one field still learns whether results are complete,
     degraded, filtered, or absent — and why.
     """
-    failed = sorted({o.engine for o in outcomes if o.status in ("failed", "skipped")})
+    failed = sorted({o.engine for o in outcomes
+                     if o.status in ("failed", "skipped") and o.kind != "not_configured"})
     served = sorted({o.engine for o in outcomes if o.status == "results"})
     if reason == "none":
         text = f"{len(results)} results from {', '.join(served) or 'search engines'}"
