@@ -213,7 +213,21 @@ class SearchEngine:
         shortfall = ""
         if 0 < len(results) < options.max_results:
             merges = sum(1 for e in dedup_log if e.get("action") == "merge")
-            shortfall = "deduped" if merges >= (options.max_results - len(results)) and merges else "exhausted"
+            intent = classify_query(question)
+            wiki_cap_applies = intent.answer_type in (
+                "procedure", "statistic", "current_event", "comparison", "error")
+            wiki_groups = sum(1 for g in groups if domain_of(g.hits[0].url).endswith("wikipedia.org"))
+            if wiki_cap_applies and wiki_groups > 1:
+                shortfall = "capped"
+            elif merges >= (options.max_results - len(results)) and merges:
+                shortfall = "deduped"
+            elif filter_report.get("dropped", 0):
+                shortfall = "filtered"
+            else:
+                shortfall = "exhausted"
+        summary = _summarize(question, results, outcomes, reason, filter_report)
+        if shortfall:
+            summary += f"; shortfall: {shortfall} ({len(results)}/{options.max_results})"
         return SearchResponse(
             query=question,
             results=results,
@@ -226,7 +240,7 @@ class SearchEngine:
             dedup_log=dedup_log,
             no_results_reason=reason,
             security_flags=flags,
-            summary=_summarize(question, results, outcomes, reason, filter_report),
+            summary=summary,
         )
 
     # --------------------------------------------------------- filtering

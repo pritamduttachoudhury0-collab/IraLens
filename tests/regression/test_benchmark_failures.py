@@ -113,6 +113,8 @@ def test_d5_wikipedia_capped_for_procedure_at_engine_level(tmp_path):
     wiki = [r for r in resp.results if "wikipedia.org" in r.url]
     assert len(wiki) <= 1
     assert resp.results[0].url == "https://aeda.assam.gov.in/net-metering"
+    assert resp.shortfall_reason == "capped"
+    assert "shortfall: capped" in resp.summary
 
 
 def test_d4_blocked_first_engine_still_usable_and_visible(tmp_path):

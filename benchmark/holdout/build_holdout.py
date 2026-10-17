@@ -220,6 +220,8 @@ def main() -> None:
             })
     assert len(rows) == 300 and len({r["query"] for r in rows}) == 300
     out = HERE / "queries_holdout.jsonl"
+    if out.exists():
+        raise FileExistsError(f"refusing to overwrite frozen holdout: {out}")
     out.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
     digest = hashlib.sha256(out.read_bytes()).hexdigest()
     # Extraction set: 100 synthetic-but-realistic pages, expected span marked.
