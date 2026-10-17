@@ -1,0 +1,6 @@
+#!/bin/sh
+# Auto-generated launcher for the bundled IraLens native browser engine.
+if [ -x "/home/user/IraLens/.venv/bin/python" ]; then
+  exec "/home/user/IraLens/.venv/bin/python" -m iralens._internal.browser_engine.mcp_server "$@"
+fi
+PYTHONPATH="/home/user/IraLens:${PYTHONPATH:-}" exec python3 -m iralens._internal.browser_engine.mcp_server "$@"

@@ -72,7 +72,7 @@ is not yet published to PyPI. Full guide:
 | **Search** | Keyless engine chain (DuckDuckGo, Bing — experimental — Wikimedia official API, optional self-hosted SearXNG), ranked results with per-engine outcomes, cross-engine dedup, explainable scores, and honest `engines_failed` reporting instead of invented results. |
 | **Page reading** | Any URL through specialized readers → fast local static extraction → local browser fallback for JS-heavy pages, with typed errors (`http_403`, `soft_404`, `antibot_challenge`, …) that say exactly what happened. |
 | **Documents** | PDF text extraction with ligature/hyphen normalization and a 20 MB cap; scanned PDFs get automatic **local** OCR when `pdftoppm` + `tesseract` are installed — never uploaded. |
-| **Browser** | Optional pinned engine: navigate, snapshot, click, fill, extract, tabs, cookies, storage state, screenshots, PDF. Installed atomically with a startup probe; stealth off; localhost-only control. |
+| **Browser** | Integrated native browser engine (`iralens._internal.browser_engine`, V8 + HTML5 DOM): navigate, snapshot, click, fill, extract, evaluate JS, tabs, RFC 6265 cookies, storage state. Bundled out of the box with zero runtime binary downloads; stealth off; stdio-only control. |
 | **API** | Single-node HTTP service (`iralens serve`): native `/v1/search` and `/v1/read`, a Serper-compatible `/search` for a base-URL swap, authenticated metrics, mandatory token on non-loopback binds. |
 | **Research mode** | Bounded multi-round runs that plan queries, read top sources, flag possible contradictions, and return cited statements with a provenance graph and a replayable trace — deterministic by default. |
 | **Safety** | SSRF guards on every URL and inside the engine, DNS-pinned fetches, content-injection flags that demote but never silently drop, credentials in owner-only config scrubbed from all output. |
@@ -179,8 +179,8 @@ says so.
 
 | What | Result | Date | Evidence |
 |---|---|---|---|
-| Offline test suite (Python 3.11) | **428 passed, 14 skipped, 0 failed** (skips: live-network and browser-engine tests without egress/engine) | 2026-10-16 | [final verification](docs/audits/final-verification.md) |
-| Lint (`ruff --select E9,F,B`) + types (`mypy`) | clean; 67 source files typed | 2026-10-16 | [final verification](docs/audits/final-verification.md) |
+| Offline + local-fixture browser test suite (Python 3.11) | **442 passed, 14 skipped, 0 failed** (includes 13 real-browser V8 integration tests against local HTTP fixtures; skips are live-network tests without general Internet egress) | 2026-10-17 | `tests/test_browser_engine_integration.py` · [final verification](docs/audits/final-verification.md) |
+| Lint (`ruff --select E9,F,B`) + types (`mypy`) | clean; 74 source files typed | 2026-10-17 | [final verification](docs/audits/final-verification.md) |
 | Full suite on an open network | **416 passed, 0 failed**; DuckDuckGo 15/15 and Bing 15/15 independent live queries | 2026-10-14 | [audit](docs/audits/paid-search-replacement-audit-2026-10-14.md) |
 | Search quality (100-query audit slice) | exact-site top-3 **24/25**; facts top-10 **25/25**; recent news **20/20** | 2026-10-14 | [audit](docs/audits/paid-search-replacement-audit-2026-10-14.md) |
 | Research accuracy (12 questions) | **12/12** correct answer present; **0 invented citations** | 2026-10-14 | [audit](docs/audits/paid-search-replacement-audit-2026-10-14.md) |

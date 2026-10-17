@@ -20,14 +20,19 @@ records at the end show exactly what was exercised and where.
 3. **Bing is experimental.** Its parser mirrors the `li.b_algo` structure and
    is less exercised than DuckDuckGo's. Use `--engine duckduckgo` if it
    misbehaves.
-4. **The browser engine is optional and verified at install time.** The
-   engine's release is pinned and the installer startup-probes any binary it
-   places (`iralens install-engine --status` reports the real state). Core
-   search and read work without the engine; JS-heavy rendering, screenshots,
-   and browser automation need it. Upstream publishes no checksum asset, so
-   integrity without an operator-supplied `--checksum` rests on HTTPS plus
-   the startup probe, and the install report says
-   `checksum_verified: false` rather than claiming otherwise.
+4. **The integrated browser engine ships bundled and is startup-probed.**
+   Core Obscura source (`bd9529418b7fa975b50eabeac415cfaaa865a588`, base tag
+   `v0.2.4`) is vendored under `iralens/_internal/browser_engine/vendor/obscura`
+   and runs out of the box via `py_mini_racer`'s isolated V8 runtime without
+   runtime downloads from GitHub Releases (`iralens install-engine --status`
+   and `iralens doctor` report the live state). Pixel-level GPU rendering
+   (`obscura-render` / `wgpu` screenshots) and Chrome DevTools Protocol server
+   (`obscura-cdp`) are excluded from the default vendored runtime to keep the
+   distribution lightweight (`1.2 MB` wheel). Prebuilt `mini-racer` wheels
+   cover Linux (`x86_64`, `aarch64`), macOS (`x86_64`, `arm64`), and Windows
+   (`AMD64`); on platforms without `mini-racer`, the runtime falls back to a
+   persistent Node.js V8 VM worker if `node` is installed, or reports
+   `browser_engine_unavailable`.
 5. **Direct-fetch User-Agents may hit bot walls.** The free engines and the
    direct reader fetch with a browser-like UA; bot-walled sites answer with
    a challenge. The browser engine, when installed, is the rendered
@@ -153,6 +158,21 @@ Each record states the date, the environment class, and the exact claim.
 package indexes and GitHub — live search engines and arbitrary web pages
 were not reachable there, so anything requiring them is listed as not yet
 verified.
+
+**2026-10-17, restricted egress (v0.2.1 + integrated browser engine).**
+
+- `.venv/bin/python -m pytest -q` — **442 passed, 14 skipped, 0 failed** (including
+  13 end-to-end real-browser integration tests in
+  `tests/test_browser_engine_integration.py` against a local HTTP fixture
+  server exercising navigation, JS rendering, external `<script src>`, V8 JS
+  evaluation, `[ref=N]` accessibility snapshots, clicks, form POST submission,
+  301/302 redirect chains, 404/500 error classification, SSRF/redirect
+  protection, V8 script/navigation timeouts, RFC 6265 cookies/`localStorage`
+  persistence, multi-tab management, and unified `Artifact` schema).
+- `ruff check --select E9,F,B .` — clean. `mypy iralens` — clean (74 source
+  files).
+- Package distribution sizes: wheel `1.2 MB` (`1,239,833` bytes), sdist
+  `1.3 MB` (`1,341 KB`), vendored Obscura source tree `4.1 MB` uncompressed.
 
 **2026-10-16, restricted egress (v0.2.1).**
 

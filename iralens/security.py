@@ -153,10 +153,17 @@ def normalize_public_http_url(url: str, *, allow_private_hosts: bool = False) ->
         raise ValueError("only public HTTP(S) URLs are allowed") from None
 
     literal_address = _literal_ip_address(host)
+    private_net_env = os.environ.get("IRALENS_ALLOW_PRIVATE_NETWORK", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
     allowlisted = (
-        allow_private_hosts
+        (
+            (allow_private_hosts and private_host_is_allowlisted(host, parsed.port))
+            or private_net_env
+        )
         and host not in NEVER_ALLOWED_HOSTS
-        and private_host_is_allowlisted(host, parsed.port)
         and not (literal_address is not None and _is_link_local(literal_address))
     )
     if (
@@ -222,9 +229,14 @@ def resolve_public_addresses(host: str, port: int, *,
     except socket.gaierror as exc:
         raise ValueError(f"could not resolve host: {host}") from exc
     addresses = sorted({str(info[4][0]) for info in infos})
-    if allow_private_hosts and private_host_is_allowlisted(host, port):
-        # Explicit opt-in for a self-hosted search backend. Link-local stays
-        # forbidden: it is the cloud-metadata range, never a search instance.
+    private_net_env = os.environ.get("IRALENS_ALLOW_PRIVATE_NETWORK", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if (allow_private_hosts and private_host_is_allowlisted(host, port)) or private_net_env:
+        # Explicit opt-in for a self-hosted search backend or local test fixture.
+        # Link-local stays forbidden: it is the cloud-metadata range.
         if any(_is_link_local(a) for a in addresses):
             raise SecurityBlockedError(
                 "allowlisted host resolves to a link-local address",

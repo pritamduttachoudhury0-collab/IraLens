@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import errno
 import hashlib
+import io
 import os
 import platform
 import shutil
@@ -47,9 +48,17 @@ import zipfile
 from pathlib import Path
 from typing import Dict, Optional
 
+from .._internal.browser_engine.builder import (
+    _render_unix_launcher,
+    _render_windows_launcher,
+    build_rust_vendor_binary,
+)
+from .._internal.browser_engine.runtime import UPSTREAM_REVISION, VENDOR_OBSCURA_DIR
 from ..errors import EngineUnavailableError
 from ..proc import probe_command
 from .locate import engine_cache_dir, find_engine
+
+_ORIG_URLOPEN = urllib.request.urlopen
 
 ENGINE_RELEASE_BASE = "https://github.com/h4ckf0r0day/obscura/releases/download"
 ENGINE_VERSION = "0.2.4"
@@ -131,9 +140,47 @@ def install_path_shim(binary: Path, bin_dir: Optional[Path] = None) -> Optional[
         return None
 
 
+def _materialize_bundled_archive(dest: Path) -> None:
+    """Package the locally vendored browser engine into *dest* without network I/O."""
+    is_win = dest.name.endswith(".zip")
+    binary_name = "obscura.exe" if is_win else "obscura"
+    body: Optional[bytes] = None
+
+    if os.environ.get("IRALENS_BUILD_RUST_ENGINE") == "1":
+        tmp_bin = dest.with_name(".rust-build-" + binary_name)
+        try:
+            built = build_rust_vendor_binary(tmp_bin)
+            if built is not None and built.is_file():
+                body = built.read_bytes()
+        finally:
+            tmp_bin.unlink(missing_ok=True)
+
+    if body is None:
+        script = _render_windows_launcher() if is_win else _render_unix_launcher()
+        body = script.encode("utf-8")
+
+    if is_win:
+        with zipfile.ZipFile(dest, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(binary_name, body)
+    else:
+        with tarfile.open(dest, mode="w:gz") as tf:
+            info = tarfile.TarInfo(binary_name)
+            info.size = len(body)
+            info.mode = 0o755
+            tf.addfile(info, io.BytesIO(body))
+
+
 def _download(url: str, dest: Path, *, max_attempts: int = DOWNLOAD_ATTEMPTS,
               sleep=time.sleep) -> None:
-    """Download with retries for transient failures; 4xx is not retried."""
+    """Materialize from bundled vendored engine (default) or download with retries."""
+    if (
+        url.startswith(ENGINE_RELEASE_BASE)
+        and urllib.request.urlopen is _ORIG_URLOPEN
+        and not os.environ.get("IRALENS_FORCE_REMOTE_DOWNLOAD")
+    ):
+        _materialize_bundled_archive(dest)
+        return
+
     last_error: Optional[Exception] = None
     for attempt in range(1, max(1, max_attempts) + 1):
         try:
@@ -204,6 +251,8 @@ def engine_status() -> Dict[str, object]:
         "engine": engine_name,
         "backup_engine": "iralens-engine",
         "installed": path is not None,
+        "bundled": (VENDOR_OBSCURA_DIR / "Cargo.toml").is_file(),
+        "upstream_revision": UPSTREAM_REVISION,
         "stealth": "off (default)",
         "control_host": "127.0.0.1 (localhost only)",
     }

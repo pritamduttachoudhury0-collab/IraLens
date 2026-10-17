@@ -1,0 +1,67 @@
+# Modified by IraLens Contributors (2026-10-17) under Apache-2.0 Section 4(b):
+# Scoped workspace members to the 8 core crates required by IraLens
+# (obscura-dom, obscura-ssrf, obscura-net, obscura-js, obscura-browser,
+# obscura-mcp, obscura-cli, obscura), excluding optional rasterization/CDP crates
+# (obscura-render, obscura-cdp, vendor/cosmic-text, vendor/taffy).
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/obscura-dom",
+    "crates/obscura-ssrf",
+    "crates/obscura-net",
+    "crates/obscura-js",
+    "crates/obscura-browser",
+    "crates/obscura-mcp",
+    "crates/obscura-cli",
+    "crates/obscura",
+]
+
+[workspace.package]
+version = "0.2.4"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/h4ckf0r0day/obscura"
+
+[workspace.dependencies]
+obscura-dom = { path = "crates/obscura-dom" }
+obscura-ssrf = { path = "crates/obscura-ssrf" }
+obscura-net = { path = "crates/obscura-net" }
+obscura-js = { path = "crates/obscura-js" }
+obscura-browser = { path = "crates/obscura-browser" }
+obscura-mcp = { path = "crates/obscura-mcp" }
+
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls",
+    "cookies",
+    "gzip",
+    "brotli",
+    "deflate",
+    "zstd",
+    "stream",
+    "socks",
+] }
+html5ever = "0.29"
+markup5ever = "0.14"
+selectors = "0.26"
+cssparser = "0.34"
+servo_arc = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio-tungstenite = "0.24"
+url = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4", features = ["derive"] }
+uuid = { version = "1", features = ["v4"] }
+thiserror = "2"
+anyhow = "1"
+base64 = "0.22"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "unwind"

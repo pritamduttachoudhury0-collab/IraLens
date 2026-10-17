@@ -22,6 +22,9 @@ dependencies = [
     # PDF read fails with a typed pdf_support_missing error instead of
     # returning binary noise.
     "pypdf>=4.0",
+    # Isolated V8 runtime (libmini_racer, ISC) used by the internally vendored
+    # browser engine subsystem (iralens._internal.browser_engine).
+    "mini-racer>=0.14.0,<1.0",
 ]
 
 [project.optional-dependencies]
@@ -30,13 +33,28 @@ dev = ["pytest>=8.0", "ruff>=0.5", "mypy>=1.10"]
 [project.scripts]
 iralens = "iralens.cli:main"
 iralens-api = "iralens.api:main"
+iralens-browser-engine = "iralens._internal.browser_engine.mcp_server:main"
 
 [build-system]
 requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+include-package-data = true
+
 [tool.setuptools.packages.find]
 include = ["iralens*"]
+
+[tool.setuptools.package-data]
+"iralens._internal.browser_engine" = [
+    "*.js",
+    "*.md",
+    "bin/*",
+    "vendor/obscura/*",
+    "vendor/obscura/crates/*/*",
+    "vendor/obscura/crates/*/*/*",
+    "vendor/obscura/crates/*/*/*/*",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

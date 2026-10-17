@@ -10,4 +10,7 @@ include BENCHMARKS.md
 include SECURITY.md
 recursive-include docs *.md
 include scripts/setup.sh scripts/setup.ps1
+recursive-include iralens/_internal/browser_engine *
+prune iralens/_internal/browser_engine/vendor/obscura/target
 recursive-include tests *.py
+global-exclude __pycache__ *.py[cod]

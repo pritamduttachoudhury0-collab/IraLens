@@ -210,13 +210,28 @@ Operators still need TLS, high-entropy keys, and network controls.
 
 ## Browser engine
 
-**Atomic, honest installation.** The installer downloads with retries,
-optionally verifies a caller-supplied SHA-256, startup-probes the binary in a
-staging directory next to the destination (so placement is a same-filesystem
-rename), and only then swaps it in. A failed install can never destroy a
-working engine. Upstream publishes no checksum asset, so without a supplied
-value the report says `checksum_verified: false` — HTTPS plus the startup
-probe is the integrity story, stated plainly.
+**Internally vendored browser subsystem, zero runtime binary downloads.**
+Core Obscura crates (`obscura-ssrf`, `obscura-dom`, `obscura-net`,
+`obscura-js`, `obscura-browser`, `obscura-mcp`, `obscura-cli`, `obscura` at
+commit `bd9529418b7fa975b50eabeac415cfaaa865a588`, Apache-2.0) are vendored
+directly inside `iralens/_internal/browser_engine/vendor/obscura`. Rather
+than requiring a separate download from GitHub Releases at runtime,
+`iralens._internal.browser_engine` executes the vendored `bootstrap.js` +
+`indexed_db.js` V8 runtime inside `py_mini_racer`'s prebuilt `libmini_racer`
+V8 isolate (with automatic fallback to a persistent Node.js V8 VM worker if
+needed), paired with Obscura's SSRF guard, RFC 6265 cookie jar, and MCP
+JSON-RPC 2.0 server (`iralens-browser-engine`). When a Rust toolchain is
+present and `IRALENS_BUILD_RUST_ENGINE=1` is set, the vendored Rust workspace
+can also be compiled directly from source.
+
+**Atomic, honest installation.** `find_engine()` discovers the bundled
+`iralens-browser-engine` out of the box after `pip install`. Running
+`iralens install-engine` materializes the engine from the vendored package
+into `~/.cache/iralens/engine/` (or downloads if `IRALENS_FORCE_REMOTE_DOWNLOAD=1`
+is set), optionally verifies a caller-supplied SHA-256, startup-probes the
+binary in a staging directory next to the destination (so placement is a
+same-filesystem rename), and only then swaps it in. A failed install can
+never destroy a working engine.
 
 **A dead engine fails in about a second.** The driver polls the child process
 while waiting on RPC and raises a typed `browser_engine_unavailable` as soon
@@ -224,10 +239,10 @@ as the process is gone, remembers the failure for the process lifetime, and
 gives the `initialize` handshake its own 20-second budget. A dangling engine
 shim must not cost minutes per call.
 
-**Engine configuration is conservative.** The optional browser engine is
-pinned to a fixed release, installs via `iralens install-engine`, keeps a
-known-good previous binary as backup, runs with stealth features OFF unless
-explicitly enabled, and binds any control socket to localhost only.
+**Engine configuration is conservative.** The integrated browser engine runs
+with stealth features OFF unless explicitly enabled, enforces SSRF validation
+on every navigation and redirect hop, bounds V8 script execution (15 s
+timeout, 256 MB heap cap), and communicates over stdio pipes only.
 
 ## Research
 

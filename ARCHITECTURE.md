@@ -55,17 +55,61 @@ iralens/
   api.py           `iralens-api` / `iralens serve` HTTP service
   mcp_server.py    IraLens MCP server (49 tools at v0.2.1)
   engine/          spawns the engine binary, classifies its errors, exports state
+  _internal/
+    browser_engine/
+      vendor/obscura/        vendored Obscura source tree (rev bd9529418b7f, Apache-2.0)
+      runtime.py             V8 isolate (py_mini_racer / node VM) + ObscuraNativeEngine
+      host_ops.js            HTML5 DOM tree, CSS selector engine & Deno.core.ops bridge
+      host_mcp.js            document load lifecycle & 36 MCP browser_* tool implementations
+      ssrf.py                IPv4/IPv6 SSRF deny-set & per-hop redirect validator
+      cookies.py             RFC 6265 CookieJar with HttpOnly/Secure/SameSite & 0600 persistence
+      mcp_server.py          JSON-RPC 2.0 stdio server & CLI entrypoint (iralens-browser-engine)
+      builder.py             bundled native launcher + optional Rust workspace builder
+      UPSTREAM_PROVENANCE.md upstream revision, imported crates, modifications & update procedure
+      THIRD_PARTY_NOTICES.md Apache-2.0 and transitive dependency notices
   sources/         platform modules behind the Source base class
 ```
+
+## Integrated native browser subsystem
+
+IraLens embeds Obscura (`https://github.com/h4ckf0r0day/obscura`, commit
+`bd9529418b7fa975b50eabeac415cfaaa865a588`, base tag `v0.2.4` at
+`1fccab2c1ecd0f7eadc16d7a520ba227f9e7f782`, Apache-2.0) as an internally
+maintained browser subsystem under `iralens/_internal/browser_engine/`:
+
+- **Vendored components:** `obscura-ssrf`, `obscura-dom`, `obscura-net`,
+  `obscura-js` (`js/bootstrap.js`, `js/indexed_db.js`, `src/markdown.rs`),
+  `obscura-browser`, `obscura-mcp`, `obscura-cli`, and `obscura` (4.1 MB
+  uncompressed; 1.2 MB wheel / 1.3 MB sdist). `obscura-render` (`wgpu` GPU
+  rasterizer) and `obscura-cdp` are intentionally excluded to keep the
+  distribution lightweight.
+- **Zero-download bundled execution:** On standard `pip install`,
+  `iralens-browser-engine` runs the unmodified vendored Obscura V8 runtime
+  (`bootstrap.js` + `indexed_db.js` + `HTML_TO_MARKDOWN_JS`) inside an isolated
+  `py_mini_racer` (`libmini_racer`) V8 isolate (with automatic fallback to a
+  persistent Node.js V8 VM worker if `py_mini_racer` is unavailable).
+  `find_engine()` discovers the bundled engine automatically without runtime
+  binary downloads from GitHub Releases.
+- **Optional Rust compilation:** When `cargo` is present and
+  `IRALENS_BUILD_RUST_ENGINE=1` is set, `builder.py` compiles the vendored
+  Rust workspace (`vendor/obscura/Cargo.toml`) directly from source.
+- **Process & resource boundaries:** `BrowserEngine` (`iralens/engine/native.py`)
+  manages `iralens-browser-engine mcp` over stdio JSON-RPC 2.0 with a bounded
+  startup handshake (default 20 s), per-call RPC timeouts, V8 script execution
+  timeout (default 15 s) and heap cap (256 MB), 10 MB navigation body cap,
+  20-hop redirect limit with per-hop SSRF re-validation, and deterministic
+  subprocess termination on `IraLens.close()`.
 
 ## Unified data model
 
 Every retrieval is an `Artifact`:
 
-`title, url, source, kind, content, content_format, metadata
-(source-specific, preserved), retrieval_method (direct / browser /
-static-reader / api:… / cli:…), retrieved_at, discovered_from` — provenance:
-the search query or page that surfaced the item. Content is always flagged
+`title, url, requested_url, final_url, status_code, content_type, warnings,
+errors, source, kind, content, content_format, metadata (source-specific,
+preserved), retrieval_method (direct / browser / static-reader / api:… /
+cli:…), retrieved_at, discovered_from, provenance` — provenance records the
+search query or page that surfaced the item, redirect status, and security
+flags without exposing internal component names. Content is always flagged
 untrusted.
 
 ## Unified errors
