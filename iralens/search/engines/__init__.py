@@ -9,6 +9,7 @@ from .base import SearchBackend
 from .bing import BingBackend
 from .duckduckgo import DuckDuckGoBackend
 from .exa import ExaBackend
+from .mojeek import MojeekBackend
 from .paid_backup import PaidSearchBackupBackend
 from .searxng import SearxngBackend
 from .wikipedia import WikipediaBackend
@@ -24,8 +25,10 @@ LEGACY_ALIASES: Dict[str, tuple] = {
 
 
 def build_backends() -> Dict[str, SearchBackend]:
+    # Mojeek is registered so it can be enabled by name, but it is NOT in the
+    # default Settings.search_engines chain (opt-in, not live-verified).
     backends = (ExaBackend(), DuckDuckGoBackend(), SearxngBackend(), BingBackend(),
-                WikipediaBackend(), PaidSearchBackupBackend())
+                WikipediaBackend(), PaidSearchBackupBackend(), MojeekBackend())
     return {b.name: b for b in backends}
 
 
