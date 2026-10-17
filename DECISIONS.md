@@ -301,7 +301,10 @@ audit benchmark was never committed to the repository, so
 copy of the legacy scorer on 20 synthetic cases with explicit relevance
 judgments. Its numbers are improvements over the legacy scorer on that
 synthetic set — not results from the lost original. Measured: MRR 0.875 →
-0.975 (+0.100), nDCG@5 0.908 → 0.982 (+0.074); no case regressed, and the
+0.975 (+0.100), nDCG@5 0.908 → 0.982 (+0.074) at introduction. After the
+2026-10-17 evidence-driven scorer changes, the same synthetic harness measured
+MRR 0.925 and nDCG@5 0.945 (still above legacy 0.875 / 0.908); live search
+quality is not measured here. The previous figures remain historical, and the
 one case both scorers fail is recorded as a limitation.
 
 **The acceptance benchmark is frozen.** `benchmarks/` pins 200 labeled

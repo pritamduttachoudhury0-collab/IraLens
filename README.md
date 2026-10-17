@@ -179,14 +179,15 @@ says so.
 
 | What | Result | Date | Evidence |
 |---|---|---|---|
-| Offline + local-fixture browser test suite (Python 3.11) | **442 passed, 14 skipped, 0 failed** (includes 13 real-browser V8 integration tests against local HTTP fixtures; skips are live-network tests without general Internet egress) | 2026-10-17 | `tests/test_browser_engine_integration.py` · [final verification](docs/audits/final-verification.md) |
+| Offline + local-fixture test suite (Python 3.11) | **463 passed, 14 skipped, 0 failed** (includes local V8 browser integration tests; skipped tests require live network) | 2026-10-17 | `tests/` · [improvement verification](docs/improvements/FINAL_REPORT.md) |
+| Evidence-driven search improvement (D1–D8) | Ranking/intent, script handling, degradation, date provenance and security regressions covered offline; live quality P@5, 100-page real extraction and live engine resilience **NOT MEASURED** in restricted egress | 2026-10-17 | [final report](docs/improvements/FINAL_REPORT.md) · frozen 300-query holdout in `benchmark/holdout/` |
 | Lint (`ruff --select E9,F,B`) + types (`mypy`) | clean; 74 source files typed | 2026-10-17 | [final verification](docs/audits/final-verification.md) |
 | Full suite on an open network | **416 passed, 0 failed**; DuckDuckGo 15/15 and Bing 15/15 independent live queries | 2026-10-14 | [audit](docs/audits/paid-search-replacement-audit-2026-10-14.md) |
 | Search quality (100-query audit slice) | exact-site top-3 **24/25**; facts top-10 **25/25**; recent news **20/20** | 2026-10-14 | [audit](docs/audits/paid-search-replacement-audit-2026-10-14.md) |
 | Research accuracy (12 questions) | **12/12** correct answer present; **0 invented citations** | 2026-10-14 | [audit](docs/audits/paid-search-replacement-audit-2026-10-14.md) |
 | Page reading (60-page audit, pre-repair code) | **33/60 (55%)** — measured before the reading repairs; the repair set is regression-tested, the live re-run is not yet verified | 2026-10-14 | [audit](docs/audits/paid-search-replacement-audit-2026-10-14.md) · [triage](docs/audits/page-read-triage-2026-10-14.md) |
 | Load (pre-repair code) | median 1.44 s; 20-way burst p95 18.8 s — **failed** the <6 s target, which is why the concurrency rework exists | 2026-10-14 | [audit](docs/audits/paid-search-replacement-audit-2026-10-14.md) |
-| Ranking scorer (synthetic 20-case set) | MRR 0.875 → 0.975 (**+0.100**), nDCG@5 0.908 → 0.982 (**+0.074**) vs the legacy scorer | 2026-10-09 | [acceptance audit](docs/audits/production-acceptance-audit-2026-10-09.md) |
+| Ranking scorer (synthetic 20-case set) | Historical 2026-10-09 run: MRR 0.875 → 0.975; after 2026-10-17 evidence-driven changes: MRR **0.925**, nDCG@5 **0.945** vs legacy 0.875 / 0.908. Synthetic only, not live search quality. | 2026-10-17 | `tests/test_ranking_benchmark.py` · [final report](docs/improvements/FINAL_REPORT.md) |
 | Frozen acceptance benchmark (200 queries / 100 URLs, 3 consecutive passes) | not yet verified — awaits an open-network run | — | [BENCHMARKS.md](BENCHMARKS.md) |
 | Paid-provider parity | not yet verified — no provider key has been supplied | — | [benchmarks/README.md](benchmarks/README.md) |
 | Docker / Compose stack | not yet verified on a live host | — | [docs/deployment.md](docs/deployment.md) |

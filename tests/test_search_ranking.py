@@ -86,6 +86,12 @@ def test_authority_uses_longest_matching_suffix_and_default():
     assert authority("https://foo.com/", weights, 0.5) == 0.5
 
 
+def test_default_authority_recognizes_indian_government_domains():
+    from iralens.settings import DEFAULT_AUTHORITY
+    assert authority("https://finance.assam.gov.in/", DEFAULT_AUTHORITY, 0.5) == 0.9
+    assert authority("https://uidai.gov.in/", DEFAULT_AUTHORITY, 0.5) == 0.9
+
+
 def test_freshness_decays_and_unknown_is_neutral():
     today = date(2026, 1, 1)
     assert freshness("2026-01-01", today, 365, 0.5) == 1.0

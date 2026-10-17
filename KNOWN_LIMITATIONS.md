@@ -61,24 +61,39 @@ records at the end show exactly what was exercised and where.
 ## Search behavior
 
 12. **Date and language filters are approximate.** Date filters are
-    post-filtered and undated results are kept and counted. Language and
-    region are unsupported on engines that cannot apply them (reported per
-    engine).
+    post-filtered and undated results are kept and counted. Detected scripts now
+    supply a best-effort language hint to Bing and select Wikipedia editions;
+    Latin-script language detection remains incomplete. Other unsupported filter
+    modes are reported per engine.
 13. **Exa bridge filters are post-filtered.** The bridge is called with only
     the arguments known to work, so domain and date filters do not reach the
     provider.
 14. **Cross-engine agreement needs two engines.** With one engine configured,
     the agreement factor is always 1.0 and tells you nothing.
-15. **Low-coverage queries lean on engine rank.** When a query shares few
-    terms with the right page, a high-ranked distractor can win. The
-    synthetic ranking benchmark keeps a failing case of this kind on record
-    rather than tuning it away.
+15. **Ranking and intent classification remain heuristic.** Snippet coverage,
+    URL specificity, intent and jurisdiction priors now demote common hub,
+    dictionary, homepage and Wikipedia distractors, but they do not establish
+    answerhood. The five-round benchmark found genericisation on specific
+    procedures and troubleshooting; its raw result rows are not in this checkout,
+    and live holdout relevance after these changes is **NOT MEASURED**. A low-ranked
+    relevant page can still lose, and a plausible wrong page can still win.
 16. **CJK matching uses character bigrams.** Adequate for matching; not a
     word-segmentation model, so rare-compound queries can still miss.
 17. **SearXNG upstreams keep their own rules.** A configured SearXNG instance
     forwards queries to its enabled upstream engines; their terms, rate
     limits, and availability apply. Review `docs/search.md` (source policy)
     before deployment.
+- **Mojeek is opt-in and not live-verified.** Its HTML parser has offline
+  fixtures only; no claim is made about live markup stability, service terms,
+  result quality, or availability. It is deliberately excluded from defaults.
+- **Short result lists are not padded.** `shortfall_reason` reports whether
+  a list was capped for quality, deduplicated, filtered, or exhausted. The
+  Wikipedia cap for non-definitional intents can intentionally result in fewer
+  than the requested count if no other sources supplied candidates.
+- **Date extraction is a heuristic and not yet coverage-benchmarked.** It
+  handles unambiguous snippet dates and URL date paths without fetching pages,
+  and records `date_evidence`. Ambiguous dates and locale-specific formats are
+  ignored; overall coverage and false-date rate are **NOT MEASURED**.
 
 ## Reading
 
@@ -109,7 +124,8 @@ records at the end show exactly what was exercised and where.
     `IRALENS_HOME/state`; they survive restarts and coordinate local
     processes. Multi-host locking, external health storage, and long
     operational history are not implemented. A read-only state directory
-    fails open.
+    fails open. Search responses now expose skipped/failed engine details,
+    but the live benchmark's DuckDuckGo failure was not re-run after this change.
 24. **Injection flags are heuristic.** They cover common English phrasings,
     miss paraphrases and other languages, and are advisory — not a boundary.
 25. **The private-address check is literal plus fetch-time.** The literal URL
@@ -161,14 +177,11 @@ verified.
 
 **2026-10-17, restricted egress (v0.2.1 + integrated browser engine).**
 
-- `.venv/bin/python -m pytest -q` — **442 passed, 14 skipped, 0 failed** (including
-  13 end-to-end real-browser integration tests in
-  `tests/test_browser_engine_integration.py` against a local HTTP fixture
-  server exercising navigation, JS rendering, external `<script src>`, V8 JS
-  evaluation, `[ref=N]` accessibility snapshots, clicks, form POST submission,
-  301/302 redirect chains, 404/500 error classification, SSRF/redirect
-  protection, V8 script/navigation timeouts, RFC 6265 cookies/`localStorage`
-  persistence, multi-tab management, and unified `Artifact` schema).
+- `.venv/bin/python -m pytest -q` — **463 passed, 14 skipped, 0 failed** after
+  evidence-driven search changes (including 13 end-to-end real-browser
+  integration tests in `tests/test_browser_engine_integration.py` against a
+  local fixture server). The 14 skips are live-network tests without general
+  Internet egress.
 - `ruff check --select E9,F,B .` — clean. `mypy iralens` — clean (74 source
   files).
 - Package distribution sizes: wheel `1.2 MB` (`1,239,833` bytes), sdist

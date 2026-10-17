@@ -141,8 +141,13 @@ class BingBackend(SearchBackend):
         # `query` is the built query text (transport: direct HTTP first,
         # rendered engine only as fallback — see fetch_serp_html).
         url = ENDPOINT.format(q=urllib.parse.quote_plus(query))
-        if filters.language:
-            url += f"&setlang={urllib.parse.quote_plus(filters.language)}"
+        lang = filters.language
+        if not lang:
+            from ..language import detect_language
+            info = detect_language(query)
+            lang = info.lang if not info.is_latin or info.lang != "en" else ""
+        if lang:
+            url += f"&setlang={urllib.parse.quote_plus(lang)}"
         html = fetch_serp_html(context, url, timeout)
         page = parse_results_page(html)
         if page.hits:

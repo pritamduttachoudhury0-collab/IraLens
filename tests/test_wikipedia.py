@@ -36,6 +36,11 @@ def test_wikipedia_parser_normalizes_search_api_payload():
     assert parse_wikipedia_payload(None, "q", 5) == []
 
 
+def test_wikipedia_parser_uses_requested_language_edition():
+    hits = parse_wikipedia_payload(PAYLOAD, "solar energy", 5, lang="hi")
+    assert hits[0].url.startswith("https://hi.wikipedia.org/wiki/")
+
+
 def test_wikipedia_backend_uses_official_api_and_identifying_user_agent(monkeypatch):
     seen = {}
 

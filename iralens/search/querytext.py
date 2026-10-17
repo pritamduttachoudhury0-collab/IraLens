@@ -32,10 +32,13 @@ from typing import List
 _RUN_RE = re.compile(r"(?:[A-Za-z0-9._+#\-]|[^\x00-\x7f\s])+")
 
 #: Ranges treated as CJK for bigram tokenization (Unified Ideographs incl.
-#: Ext-A, Hiragana/Katakana block, Hangul, Compatibility Ideographs).
+#: Ext-A, Hiragana/Katakana block, Hangul, Compatibility Ideographs), plus
+#: scripts written without word spaces (Thai, Lao, Khmer, Myanmar) — D3:
+#: without bigrams a spaceless query tokenised to one giant unmatched token.
 _CJK_RANGES = (
     ("\u3400", "\u4dbf"), ("\u3040", "\u30ff"), ("\u4e00", "\u9fff"),
     ("\uac00", "\ud7af"), ("\uf900", "\ufaff"),
+    ("\u0e00", "\u0e7f"), ("\u0e80", "\u0eff"), ("\u1780", "\u17ff"), ("\u1000", "\u109f"),
 )
 
 
@@ -81,7 +84,12 @@ def tokenize(text: str) -> List[str]:
     query term like 爬虫 match a page containing 爬虫教程.
     """
     out: List[str] = []
-    for run in _RUN_RE.findall(text or ""):
+    # NFC first (D3): the same word in decomposed form (e.g. Yoruba tone marks
+    # as combining codepoints) must tokenise identically to its composed form,
+    # or relevance silently becomes 0 for that script.
+    import unicodedata
+    text = unicodedata.normalize("NFC", text or "")
+    for run in _RUN_RE.findall(text):
         if len(run) >= 2 and all(_is_cjk(ch) for ch in run):
             candidates = [run] + [run[i:i + 2] for i in range(len(run) - 1)]
         else:

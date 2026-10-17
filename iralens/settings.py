@@ -13,7 +13,10 @@ from __future__ import annotations
 from dataclasses import MISSING, dataclass, field, fields
 from typing import Any, Dict, Tuple
 
-DEFAULT_AUTHORITY: Dict[str, float] = {".gov": 0.9, ".edu": 0.85, ".org": 0.6}
+DEFAULT_AUTHORITY: Dict[str, float] = {
+    ".gov": 0.9, ".gov.in": 0.9, ".nic.in": 0.9,
+    ".edu": 0.85, ".ac.in": 0.85, ".org": 0.6,
+}
 
 #: Public SearXNG instances are intentionally not bundled as defaults: their
 #: owners' terms, uptime, and privacy policies vary. Configure a private

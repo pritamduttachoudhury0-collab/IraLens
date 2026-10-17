@@ -131,6 +131,7 @@ class RankedResult:
     queries: List[str]
     security_flags: List[str]
     merged_from: List[str] = field(default_factory=list)
+    date_evidence: str = ""             # D7: which pattern produced published_at
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -163,6 +164,9 @@ class SearchResponse:
     no_results_reason: str              # none | no_results | filtered_out | engines_failed
     security_flags: List[str] = field(default_factory=list)
     summary: str = ""                   # one honest sentence about the outcome
+    # D6: why fewer than max_results came back ("" when full):
+    # exhausted | deduped | capped | filtered
+    shortfall_reason: str = ""
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SearchResponse":
@@ -178,13 +182,28 @@ class SearchResponse:
             no_results_reason=data["no_results_reason"],
             security_flags=data.get("security_flags", []),
             summary=data.get("summary", ""),
+            shortfall_reason=data.get("shortfall_reason", ""),
         )
 
     @property
     def degraded(self) -> bool:
         return any(o.status in ("failed", "skipped") for o in self.outcomes)
 
+    @property
+    def degradation_detail(self) -> Dict[str, Any]:
+        """D4: per-engine degradation, explicit — a dead first engine must be
+        impossible to misread as a healthy `status=ok` (benchmark §54.2)."""
+        return {
+            "degraded": self.degraded,
+            "answered": sorted({o.engine for o in self.outcomes if o.status in ("results", "empty")}),
+            "failed": sorted({o.engine for o in self.outcomes if o.status == "failed"}),
+            "skipped": sorted({o.engine for o in self.outcomes if o.status == "skipped"}),
+            "skip_reasons": {o.engine: o.kind for o in self.outcomes if o.status == "skipped"},
+            "shortfall_reason": self.shortfall_reason,
+        }
+
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
         data["degraded"] = self.degraded
+        data["degradation"] = self.degradation_detail
         return data

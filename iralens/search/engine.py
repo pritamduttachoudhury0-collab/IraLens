@@ -25,13 +25,15 @@ from .dedup import dedup
 from .engines import LEGACY_ALIASES, build_backends
 from .engines.base import SearchBackend
 from .fallback import run_chain
+from .intent import classify_query, intent_multiplier
 from .querytext import sanitize_query
 from .ranking import authority, combine, freshness, relevance, today_utc
 from ..model import Artifact
 from .reformulate import DEFAULT_SYNONYMS
 from .reformulate import reformulate as _reformulate
 from .schema import FilterError, RankedResult, SearchFilters, SearchHit, SearchOptions, SearchResponse
-from .urls import canonical_url, domain_matches, domain_of
+from .freshness_extract import extract_date
+from .urls import canonical_url, domain_matches, domain_of, is_test_host, unwrap_wrapper
 
 #: Demotion applied to the relevance factor of groups whose hits carry a
 #: prompt-injection security flag. Flagged results are still returned —
@@ -182,6 +184,13 @@ class SearchEngine:
             # Scan the raw text first: sanitizing strips invisible characters,
             # which is itself a signal worth reporting.
             hit.security_flags = content_guard.scan(f"{hit.title} {hit.snippet}")
+            if is_test_host(hit.url) and "test_host" not in hit.security_flags:
+                hit.security_flags = sorted({*hit.security_flags, "test_host"})
+            if not hit.published_at:
+                found, source = extract_date(hit.snippet, hit.url)
+                if found:
+                    hit.published_at = found
+                    hit.raw["date_evidence"] = source
             hit.title = content_guard.sanitize(hit.title, 200)
             hit.snippet = content_guard.sanitize(hit.snippet, 400)
 
@@ -201,9 +210,28 @@ class SearchEngine:
             reason = "filtered_out"
         else:
             reason = "no_results"
+        shortfall = ""
+        if 0 < len(results) < options.max_results:
+            merges = sum(1 for e in dedup_log if e.get("action") == "merge")
+            intent = classify_query(question)
+            wiki_cap_applies = intent.answer_type in (
+                "procedure", "statistic", "current_event", "comparison", "error")
+            wiki_groups = sum(1 for g in groups if domain_of(g.hits[0].url).endswith("wikipedia.org"))
+            if wiki_cap_applies and wiki_groups > 1:
+                shortfall = "capped"
+            elif merges >= (options.max_results - len(results)) and merges:
+                shortfall = "deduped"
+            elif filter_report.get("dropped", 0):
+                shortfall = "filtered"
+            else:
+                shortfall = "exhausted"
+        summary = _summarize(question, results, outcomes, reason, filter_report)
+        if shortfall:
+            summary += f"; shortfall: {shortfall} ({len(results)}/{options.max_results})"
         return SearchResponse(
             query=question,
             results=results,
+            shortfall_reason=shortfall,
             queries=used_queries,
             outcomes=outcomes,
             fallbacks=fallbacks,
@@ -212,7 +240,7 @@ class SearchEngine:
             dedup_log=dedup_log,
             no_results_reason=reason,
             security_flags=flags,
-            summary=_summarize(question, results, outcomes, reason, filter_report),
+            summary=summary,
         )
 
     # --------------------------------------------------------- filtering
@@ -225,7 +253,7 @@ class SearchEngine:
         rejected = 0
         for hit in hits:
             try:
-                hit.url = normalize_public_http_url(hit.url)
+                hit.url = normalize_public_http_url(unwrap_wrapper(hit.url))
             except ValueError:
                 rejected += 1
                 continue
@@ -271,6 +299,7 @@ class SearchEngine:
         s = self.settings
         weights = {"relevance": s.weight_relevance, "authority": s.weight_authority,
                    "freshness": s.weight_freshness, "agreement": s.weight_agreement}
+        intent = classify_query(question)
         engines_with_results = {h.engine for g in groups for h in g.hits}
         n_engines = max(1, len(engines_with_results))
         today = today_utc()
@@ -287,10 +316,14 @@ class SearchEngine:
             dates = sorted(h.published_at for h in hits if h.published_at)
             published = dates[0] if dates else None
             flags = sorted({f for h in hits for f in h.security_flags})
-            rel = relevance(best_rank, title, snippet, question)
+            rel = relevance(best_rank, title, snippet, question, url=group.hits[0].url,
+                            answer_type=intent.answer_type)
+            rel = round(min(1.0, rel * intent_multiplier(group.hits[0].url, intent)), 4)
             # Low-quality handling: injection-flagged groups are demoted, not
             # dropped. The flag itself still travels with the result.
             if any(f.startswith("prompt_injection:") for f in flags):
+                rel = round(rel * _FLAGGED_RELEVANCE_FACTOR, 4)
+            if "test_host" in flags:
                 rel = round(rel * _FLAGGED_RELEVANCE_FACTOR, 4)
             factors = {
                 "relevance": rel,
@@ -313,9 +346,31 @@ class SearchEngine:
                 queries=queries,
                 security_flags=flags,
                 merged_from=list(group.merged_urls),
+                date_evidence=next((str(h.raw.get("date_evidence")) for h in hits
+                                    if h.raw.get("date_evidence")), ""),
             ))
         ranked.sort(key=lambda r: (-r.score, r.url))
-        return ranked[:max_results]
+        # D5: Wikipedia is an entity/definition source. For procedure,
+        # statistic, current-event, comparison and error questions it must not
+        # fill the top slots with hub articles. Definitional/entity queries
+        # keep full Wikipedia access.
+        if intent.answer_type in ("procedure", "statistic", "current_event", "comparison", "error"):
+            wiki_cap = 1
+        elif intent.answer_type in ("definition", "entity_lookup"):
+            wiki_cap = max_results
+        else:
+            wiki_cap = 2
+        capped: List[RankedResult] = []
+        wiki_seen = 0
+        for r in ranked:
+            if domain_of(r.url).endswith("wikipedia.org"):
+                wiki_seen += 1
+                if wiki_seen > wiki_cap:
+                    continue
+            capped.append(r)
+        # No backfill beyond the cap: a short, honest list (reported via the
+        # D6 shortfall reason) beats filling a procedure slot with hubs.
+        return capped[:max_results]
 
 
 def _default_synonyms() -> Dict[str, List[str]]:
