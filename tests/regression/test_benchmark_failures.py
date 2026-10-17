@@ -87,14 +87,12 @@ def test_d6_shortfall_reason_present():
     assert "shortfall_reason" in SearchResponse.__dataclass_fields__
 
 
-@pytest.mark.xfail(reason="D7: published_at missing when snippet carries a date", strict=False)
 def test_d7_date_extracted_from_snippet():
     from iralens.search.freshness_extract import extract_date
     found, source = extract_date("Updated on 5 August 2026 by the commission", "https://example.gov.in/order")
     assert found == "2026-08-05" and source
 
 
-@pytest.mark.xfail(reason="D8: wrapper/test-host URLs ranked and cited as-is", strict=False)
 def test_d8_wrapper_unwrapped_and_test_host_flagged():
     from iralens.search.urls import unwrap_wrapper, is_test_host
     assert unwrap_wrapper("https://translate.google.com/translate?u=https%3A%2F%2Fexample.com%2Fa") == "https://example.com/a"

@@ -131,6 +131,7 @@ class RankedResult:
     queries: List[str]
     security_flags: List[str]
     merged_from: List[str] = field(default_factory=list)
+    date_evidence: str = ""             # D7: which pattern produced published_at
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

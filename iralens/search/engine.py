@@ -32,7 +32,8 @@ from ..model import Artifact
 from .reformulate import DEFAULT_SYNONYMS
 from .reformulate import reformulate as _reformulate
 from .schema import FilterError, RankedResult, SearchFilters, SearchHit, SearchOptions, SearchResponse
-from .urls import canonical_url, domain_matches, domain_of
+from .freshness_extract import extract_date
+from .urls import canonical_url, domain_matches, domain_of, is_test_host, unwrap_wrapper
 
 #: Demotion applied to the relevance factor of groups whose hits carry a
 #: prompt-injection security flag. Flagged results are still returned —
@@ -183,6 +184,13 @@ class SearchEngine:
             # Scan the raw text first: sanitizing strips invisible characters,
             # which is itself a signal worth reporting.
             hit.security_flags = content_guard.scan(f"{hit.title} {hit.snippet}")
+            if is_test_host(hit.url) and "test_host" not in hit.security_flags:
+                hit.security_flags = sorted({*hit.security_flags, "test_host"})
+            if not hit.published_at:
+                found, source = extract_date(hit.snippet, hit.url)
+                if found:
+                    hit.published_at = found
+                    hit.raw["date_evidence"] = source
             hit.title = content_guard.sanitize(hit.title, 200)
             hit.snippet = content_guard.sanitize(hit.snippet, 400)
 
@@ -231,7 +239,7 @@ class SearchEngine:
         rejected = 0
         for hit in hits:
             try:
-                hit.url = normalize_public_http_url(hit.url)
+                hit.url = normalize_public_http_url(unwrap_wrapper(hit.url))
             except ValueError:
                 rejected += 1
                 continue
@@ -301,6 +309,8 @@ class SearchEngine:
             # dropped. The flag itself still travels with the result.
             if any(f.startswith("prompt_injection:") for f in flags):
                 rel = round(rel * _FLAGGED_RELEVANCE_FACTOR, 4)
+            if "test_host" in flags:
+                rel = round(rel * _FLAGGED_RELEVANCE_FACTOR, 4)
             factors = {
                 "relevance": rel,
                 "authority": authority(group.hits[0].url, s.authority_weights, s.default_authority),
@@ -322,6 +332,8 @@ class SearchEngine:
                 queries=queries,
                 security_flags=flags,
                 merged_from=list(group.merged_urls),
+                date_evidence=next((str(h.raw.get("date_evidence")) for h in hits
+                                    if h.raw.get("date_evidence")), ""),
             ))
         ranked.sort(key=lambda r: (-r.score, r.url))
         # D5: Wikipedia is an entity/definition source. For procedure,

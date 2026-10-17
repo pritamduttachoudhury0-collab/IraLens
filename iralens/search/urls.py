@@ -23,10 +23,64 @@ def is_tracking_param(name: str) -> bool:
     return low.startswith("utm_") or low in TRACKING_PARAMS
 
 
+_TEST_HOST_LABELS = ("uat", "staging", "stage", "dev", "test", "qa", "sandbox")
+
+
+def unwrap_wrapper(url: str) -> str:
+    """Return the canonical target behind a known URL wrapper (D8).
+
+    ``translate.google.com/translate?u=<encoded>`` and ``r.jina.ai/<url>``
+    wrappers must not be ranked or cited as if they were the source.
+    """
+    if not url:
+        return url
+    try:
+        parts = urllib.parse.urlsplit(url.strip())
+    except ValueError:
+        return url
+    host = (parts.hostname or "").lower()
+    if host.endswith("translate.google.com") or host == "translate.google.co.in":
+        qs = urllib.parse.parse_qs(parts.query)
+        for key in ("u", "url", "q"):
+            for value in qs.get(key, []):
+                if value.startswith(("http://", "https://")):
+                    return value
+    if host == "r.jina.ai":
+        inner = urllib.parse.urlunsplit(("", "", parts.path.lstrip("/"), parts.query, ""))
+        if inner.startswith(("http://", "https://")):
+            return inner
+        stripped = url.split("r.jina.ai/", 1)
+        if len(stripped) == 2 and stripped[1].startswith(("http://", "https://")):
+            return stripped[1]
+    return url
+
+
+def is_test_host(url: str) -> bool:
+    """True for test/staging/dev hosts, localhost, or a bare IP host (D8)."""
+    if not url:
+        return False
+    try:
+        host = (urllib.parse.urlsplit(url).hostname or "").lower()
+    except ValueError:
+        return False
+    if host in ("localhost",) or host.endswith(".local"):
+        return True
+    labels = host.split(".")
+    if labels and labels[0] in _TEST_HOST_LABELS:
+        return True
+    try:
+        import ipaddress
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return False
+
+
 def canonical_url(url: str) -> Optional[str]:
     """Return the dedup key for an http(s) URL, or None if it is not web-like."""
     if not url:
         return None
+    url = unwrap_wrapper(url)
     try:
         parts = urllib.parse.urlsplit(url.strip())
     except ValueError:
