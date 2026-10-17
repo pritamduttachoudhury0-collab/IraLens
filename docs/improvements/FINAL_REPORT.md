@@ -54,7 +54,7 @@ Executed from repository root with Python 3.11.2 / `.venv`:
 | `.venv/bin/python benchmark/holdout/evaluate_extraction.py` | **100/100** expected spans present on synthetic fixture HTML. Live/real-page extraction **NOT MEASURED**. |
 | `.venv/bin/python scripts/ranking_benchmark.py` | legacy MRR 0.8750 → current 0.9250; legacy nDCG@5 0.9077 → current 0.9446, 20 synthetic cases. |
 | `pip wheel` (isolated build, `--no-deps`) | baseline archive wheel 1,180,881 bytes; current wheel 1,193,585 bytes; **+12,704 bytes**. Same isolated build command; no new mandatory dependencies. |
-| GitHub Actions PR checks | Python 3.10 passed; Python 3.12 failed at the Offline test suite step. The Actions log endpoint returned EOF in this restricted environment and the signed log host was inaccessible, so the failing assertion could not be identified or locally reproduced. This remains unresolved; the PR is not merged. |
+| GitHub Actions PR checks | The first run passed Python 3.10 but failed Python 3.12 at the Offline test suite step; the Actions log endpoint returned EOF, so the failing assertion could not be identified. A subsequent run on the final documentation commit passed both Python 3.10 and 3.12. The initial failure was not reproduced; the latest required checks are green. |
 
 A first packaging attempt with `--no-build-isolation` failed because the ambient setuptools was too old for this project's PEP 621 `license` metadata; the isolated build succeeded and is the reported build result.
 
@@ -81,4 +81,4 @@ Not run / not measurable here: live search quality on the frozen holdout, human 
 
 ## 7. Git and delivery
 
-All implementation commits are on the session's fixed branch `arena/f3446c85-iralens`; no other branch or worktree was created. PR #10 targets `main` and is open at https://github.com/pritamduttachoudhury0-collab/IraLens/pull/10. Python 3.10 CI passed, but Python 3.12 CI failed; the log could not be retrieved from the restricted environment. The PR was therefore **not merged**. The changes are committed and pushed to the fixed session branch; they are not yet on `main`. Merge should wait until the 3.12 failure is diagnosed and CI passes.
+All implementation commits are on the session's fixed branch `arena/f3446c85-iralens`; no other branch or worktree was created. PR #10 targets `main` and is open at https://github.com/pritamduttachoudhury0-collab/IraLens/pull/10. The initial Python 3.12 run failed but could not be diagnosed from its inaccessible log; a subsequent CI run on the latest commit passed both Python 3.10 and 3.12. The changes are committed and pushed to the fixed session branch. At report authoring the PR remains open; merge status is reported in the final response.
