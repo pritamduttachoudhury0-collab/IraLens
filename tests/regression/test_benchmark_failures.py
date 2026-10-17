@@ -37,12 +37,20 @@ def test_d1_dictionary_page_demoted_for_factual_query():
     assert answer > dictionary
 
 
-@pytest.mark.xfail(reason="D2: no intent/jurisdiction routing", strict=False)
 def test_d2_procedure_query_prefers_jurisdiction_official_domain():
-    from iralens.search.intent import classify_query
+    from iralens.search.intent import classify_query, intent_multiplier
     info = classify_query("register a partnership firm Assam")
     assert info.answer_type == "procedure"
     assert info.jurisdiction_domains  # expects e.g. .gov.in / assam.gov.in preference
+    assert intent_multiplier("https://finance.assam.gov.in/firms", info) > \
+        intent_multiplier("https://en.wikipedia.org/wiki/Partnership", info)
+
+
+def test_d2_error_and_comparison_classification_generalises():
+    from iralens.search.intent import classify_query
+    assert classify_query("Kafka consumer ERR_UNKNOWN_MEMBER_ID rebalance fix").answer_type == "error"
+    assert classify_query("PPF vs ELSS returns comparison").answer_type == "comparison"
+    assert classify_query("India GDP growth rate 2026").answer_type == "statistic"
 
 
 @pytest.mark.xfail(reason="D3: non-Latin tokenisation/language routing", strict=False)

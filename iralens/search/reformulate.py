@@ -74,6 +74,15 @@ def reformulate(
     if keywords:
         candidates.append({"text": " ".join(keywords), "strategy": "keywords"})
 
+    # Jurisdiction-biased variant (D2): a procedure/statistic question naming
+    # a place gets one site-biased query so the official page is *retrieved*,
+    # not merely re-ranked. General gazetteer domains only.
+    from .intent import classify_query
+    intent = classify_query(question)
+    if intent.jurisdiction_domains and intent.answer_type in ("procedure", "statistic", "current_event"):
+        candidates.append({"text": f"{question} site:{intent.jurisdiction_domains[0]}",
+                           "strategy": "jurisdiction"})
+
     parts = [p.strip(" ?.;:") for p in re.split(r"\?|;| and | vs\.? | versus ", question)]
     subs = [p for p in parts if len(p.split()) >= 3]
     if len(subs) > 1:

@@ -25,6 +25,7 @@ from .dedup import dedup
 from .engines import LEGACY_ALIASES, build_backends
 from .engines.base import SearchBackend
 from .fallback import run_chain
+from .intent import classify_query, intent_multiplier
 from .querytext import sanitize_query
 from .ranking import authority, combine, freshness, relevance, today_utc
 from ..model import Artifact
