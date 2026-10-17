@@ -53,13 +53,20 @@ def test_d2_error_and_comparison_classification_generalises():
     assert classify_query("India GDP growth rate 2026").answer_type == "statistic"
 
 
-@pytest.mark.xfail(reason="D3: non-Latin tokenisation/language routing", strict=False)
 def test_d3_yoruba_query_terms_not_empty_and_wikipedia_language():
-    from iralens.search.querytext import term_set
+    from iralens.search.querytext import term_set, tokenize
     from iralens.search.language import detect_language
     q = "Kí ni orúkọ ìlú ńlá tí ó tóbi jù ní Nàìjíríà"
     assert len(term_set(q)) >= 3
     assert detect_language(q).wikipedia_lang in {"yo", "en"}
+    # Hindi + Thai queries must also produce usable terms, and decomposed
+    # (NFD) text must tokenise like composed (NFC) text.
+    import unicodedata
+    assert len(term_set("भारत की राजधानी क्या है")) >= 3
+    assert len(term_set("ประเทศไทยมีกี่จังหวัด")) >= 3
+    assert tokenize(unicodedata.normalize("NFD", q)) == tokenize(q)
+    assert detect_language("भारत की राजधानी क्या है").wikipedia_lang == "hi"
+    assert detect_language("বাংলাদেশের রাজধানী কী").wikipedia_lang == "bn"
 
 
 @pytest.mark.xfail(reason="D4: dead first engine invisible to caller", strict=False)
