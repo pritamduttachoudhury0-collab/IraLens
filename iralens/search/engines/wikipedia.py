@@ -89,8 +89,16 @@ class WikipediaBackend(SearchBackend):
         from ..language import detect_language
         langs = []
         for cand in (filters.language, detect_language(query).wikipedia_lang, "en"):
-            if cand and cand not in langs:
-                langs.append(cand)
+            if cand:
+                # Wikipedia language editions use a simple subdomain token.
+                # Ignore malformed/region-tagged values rather than building a
+                # host from untrusted filter input; auto-detection supplies the
+                # primary subtag for normal queries.
+                primary = str(cand).split("-", 1)[0].lower()
+                if not re.fullmatch(r"[a-z]{2,12}", primary):
+                    continue
+                if primary not in langs:
+                    langs.append(primary)
         merged: List[SearchHit] = []
         last_exc: Exception | None = None
         for lang in langs:

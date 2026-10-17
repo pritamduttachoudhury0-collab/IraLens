@@ -338,8 +338,8 @@ class SearchEngine:
         ranked.sort(key=lambda r: (-r.score, r.url))
         # D5: Wikipedia is an entity/definition source. For procedure,
         # statistic, current-event, comparison and error questions it must not
-        # fill the top slots with hub articles; cap it and backfill from the
-        # open web. Definitional/entity queries keep full Wikipedia access.
+        # fill the top slots with hub articles. Definitional/entity queries
+        # keep full Wikipedia access.
         if intent.answer_type in ("procedure", "statistic", "current_event", "comparison", "error"):
             wiki_cap = 1
         elif intent.answer_type in ("definition", "entity_lookup"):
@@ -347,13 +347,11 @@ class SearchEngine:
         else:
             wiki_cap = 2
         capped: List[RankedResult] = []
-        overflow: List[RankedResult] = []
         wiki_seen = 0
         for r in ranked:
             if domain_of(r.url).endswith("wikipedia.org"):
                 wiki_seen += 1
                 if wiki_seen > wiki_cap:
-                    overflow.append(r)
                     continue
             capped.append(r)
         # No backfill beyond the cap: a short, honest list (reported via the

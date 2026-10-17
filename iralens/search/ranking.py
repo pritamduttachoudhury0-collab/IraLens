@@ -60,10 +60,13 @@ def _specificity_multiplier(url: str, title: str, question: str,
     segments = [s for s in path.split("/") if s]
     if url and len(segments) == 0 and len(q_terms) >= 3:
         mult *= 0.8  # bare homepage for a multi-term, specific query
+    definitional = answer_type in ("definition", "entity_lookup") or \
+        (question or "").strip().lower().startswith(
+            ("what does", "meaning of", "define ", "definition of"))
+    if host.endswith("wikipedia.org") and answer_type in (
+            "procedure", "statistic", "current_event", "comparison", "error"):
+        mult *= 0.65
     if host in _DICTIONARY_HOSTS or host.endswith(".dictionary.cambridge.org"):
-        definitional = answer_type in ("definition", "entity_lookup") or \
-            (question or "").strip().lower().startswith(
-                ("what does", "meaning of", "define ", "definition of"))
         if not definitional:
             mult *= 0.5
     return mult
