@@ -68,7 +68,6 @@ def test_d4_response_exposes_degradation_detail():
     assert hasattr(SearchResponse, "degradation_detail")
 
 
-@pytest.mark.xfail(reason="D5: Wikipedia hub fills procedure slot", strict=False)
 def test_d5_wikipedia_hub_demoted_for_procedure():
     q = "solar rooftop net metering Assam"
     wiki_hub = relevance(1, "Solar power in India", "Solar power in India overview", q)
@@ -95,3 +94,18 @@ def test_d8_wrapper_unwrapped_and_test_host_flagged():
     from iralens.search.urls import unwrap_wrapper, is_test_host
     assert unwrap_wrapper("https://translate.google.com/translate?u=https%3A%2F%2Fexample.com%2Fa") == "https://example.com/a"
     assert is_test_host("https://uat.startupindia.gov.in/x")
+
+
+def test_d5_wikipedia_capped_for_procedure_at_engine_level(tmp_path):
+    from tests.test_search_engine import FakeBackend, make_engine
+    from iralens.search.schema import SearchOptions
+    hits = [(f"Wiki topic {i}", f"https://en.wikipedia.org/wiki/Topic{i}", "solar rooftop") for i in range(6)]
+    hits.append(("Net metering Assam official", "https://aeda.assam.gov.in/net-metering",
+                 "solar rooftop net metering Assam apply"))
+    eng = make_engine(tmp_path, [FakeBackend("bing", hits=hits)], search_engines=("bing",),
+                      search_min_engines=1)
+    resp = eng.search("register solar rooftop net metering Assam", options=SearchOptions(
+        max_results=5, reformulate=False, cache="bypass"))
+    wiki = [r for r in resp.results if "wikipedia.org" in r.url]
+    assert len(wiki) <= 1
+    assert resp.results[0].url == "https://aeda.assam.gov.in/net-metering"

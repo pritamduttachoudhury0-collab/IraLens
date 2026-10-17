@@ -272,6 +272,7 @@ class SearchEngine:
         s = self.settings
         weights = {"relevance": s.weight_relevance, "authority": s.weight_authority,
                    "freshness": s.weight_freshness, "agreement": s.weight_agreement}
+        intent = classify_query(question)
         engines_with_results = {h.engine for g in groups for h in g.hits}
         n_engines = max(1, len(engines_with_results))
         today = today_utc()
@@ -288,7 +289,9 @@ class SearchEngine:
             dates = sorted(h.published_at for h in hits if h.published_at)
             published = dates[0] if dates else None
             flags = sorted({f for h in hits for f in h.security_flags})
-            rel = relevance(best_rank, title, snippet, question, url=group.hits[0].url)
+            rel = relevance(best_rank, title, snippet, question, url=group.hits[0].url,
+                            answer_type=intent.answer_type)
+            rel = round(min(1.0, rel * intent_multiplier(group.hits[0].url, intent)), 4)
             # Low-quality handling: injection-flagged groups are demoted, not
             # dropped. The flag itself still travels with the result.
             if any(f.startswith("prompt_injection:") for f in flags):
@@ -316,7 +319,29 @@ class SearchEngine:
                 merged_from=list(group.merged_urls),
             ))
         ranked.sort(key=lambda r: (-r.score, r.url))
-        return ranked[:max_results]
+        # D5: Wikipedia is an entity/definition source. For procedure,
+        # statistic, current-event, comparison and error questions it must not
+        # fill the top slots with hub articles; cap it and backfill from the
+        # open web. Definitional/entity queries keep full Wikipedia access.
+        if intent.answer_type in ("procedure", "statistic", "current_event", "comparison", "error"):
+            wiki_cap = 1
+        elif intent.answer_type in ("definition", "entity_lookup"):
+            wiki_cap = max_results
+        else:
+            wiki_cap = 2
+        capped: List[RankedResult] = []
+        overflow: List[RankedResult] = []
+        wiki_seen = 0
+        for r in ranked:
+            if domain_of(r.url).endswith("wikipedia.org"):
+                wiki_seen += 1
+                if wiki_seen > wiki_cap:
+                    overflow.append(r)
+                    continue
+            capped.append(r)
+        # No backfill beyond the cap: a short, honest list (reported via the
+        # D6 shortfall reason) beats filling a procedure slot with hubs.
+        return capped[:max_results]
 
 
 def _default_synonyms() -> Dict[str, List[str]]:
