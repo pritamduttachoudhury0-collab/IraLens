@@ -44,18 +44,28 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 =========================================================================
-2. Obscura — browser engine (Apache License 2.0)
+2. Obscura — vendored internal browser engine (Apache License 2.0)
 =========================================================================
 
-IraLens uses the Obscura headless browser engine
+IraLens vendors core components of the Obscura headless browser engine
 (https://github.com/h4ckf0r0day/obscura, Apache License 2.0, Copyright its
-respective authors) as its internal browser engine.
+respective authors) under `iralens/_internal/browser_engine/vendor/obscura`
+as an internally maintained browser subsystem.
 
-No Obscura source code is copied into this repository. The engine is a
-prebuilt binary that `iralens install-engine` downloads at runtime
-directly from the upstream project's official GitHub releases; IraLens
-does not mirror, bundle, or redistribute the binary. The upstream project
-ships no NOTICE file, so no additional upstream notices are due. If you
-choose to redistribute the engine binary yourself, you must do so under the
-terms of its Apache License 2.0 (including its own third-party notices as
-published upstream).
+- Upstream repository: https://github.com/h4ckf0r0day/obscura
+- Upstream base tag: v0.2.4 (commit 1fccab2c1ecd0f7eadc16d7a520ba227f9e7f782)
+- Vendored commit SHA: bd9529418b7fa975b50eabeac415cfaaa865a588 (2026-04-16)
+- License: Apache License, Version 2.0 (preserved at
+  `iralens/_internal/browser_engine/vendor/obscura/LICENSE`)
+- Provenance, modification notices (Apache-2.0 Section 4(b)), and upstream
+  update procedures are documented in
+  `iralens/_internal/browser_engine/UPSTREAM_PROVENANCE.md` and
+  `iralens/_internal/browser_engine/THIRD_PARTY_NOTICES.md`.
+
+Vendored crates (`obscura-ssrf`, `obscura-dom`, `obscura-net`, `obscura-js`,
+`obscura-browser`, `obscura-mcp`, `obscura-cli`, and `obscura`) and the V8
+JavaScript runtime (`crates/obscura-js/js/bootstrap.js`, `indexed_db.js`, and
+`src/markdown.rs`) are distributed under the terms of the Apache License 2.0.
+Workspace manifests (`Cargo.toml`) were modified by IraLens to scope the
+vendored workspace to the core browser/JS/MCP crates.
+

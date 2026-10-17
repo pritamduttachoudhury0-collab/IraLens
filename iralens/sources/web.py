@@ -19,10 +19,13 @@ enforced on all backends, and the artifact says when its content was truncated.
 from __future__ import annotations
 
 import re
+import threading
 import time
 import urllib.error
 import urllib.parse
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
+
+_DIRECT_META_LOCAL = threading.local()
 
 from .. import content_guard
 from ..cache import ResponseCache
@@ -224,10 +227,20 @@ def read_direct(
     safe_url = normalize_public_http_url(url)
     limit = max_bytes or _DEFAULT_MAX_BYTES
     deadline = time.monotonic() + (deadline_seconds if deadline_seconds else _DEFAULT_DEADLINE_SECONDS)
+    _DIRECT_META_LOCAL.last = None
     try:
         with safe_urlopen(safe_url, timeout=timeout,
                           headers={"User-Agent": _UA, "Accept": "text/html,application/pdf,*/*"}) as resp:
-            content_type = (getattr(resp, "headers", {}) or {}).get("Content-Type", "").lower()
+            raw_ct = (getattr(resp, "headers", {}) or {}).get("Content-Type", "")
+            content_type = raw_ct.lower()
+            resp_url = str(getattr(resp, "url", None) or (resp.geturl() if hasattr(resp, "geturl") else safe_url))
+            resp_status = int(getattr(resp, "status", None) or (resp.getcode() if hasattr(resp, "getcode") else 200) or 200)
+            _DIRECT_META_LOCAL.last = {
+                "requested_url": safe_url,
+                "final_url": resp_url,
+                "status_code": resp_status,
+                "content_type": raw_ct or "text/html",
+            }
             path = urllib.parse.urlsplit(safe_url).path.lower()
             is_pdf_target = ("application/pdf" in content_type or path.endswith(".pdf")
                              or path.startswith("/pdf/"))
@@ -280,12 +293,9 @@ def read_direct(
     return text
 
 
-def _classify_http_error(exc: urllib.error.HTTPError) -> PageUnavailableError:
-    """Map an HTTP status from the reader onto a specific, honest error."""
-    status = exc.code
+def _classify_http_status(status: int) -> PageUnavailableError:
+    """Map an HTTP status code onto a specific, honest error."""
     if status in (301, 302, 303, 307, 308):
-        # A redirect status only surfaces as an error when the redirect
-        # machinery gave up (e.g. a single-URL loop hit its repeat cap).
         return PageUnavailableError(
             "too many redirects (redirect loop suspected)",
             hint="the page keeps redirecting; try a different URL",
@@ -316,6 +326,11 @@ def _classify_http_error(exc: urllib.error.HTTPError) -> PageUnavailableError:
         )
     return PageUnavailableError(f"the reader returned HTTP {status}",
                                 detail=f"http_{status}")
+
+
+def _classify_http_error(exc: urllib.error.HTTPError) -> PageUnavailableError:
+    """Map an HTTP status from the reader onto a specific, honest error."""
+    return _classify_http_status(exc.code)
 
 
 class WebSource(Source):
@@ -426,16 +441,83 @@ class WebSource(Source):
             try:
                 # Browser reads are never cached: the browser may hold session state.
                 engine = context.engine()
-                engine.navigate(safe_url)
+                nav_info = engine.navigate(safe_url)
+                nav_dict: Dict[str, Any] = nav_info if isinstance(nav_info, dict) else {}
+                status_code: Optional[int] = (
+                    int(nav_dict["status_code"])
+                    if isinstance(nav_dict.get("status_code"), int)
+                    else None
+                )
+                if status_code is not None and status_code >= 400:
+                    raise _classify_http_status(status_code)
+
                 markdown = engine.markdown(max_chars=max_chars)
                 current = engine.current_url_title()
                 content = markdown if isinstance(markdown, str) else str(markdown)
+                if not content.strip():
+                    raise PageUnavailableError(
+                        "the page contained no readable text",
+                        detail="empty_response",
+                    )
+                if _is_soft_404(content):
+                    raise PageUnavailableError(
+                        "the page appears not to exist (soft 404)",
+                        hint="the server answered 200 but served a not-found page",
+                        detail="soft_404",
+                    )
+
+                final_url = str(
+                    nav_dict.get("final_url")
+                    or nav_dict.get("url")
+                    or current.get("url")
+                    or safe_url
+                )
+                title = str(
+                    nav_dict.get("title")
+                    or current.get("title")
+                    or _title_from_markdown(content)
+                    or final_url
+                )
+                content_type: Optional[str] = (
+                    str(nav_dict["content_type"])
+                    if isinstance(nav_dict.get("content_type"), str)
+                    else None
+                )
+                redirected = bool(nav_dict.get("redirected", final_url != safe_url))
+                redirect_chain = list(
+                    nav_dict.get("redirect_chain")
+                    or ([safe_url, final_url] if redirected else [safe_url])
+                )
+                warnings: List[str] = list(nav_dict.get("warnings") or [])
+                sec_flags = content_guard.scan(content)
+                if sec_flags:
+                    warnings.extend(f"security:{f}" for f in sec_flags)
+
                 metadata: Dict[str, Any] = {
+                    "requested_url": safe_url,
+                    "final_url": final_url,
+                    "redirected": redirected,
+                    "redirect_chain": redirect_chain,
                     "max_chars": max_chars,
                     "truncated": max_chars > 0 and len(content) >= max_chars,
                 }
-                provenance: Dict[str, Any] = {"security_flags": content_guard.scan(content),
-                                              "cache": {"status": "bypass"}}
+                if status_code is not None:
+                    metadata["status_code"] = status_code
+                if content_type is not None:
+                    metadata["content_type"] = content_type
+
+                provenance: Dict[str, Any] = {
+                    "security_flags": sec_flags,
+                    "cache": {"status": "bypass"},
+                    "requested_url": safe_url,
+                    "final_url": final_url,
+                    "redirected": redirected,
+                }
+                if status_code is not None:
+                    provenance["status_code"] = status_code
+                if content_type is not None:
+                    provenance["content_type"] = content_type
+
                 if static_artifact is not None:
                     # Keep the (possibly richer) static text when rendering did
                     # not actually improve it, but say what happened.
@@ -449,8 +531,13 @@ class WebSource(Source):
                         return static_artifact
                     provenance["fallback"] = {"reason": "js_shell", "result": "browser_text"}
                 return Artifact(
-                    title=current.get("title") or _title_from_markdown(content) or safe_url,
-                    url=current.get("url") or safe_url,
+                    title=title,
+                    url=final_url,
+                    requested_url=safe_url,
+                    final_url=final_url,
+                    status_code=status_code,
+                    content_type=content_type,
+                    warnings=warnings,
                     source="web",
                     kind="page",
                     content=content,
@@ -491,21 +578,55 @@ _PAGE_NS = "page.v1"
 def _static_artifact(url: str, markdown: str, *, cache: dict, flags=None,
                      truncated: bool = False, total_chars: int = 0,
                      max_chars: int = 0, method: str = "direct") -> Artifact:
-    metadata: Dict[str, Any] = {"truncated": truncated}
+    direct_meta = getattr(_DIRECT_META_LOCAL, "last", None) or {}
+    final_url = str(direct_meta.get("final_url") or url)
+    status_code = direct_meta.get("status_code") if isinstance(direct_meta.get("status_code"), int) else None
+    content_type = direct_meta.get("content_type") if isinstance(direct_meta.get("content_type"), str) else None
+    redirected = final_url != url
+    metadata: Dict[str, Any] = {
+        "requested_url": url,
+        "final_url": final_url,
+        "redirected": redirected,
+        "truncated": truncated,
+    }
+    if status_code is not None:
+        metadata["status_code"] = status_code
+    if content_type is not None:
+        metadata["content_type"] = content_type
     if max_chars:
         metadata["max_chars"] = max_chars
     if truncated and total_chars:
         metadata["total_chars"] = total_chars
+    sec_flags = list(flags or [])
+    warnings = [f"security:{f}" for f in sec_flags]
+    if truncated:
+        warnings.append("content_truncated")
+    prov: Dict[str, Any] = {
+        "security_flags": sec_flags,
+        "cache": cache,
+        "requested_url": url,
+        "final_url": final_url,
+        "redirected": redirected,
+    }
+    if status_code is not None:
+        prov["status_code"] = status_code
+    if content_type is not None:
+        prov["content_type"] = content_type
     return Artifact(
-        title=_title_from_markdown(markdown) or url,
-        url=url,
+        title=_title_from_markdown(markdown) or final_url,
+        url=final_url,
+        requested_url=url,
+        final_url=final_url,
+        status_code=status_code,
+        content_type=content_type,
+        warnings=warnings,
         source="web",
         kind="page",
         content=markdown,
         content_format="markdown",
         retrieval_method=method,
         metadata=metadata,
-        provenance={"security_flags": list(flags or []), "cache": cache},
+        provenance=prov,
     )
 
 

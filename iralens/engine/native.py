@@ -45,8 +45,18 @@ def classify_engine_error(text: str) -> errors.IraLensError:
     low = text.lower()
     msg = public_message(text)
 
-    if "file://" in low and "disabled" in low:
-        return errors.SecurityBlockedError("local file navigation is not allowed")
+    if "file://" in low and ("disabled" in low or "not allowed" in low):
+        return errors.SecurityBlockedError("local file navigation is not allowed", detail=msg)
+    if (
+        "ssrf" in low
+        or "private/reserved ip" in low
+        or "private ip" in low
+        or "loopback" in low
+        or "link-local" in low
+        or "cloud metadata" in low
+        or ("scheme" in low and "not allowed" in low)
+    ):
+        return errors.SecurityBlockedError("URL rejected by the browser security policy", detail=msg)
     if "timeout" in low or "timed out" in low:
         return errors.OperationTimeoutError("browser operation timed out", detail=msg)
     if "no previous page in history" in low or "no forward page in history" in low:
@@ -148,6 +158,11 @@ class BrowserEngine:
             ua = self.config.get("user_agent")
             if ua:
                 argv += ["--user-agent", str(ua)]
+            storage_dir = self.config.get("storage_dir")
+            if storage_dir:
+                argv += ["--storage-dir", str(storage_dir)]
+            if str(self.config.get("allow_private", "")).lower() in ("1", "true", "yes"):
+                argv.append("--allow-private")
         try:
             self._proc = subprocess.Popen(
                 argv,
@@ -334,6 +349,14 @@ class BrowserEngine:
                     return json.loads(stripped)
                 except json.JSONDecodeError:
                     pass
+            if tool == "browser_evaluate" and (
+                stripped in ("true", "false", "null")
+                or re.fullmatch(r"-?\d+(?:\.\d+)?", stripped) is not None
+            ):
+                try:
+                    return json.loads(stripped)
+                except json.JSONDecodeError:
+                    pass
             # JSON-lines payloads (e.g. links) → list of dicts
             lines = [ln for ln in stripped.splitlines() if ln.strip().startswith("{")]
             if lines and len(lines) == len([ln for ln in stripped.splitlines() if ln.strip()]):
@@ -374,8 +397,8 @@ class BrowserEngine:
 
     # ------------------------------------------------- high-level operations
     def navigate(self, url: str, wait_until: str = "load", timeout: int = _DEFAULT_TIMEOUT) -> Any:
-        args: Dict[str, Any] = {"url": url, "waitUntil": wait_until}
-        return self.call("browser_navigate", args, timeout=timeout)
+        args: Dict[str, Any] = {"url": url, "waitUntil": wait_until, "timeout": timeout}
+        return self.call("browser_navigate", args, timeout=timeout + 5)
 
     def snapshot(self, max_chars: int = 4000) -> Any:
         return self.call("browser_snapshot", {"max_chars": max_chars})

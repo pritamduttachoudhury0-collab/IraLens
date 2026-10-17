@@ -47,18 +47,18 @@ bundled, or mirrored**. Consequently:
 | Status | **Satisfied** — full MIT text now reproduced in `NOTICE`; per-file docstrings record the adaptation |
 | Compatibility with Apache-2.0 | **Compatible.** MIT is permissive and one-way compatible: MIT code may be incorporated into an Apache-2.0 work; the MIT attribution survives, no copyleft. Modification is expressly permitted. |
 
-### 3.2 Obscura (browser engine)
+### 3.2 Obscura (vendored internal browser engine)
 
 | Item | Finding |
 |---|---|
 | Project | https://github.com/h4ckf0r0day/obscura |
-| License | **Apache-2.0** — verified from the repo's LICENSE (standard 11,324-byte text) and `Cargo.toml` (`license = "Apache-2.0"`) |
-| How incorporated | **No source code copied.** The engine is consumed as a prebuilt binary (pinned v0.2.4) that `iralens install-engine` downloads **directly from the upstream project's official GitHub releases** at runtime |
-| Redistributed by IraLens | **No** — not vendored, not mirrored, gitignored |
-| Upstream NOTICE file | **None exists** (verified) → nothing to propagate under Apache-2.0 §4(d) |
-| Obligations on us | None for the binary (we don't distribute it). Attribution retained in NOTICE as good practice. |
-| Compatibility | Same license as IraLens — zero friction even if a downstream user redistributes the binary under Apache-2.0 terms |
-| Note for downstream | Anyone who *does* bundle the engine binary must honor its Apache-2.0 terms and the third-party notices published with the upstream distribution (the Rust binary statically links third-party crates; those obligations sit with the engine's own distribution). |
+| License | **Apache-2.0** — verified from the repo's `LICENSE` (preserved at `iralens/_internal/browser_engine/vendor/obscura/LICENSE`), `Cargo.toml` (`license = "Apache-2.0"`), and `deny.toml` |
+| Upstream revision | Commit `bd9529418b7fa975b50eabeac415cfaaa865a588` (2026-04-16; base tag `v0.2.4` at `1fccab2c1ecd0f7eadc16d7a520ba227f9e7f782`) |
+| How incorporated | Core crates (`obscura-ssrf`, `obscura-dom`, `obscura-net`, `obscura-js`, `obscura-browser`, `obscura-mcp`, `obscura-cli`, `obscura`) are vendored under `iralens/_internal/browser_engine/vendor/obscura` (4.1 MB uncompressed) and executed in-process/stdio via `iralens._internal.browser_engine` |
+| Redistributed by IraLens | **Yes** — shipped in sdist (`1.3 MB`) and wheel (`1.2 MB`) as an internal browser subsystem |
+| Modifications | Documented in `iralens/_internal/browser_engine/UPSTREAM_PROVENANCE.md` and marked in modified `Cargo.toml` files per Apache-2.0 §4(b); `bootstrap.js` and `indexed_db.js` are unmodified |
+| Third-party notices | Documented in `iralens/_internal/browser_engine/THIRD_PARTY_NOTICES.md` and `NOTICE` |
+| Compatibility | Same license as IraLens (**Apache-2.0**) — fully compatible |
 
 ## 4. Runtime dependencies (declared, pip-installed — not redistributed by us)
 
@@ -70,6 +70,8 @@ Verified via installed metadata; versions as resolved at audit time:
 | feedparser | 6.0.14 | BSD-2-Clause | No | |
 | pyyaml | 6.0.3 | MIT | No | |
 | yt-dlp | 2026.8.19 | **Unlicense** | No | Public-domain dedication; no attribution required, no restrictions |
+| pypdf | 6.10.2 | BSD-3-Clause | No | Local PDF text extraction |
+| mini-racer | 0.14.1 | **ISC** (with embedded V8 BSD-3-Clause) | No | Isolated V8 runtime (`libmini_racer`) executing the vendored Obscura `bootstrap.js` engine |
 
 ## 5. Transitive runtime dependencies (full closure, verified)
 

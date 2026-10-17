@@ -47,14 +47,40 @@ class Artifact:
     retrieved_at: str = field(default_factory=utc_now_iso)
     discovered_from: Optional[str] = None   # "search:<query>" or the parent page URL
     untrusted: bool = True
+    # Unified retrieval metadata (HTTP fetch, browser fetch, rendered extraction, source adapters)
+    requested_url: Optional[str] = None
+    final_url: Optional[str] = None
+    status_code: Optional[int] = None
+    content_type: Optional[str] = None
+    warnings: List[str] = field(default_factory=list)
+    errors: List[Dict[str, Any]] = field(default_factory=list)
     # Optional structured provenance (engines, ranks, dedup, security flags).
     # Emitted by to_dict() only when non-empty, so existing consumers see no change.
     provenance: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.requested_url is None:
+            req = self.metadata.get("requested_url")
+            self.requested_url = str(req) if req else self.url
+        if self.final_url is None:
+            fin = self.metadata.get("final_url")
+            self.final_url = str(fin) if fin else self.url
+        if self.status_code is None and isinstance(self.metadata.get("status_code"), int):
+            self.status_code = int(self.metadata["status_code"])
+        if self.content_type is None and isinstance(self.metadata.get("content_type"), str):
+            self.content_type = str(self.metadata["content_type"])
+
+    @property
+    def http_status(self) -> Optional[int]:
+        """Alias for HTTP status code when available."""
+        return self.status_code
 
     def to_dict(self) -> Dict[str, Any]:
         data: Dict[str, Any] = {
             "title": self.title,
             "url": self.url,
+            "requested_url": self.requested_url or self.url,
+            "final_url": self.final_url or self.url,
             "source": self.source,
             "kind": self.kind,
             "content": self.content,
@@ -64,6 +90,14 @@ class Artifact:
             "retrieved_at": self.retrieved_at,
             "untrusted": self.untrusted,
         }
+        if self.status_code is not None:
+            data["status_code"] = self.status_code
+        if self.content_type is not None:
+            data["content_type"] = self.content_type
+        if self.warnings:
+            data["warnings"] = list(self.warnings)
+        if self.errors:
+            data["errors"] = list(self.errors)
         if self.discovered_from:
             data["discovered_from"] = self.discovered_from
         if self.provenance:
