@@ -10,6 +10,7 @@ removed without the behaviour changing.
 import pytest
 
 from iralens.search.ranking import relevance
+from iralens.search.querytext import term_set
 from iralens.search.schema import SearchHit
 
 
@@ -22,12 +23,21 @@ def test_d1_specific_official_page_beats_hub():
     # Realistic sparse-snippet shape from the benchmark: the hub arrives at
     # rank 1 with a generic snippet; the specific official page at rank 2.
     q = "Assam flood relief eligibility apply"
-    hub = relevance(1, "Category: Assam flood relief schemes", "General information about relief", q,
+    hub_title, hub_snippet = "Category: Assam flood relief schemes", "General information about relief"
+    specific_title = "Apply for assistance"
+    specific_snippet = "Eligibility and application process to apply for Assam flood relief assistance"
+    hub = relevance(1, hub_title, hub_snippet, q,
                     url="https://en.wikipedia.org/wiki/Category:Assam_flood_relief", answer_type="procedure")
-    specific = relevance(4, "Apply for assistance",
-                         "Eligibility and application process to apply for Assam flood relief assistance", q,
+    specific = relevance(4, specific_title, specific_snippet, q,
                          url="https://finance.assam.gov.in/flood-relief", answer_type="procedure")
     assert specific > hub
+    # Recreate the v0.2.1 formula from its documented implementation. It
+    # ranks the lexical hub above the specific document for this fixture.
+    q_terms = term_set(q)
+    def legacy(rank, title, snippet):
+        overlap = len(q_terms & term_set(f"{title} {snippet}")) / len(q_terms)
+        return 0.5 / rank + 0.5 * overlap
+    assert legacy(1, hub_title, hub_snippet) > legacy(4, specific_title, specific_snippet)
 
 
 def test_d1_dictionary_page_demoted_for_factual_query():

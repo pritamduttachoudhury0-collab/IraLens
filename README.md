@@ -179,7 +179,8 @@ says so.
 
 | What | Result | Date | Evidence |
 |---|---|---|---|
-| Offline + local-fixture browser test suite (Python 3.11) | **442 passed, 14 skipped, 0 failed** (includes 13 real-browser V8 integration tests against local HTTP fixtures; skips are live-network tests without general Internet egress) | 2026-10-17 | `tests/test_browser_engine_integration.py` · [final verification](docs/audits/final-verification.md) |
+| Offline + local-fixture browser test suite (Python 3.11) | **442 passed, 14 skipped, 0 failed** (baseline before the evidence-driven search changes; final count is recorded in `docs/improvements/FINAL_REPORT.md`) | 2026-10-17 | `tests/test_browser_engine_integration.py` · [final verification](docs/audits/final-verification.md) |
+| Evidence-driven search improvement (D1–D8) | Ranking/intent, script handling, degradation, date provenance and security regressions covered offline; live quality P@5, 100-page real extraction and live engine resilience **NOT MEASURED** in restricted egress | 2026-10-17 | [final report](docs/improvements/FINAL_REPORT.md) · frozen 300-query holdout in `benchmark/holdout/` |
 | Lint (`ruff --select E9,F,B`) + types (`mypy`) | clean; 74 source files typed | 2026-10-17 | [final verification](docs/audits/final-verification.md) |
 | Full suite on an open network | **416 passed, 0 failed**; DuckDuckGo 15/15 and Bing 15/15 independent live queries | 2026-10-14 | [audit](docs/audits/paid-search-replacement-audit-2026-10-14.md) |
 | Search quality (100-query audit slice) | exact-site top-3 **24/25**; facts top-10 **25/25**; recent news **20/20** | 2026-10-14 | [audit](docs/audits/paid-search-replacement-audit-2026-10-14.md) |

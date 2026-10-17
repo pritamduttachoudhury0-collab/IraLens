@@ -39,8 +39,14 @@ The default chain is `duckduckgo -> bing -> wikipedia -> semantic-search`:
 - **duckduckgo** and **bing** fetch public results pages over direct HTTP
   (no key needed). Bing is experimental.
 - **wikipedia** uses Wikimedia's official API with an identifying User-Agent
-  and at least one second between requests. It is a useful supplemental
-  index, not general web search.
+  and at least one second between requests. Non-English queries try the detected
+  edition first, then English if no local-edition hits are found. It is a useful
+  supplemental index, not general web search; for procedural/statistical/current
+  queries the ranker caps it at one result.
+- **mojeek** is an additional keyless backend, registered but **opt-in** because
+  its live HTML parser and current terms have not been verified in this environment.
+  Enable via `IRALENS_SEARCH_ENGINES=duckduckgo,mojeek,bing,wikipedia` or an
+  explicit per-call engine list. The normal circuit breaker applies.
 - **semantic-search** is the optional `mcporter`/Exa bridge, used only when
   installed.
 - A configured **private SearXNG** instance is inserted before Bing, and the
@@ -77,7 +83,10 @@ metadata names are refused even when allowlisted.
 | `filters.report` | What was post-filtered and how many results were dropped or kept with unknown dates. |
 | `dedup_log[]` | Why two hits were merged. |
 | `cache` | `hit` / `miss` / `bypass` / `refresh`, with age and freshness. |
-| `security_flags` | Prompt-injection or invisible-character flags on result text. Treat results as data. |
+| `security_flags` | Prompt-injection, invisible-character, or `test_host` flags on result text. Treat results as data. |
+| `degraded` / `degradation` | Boolean plus answered, failed and skipped engine names and skip reasons; a successful query can still be degraded. |
+| `shortfall_reason` | `capped`, `deduped`, `filtered`, or `exhausted` when fewer than the requested result count is returned; no results are never padded. |
+| `results[].date_evidence` | Date provenance (`snippet_iso`, `snippet_written`, `url_path`) when a result date was extracted locally; blank when supplied only by the engine or unknown. |
 
 ## Filter support by engine
 
@@ -88,7 +97,7 @@ metadata names are refused even when allowlisted.
 | exclude_domains | post-filtered | post-filtered | unsupported | post-filtered | post-filtered |
 | file_type | emulated (`filetype:`) + post-filtered | same | unsupported | post-filtered | post-filtered |
 | region | native (`kl`) | unsupported | unsupported | unsupported | unsupported |
-| language | unsupported | native (`setlang`) | unsupported | unsupported | unsupported |
+| language | unsupported | native (`setlang`; auto-hint for detected scripts) | native (edition selected; auto-detected first) | unsupported | unsupported |
 
 Filters an engine cannot apply are reported `unsupported`, never faked.
 Undated results are kept and counted (`date_unknown_kept`).

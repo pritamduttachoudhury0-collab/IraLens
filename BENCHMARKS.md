@@ -82,6 +82,10 @@ The `--network` label is yours to set honestly (`home`, `datacenter`,
 4. **Layout-change canaries are unimplemented.** A scheduled fixture refresh
    (fetch each engine's results page periodically, diff the parser's hit
    count) must observe each source's terms and rate limits.
-5. **Ranking/dedup tuning** only after an approved live run shows quality
-   below 85% — never tune against the held-out split or edit frozen
-   labels/thresholds.
+5. **Ranking/dedup tuning** is not certified by the frozen acceptance benchmark.
+   An evidence-driven improvement branch now contains deterministic ranking,
+   intent, language and resilience changes; see `docs/improvements/FINAL_REPORT.md`.
+   The 300-query improvement holdout was frozen before those changes, but could
+   not be run against live engines in restricted egress. Its P@5 is **NOT
+   MEASURED**. Do not treat offline fixtures as a benchmark pass, and never tune
+   against frozen labels/thresholds.
