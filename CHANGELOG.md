@@ -6,7 +6,7 @@ All notable changes to this project are documented here, newest first.
 
 Remediation of the independent audit of 2026-10-17, in three phases, plus a
 fourth pass over the audit's own corpus. The complete error register
-(E-01…E-43, the cross-audit ID map and the phase plan) is in
+(E-01…E-44, the cross-audit ID map and the phase plan) is in
 `docs/audit/ERROR_REGISTER.md`.
 
 ### Phase A — Integrity & Truthfulness (E-01…E-13)
@@ -161,7 +161,7 @@ under the strictest reading. It is a projection, not a measurement.
 
 ### Measured
 
-- `pytest -q` — **637 passed, 14 skipped, 0 failed**.
+- `pytest -q` — **639 passed, 14 skipped, 0 failed**.
 - `ruff check --select E9,F,B .` — clean. `mypy iralens` — clean.
 - `python benchmarks/acceptance_17.py` — **17/17**.
 - `python benchmarks/run_scraping.py` — **12/12**.
@@ -198,6 +198,19 @@ under the strictest reading. It is a projection, not a measurement.
   environment: it can reach package indexes and GitHub only, so the
   provider-side captchas and throttles could not be exercised. The runner
   reports `not_run` with the reason.
+
+### Part 1e — one defect found by the release's own CI (E-44)
+
+- **E-44 — a test replaced a shared object's engine in place.** The source
+  registry keeps one instance per source, so the E-26 de-duplication test
+  installed a fake search engine on the shared `web-search` source and the
+  assignment outlived the test. A later *live* test then ran against the
+  fake, "found" `https://a.example/shared` and failed trying to open it.
+  The suite passed locally only because the live tests skip without a
+  network; GitHub's runners have one, so CI is where it showed
+  (1 failed, 650 passed). The test now uses `monkeypatch.setattr`, and an
+  autouse fixture snapshots the whole source registry around every test so
+  that no test can leave a shared object changed.
 
 ### Release engineering
 

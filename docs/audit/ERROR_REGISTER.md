@@ -226,6 +226,18 @@ it actually received. Four defects fell out.
 
 ---
 
+# Part 1e — One defect found by the release's own CI
+
+The 0.3.0 release was the first to run the suite on GitHub's runners, where
+the network is available and the *live* tests do not skip. They failed: the
+live test opened `https://a.example/shared`.
+
+| ID | Error | Impact |
+|----|-------|--------|
+| **E-44** | **A test replaced a shared object's engine in place and never put it back.** `iralens.sources` keeps one instance per source in a module-level list, so `get_source("web-search")` hands out the *same* object every time. The de-duplication test for E-26 installed a fake search engine on it with a plain assignment — `source._engine = engine` — and the assignment outlived the test. Every later test in the session then ran against that fake: the live test's search "found" `https://a.example/shared`, tried to open it, and failed with `page_unavailable`. The suite passed locally only because the live tests skip when there is no network; CI runs them, so CI is where the leak showed. | The test now swaps the engine with `monkeypatch.setattr`, which restores it when the test ends. On top of that, an autouse fixture in `tests/conftest.py` snapshots the whole source registry before every test and puts it back afterwards, so no test — this one or any later one — can leave a shared object changed. `tests/test_source_isolation.py` pins the behaviour: a test that mutates the registry cannot change what the next test sees. CI on this branch: **1 failed, 650 passed** before the fix, **650 passed, 13 skipped** after it. |
+
+---
+
 # Part 2 — Errors in the audit documents themselves
 
 These do not require code changes but are reported for completeness and because

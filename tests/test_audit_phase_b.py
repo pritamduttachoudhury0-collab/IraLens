@@ -425,7 +425,7 @@ def test_E26_urls_seen_in_an_earlier_query_are_excluded():
     assert second.filters["report"].get("excluded_seen") == len(seen)
 
 
-def test_E26_the_sweep_helper_deduplicates_across_queries():
+def test_E26_the_sweep_helper_deduplicates_across_queries(monkeypatch):
     from iralens import IraLens
     from iralens.search.engine import SearchEngine
     from iralens.settings import Settings
@@ -442,8 +442,11 @@ def test_E26_the_sweep_helper_deduplicates_across_queries():
                         retry_base_delay_seconds=0.0, retry_max_delay_seconds=0.0)
     engine = SearchEngine(settings, backends={"fake": _Backend()})
     hil = IraLens()
-    monkey = get_source("web-search")
-    monkey._engine = engine
+    # The registry hands out module-level singletons: swapping the engine on
+    # one *in place* leaks the fake into every later test in the session --
+    # which is how a live test ended up opening https://a.example/shared.
+    # monkeypatch restores it when the test ends.
+    monkeypatch.setattr(get_source("web-search"), "_engine", engine)
     artifacts = hil.sweep(["alpha", "beta"], limit=5)
     urls = [a.url for a in artifacts]
     assert len(urls) == len(set(urls)), urls
