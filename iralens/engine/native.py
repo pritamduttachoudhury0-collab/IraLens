@@ -21,7 +21,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .. import errors
+from ..proc import utf8_env
 from ..security import public_message
+from .._internal.browser_engine.mcp_server import PROXY_ENV_VAR
 from .locate import find_engine
 
 _PROTOCOL_VERSION = "2024-11-05"
@@ -180,12 +182,15 @@ class BrowserEngine:
                                                 detail=previous.detail)
         binary = self.binary_path()
         argv = [str(binary), "mcp"]
+        # Secrets and per-child settings travel in the environment, never on
+        # argv: the command line of a running process is world-readable.
+        child_extra: Dict[str, str] = {}
         if self.config is not None:
             if str(self.config.get("stealth", "")).lower() in ("1", "true", "yes"):
                 argv.append("--stealth")
             proxy = self.config.get("proxy")
             if proxy:
-                argv += ["--proxy", str(proxy)]
+                child_extra[PROXY_ENV_VAR] = str(proxy)
             ua = self.config.get("user_agent")
             if ua:
                 argv += ["--user-agent", str(ua)]
@@ -202,6 +207,7 @@ class BrowserEngine:
                 stderr=subprocess.PIPE,
                 text=True,
                 bufsize=1,
+                env=utf8_env(extra=child_extra),
             )
         except OSError as exc:
             raise errors.EngineUnavailableError(

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -27,6 +28,13 @@ from .runtime import (
     UPSTREAM_REVISION,
     ObscuraNativeEngine,
 )
+
+#: Channel used to hand the proxy to a spawned engine without putting it on
+#: the command line. `/proc/<pid>/cmdline` is world-readable, so a proxy URL
+#: carrying credentials (`http://user:pass@host`) would be readable by every
+#: local account. The environment is owner-readable only, which is weaker
+#: exposure but still not zero, so keep it out of logs either way.
+PROXY_ENV_VAR = "IRALENS_ENGINE_PROXY"
 
 ENGINE_SERVER_NAME = "iralens-browser-engine"
 ENGINE_SERVER_VERSION = f"0.2.4+rev.{UPSTREAM_REVISION[:12]}"
@@ -523,7 +531,7 @@ def run_mcp_stdio_loop(engine: ObscuraNativeEngine,
     return 0
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="iralens-browser-engine",
         description="IraLens integrated native browser engine (V8 + HTML5 DOM + MCP server).",
@@ -567,7 +575,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_scrape.add_argument("--selector", required=True, help="CSS selector to extract.")
     p_scrape.add_argument("--timeout", type=float, default=30.0, help="Navigation timeout in seconds.")
     p_scrape.add_argument("--allow-private", action="store_true", help="Allow loopback/private IPs.")
+    return parser
 
+
+def main(argv: Optional[List[str]] = None) -> int:
+    parser = build_parser()
     args = parser.parse_args(argv)
     if args.version:
         print(
@@ -584,6 +596,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(_stealth_notice(), file=sys.stderr)
 
     if args.subcommand in (None, "mcp"):
+        # Explicit --proxy wins; env is the safe channel used by the parent.
+        if getattr(args, "proxy", None) is None:
+            env_proxy = os.environ.get(PROXY_ENV_VAR)
+            if env_proxy:
+                args.proxy = env_proxy
         raw_storage = getattr(args, "storage_dir", None)
         storage_dir = Path(str(raw_storage)).expanduser() if raw_storage else None
         engine = ObscuraNativeEngine(

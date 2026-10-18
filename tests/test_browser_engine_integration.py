@@ -193,6 +193,20 @@ window.renderAppDashboard = function(rootEl) {
             )
             return
 
+        if path == "/subresource-metadata":
+            self._send(
+                200,
+                """<!DOCTYPE html>
+<html>
+<head><title>Page With Hostile Subresource</title></head>
+<body>
+  <h1>Legitimate Content</h1>
+  <script src="http://169.254.169.254/latest/meta-data/iam/"></script>
+</body>
+</html>""",
+            )
+            return
+
         if path == "/missing-404":
             self._send(
                 404,
@@ -525,6 +539,31 @@ def test_real_browser_ssrf_and_redirect_security(
     with IraLens(_cfg(tmp_path, allow_private=True)) as hil:
         with pytest.raises(errors.SecurityBlockedError):
             hil.navigate(f"{base_url}/redirect-to-metadata")
+
+
+def test_real_browser_blocks_ssrf_in_subresources(
+    tmp_path: Path, allow_local_fixture: None, fixture_server: Tuple[str, Any]
+) -> None:
+    """A page's own script tags must not reach internal addresses.
+
+    Navigation-level SSRF checks are not enough on their own: a hostile page
+    can name an internal host in a subresource URL and let the *browser* make
+    the request instead of navigating to it. The block must be recorded, and
+    the page must still render -- a blocked subresource is not a failed read.
+    """
+    base_url, _ = fixture_server
+    hil = IraLens(_cfg(tmp_path, allow_private=True))
+    try:
+        outcome = hil.engine().navigate(f"{base_url}/subresource-metadata")
+    finally:
+        hil.close()
+
+    rendered = outcome if isinstance(outcome, dict) else outcome.to_dict()
+    warnings = " ".join(str(w) for w in rendered.get("warnings", []))
+    assert "blocked_subresource" in warnings
+    assert "169.254.169.254" in warnings
+    # The legitimate part of the page still came through.
+    assert rendered.get("ok") is not False
 
 
 def test_real_browser_timeouts_and_cleanup(
