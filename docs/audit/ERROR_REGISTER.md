@@ -173,7 +173,7 @@ they determine how much of each document can be trusted.
 |---|---|---|---|
 | A — Integrity & Truthfulness | E-01 … E-13 | **complete** | `ba8a658` |
 | B — Completeness & Scale | E-14 … E-27 | **complete** | `14ad8be` |
-| C — Extraction, Resilience, Safety & Test-Readiness | E-28 … E-35 | **complete** | Phase C commit |
+| C — Extraction, Resilience, Safety & Test-Readiness | E-28 … E-35 | **complete** | `f7f1059` |
 
 **Every entry in this register is implemented and regression-tested.** One
 test per defect lives in `tests/test_audit_phase_a.py` (E-01…E-13),
