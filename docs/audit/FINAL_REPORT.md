@@ -371,6 +371,20 @@ shadows the request that precedes it. Every templated query in the corpus
 now gets a shape (0 of 2,519 without one), and the number of questions that
 ask for a kind of source rises from 1,159 to **1,250**.
 
+**What the ranking change does to the audit's own results.** The captured
+3,000-query run is the only result set that exists, so it is the one place
+where the order the *old* code produced can be compared with the order the
+*current* code produces on exactly the same pages
+(`benchmarks/measure_shape_ranking.py --top1`). The top result differs for
+**59 of the 2,743** queries that came back with results. The coverage
+verdict calls 6 of them better and 11 worse — and every one of those 11 is
+a case where the old top result was a portal *homepage* ("Home | National
+Portal of India") and the new one is a specific page about the subject
+("Software patents under TRIPs Agreement"). The verdict rewards a page that
+repeats the question's words, not one that answers it: that is a blind spot
+in the coverage metric itself, and it is why no net improvement is claimed
+from this number.
+
 **Two smaller defects came out of the same pass.** The backward scan for a
 request word fell through when it found none, inventing a request shape out
 of whatever trailed ("… arXiv 1706.03762" became the shape "1706.03762");

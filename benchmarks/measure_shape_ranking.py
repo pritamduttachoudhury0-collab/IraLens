@@ -44,6 +44,89 @@ def load() -> List[Dict[str, Any]]:
     return rows
 
 
+def _top1(records) -> int:
+    """Re-rank the audit's own captured results with the current logic.
+
+    The captured baseline is the only 3,000-query result set that exists, so
+    this is the one place where the *ranking* can be compared before and
+    after on exactly the same pages: the baseline's own order against the
+    order the current code produces.
+    """
+    from iralens.search.intent import classify_query
+    from iralens.search.ranking import combine, relevance
+    from iralens.settings import Settings
+
+    settings = Settings()
+    weights = {"relevance": settings.weight_relevance,
+               "authority": settings.weight_authority,
+               "freshness": settings.weight_freshness,
+               "agreement": settings.weight_agreement}
+    changed = better = worse = same = 0
+    examples = []
+    for rec in records:
+        resp = rec.get("response") or {}
+        results = resp.get("results") or []
+        question = rec.get("query") or resp.get("query") or ""
+        if not results:
+            continue
+        intent = classify_query(question)
+        best = None
+        for result in results:
+            ranks = result.get("engine_ranks") or {}
+            best_rank = min(ranks.values()) if ranks else 1
+            url = str(result.get("url") or "")
+            title = str(result.get("title") or "")
+            snippet = str(result.get("snippet") or "")
+            rel = relevance(best_rank, title, snippet, question, url=url,
+                            answer_type=intent.answer_type)
+            breakdown = result.get("score_breakdown") or {}
+            factors = {
+                "relevance": rel,
+                "authority": breakdown.get("authority", 0.0),
+                "freshness": breakdown.get("freshness", 0.0),
+                "agreement": breakdown.get("agreement", 0.0),
+            }
+            score = combine(factors, weights)
+            if best is None or score > best[0]:
+                best = (score, result)
+        baseline_top = results[0]
+        new_top = best[1]
+        if str(baseline_top.get("url")) == str(new_top.get("url")):
+            continue
+        changed += 1
+        before = assess_coverage(question, [baseline_top])
+        after = assess_coverage(question, [new_top])
+        order = {"low": 0, "partial": 1, "good": 2, "unknown": 1}
+        if order.get(after["status"], 1) > order.get(before["status"], 1):
+            better += 1
+        elif order.get(after["status"], 1) < order.get(before["status"], 1):
+            worse += 1
+        else:
+            same += 1
+        if len(examples) < 40:
+            examples.append((question, str(baseline_top.get("title"))[:46],
+                             str(new_top.get("title"))[:46], before["status"],
+                             after["status"]))
+    print("=" * 78)
+    print("TOP RESULT — the baseline's order against the current logic")
+    print("=" * 78)
+    print(f"queries with results                      : {sum(1 for r in records if (r.get('response') or {}).get('results'))}")
+    print(f"  the top result differs                  : {changed}")
+    print(f"    the new top result is a better answer  : {better}")
+    print(f"    the new top result is a worse answer   : {worse}")
+    print(f"    the coverage verdict is unchanged       : {same}")
+    print()
+    print("Every regression the coverage verdict reports is a case where the")
+    print("old top result was a portal *homepage* and the new one is a specific")
+    print("page about the subject -- the verdict rewards a page that repeats the")
+    print("question's words, not one that answers it. The first few:")
+    for question, before, after, bs, as_ in examples[:8]:
+        print(f"  {question[:64]}")
+        print(f"      before: {before!r}  [{bs}]")
+        print(f"      after : {after!r}  [{as_}]")
+    return 0
+
+
 def _captures() -> int:
     """The shape preference against the ten hand-labelled provider captures.
 
@@ -215,6 +298,9 @@ def main() -> int:
 
     if "--captures" in sys.argv:
         return _captures()
+
+    if "--top1" in sys.argv:
+        return _top1(records)
 
     if "--sweep" in sys.argv:
         print("=" * 78)

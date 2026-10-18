@@ -172,6 +172,13 @@ under the strictest reading. It is a projection, not a measurement.
   **2,622 / 2,950 = 88.88%** of the corpus topics exactly.
 - `python benchmarks/derive_request_markers.py` — the request lexicon, learned
   on a training half of the corpus, scores **89.15%** on the held-out half.
+- `python benchmarks/measure_shape_ranking.py --top1` — the audit's own
+  captured results, ordered by the old code and by the current code: the
+  top result differs for **59 of 2,743** queries. The coverage verdict
+  calls 6 of them better and 11 worse, and every one of those 11 replaces
+  a portal homepage with a specific page about the subject — the verdict
+  rewards a page that repeats the question's words, not one that answers
+  it, so no net improvement is claimed from that number.
 - `python benchmarks/measure_url_reads.py` — the corpus's 130 URL-anchored
   queries, asked again: **9 of the 9** that this machine can reach go from
   coverage `low` to `good`; the other 121 are blocked by the sandbox's
