@@ -1,0 +1,55 @@
+name: Release assets
+
+# Builds the distribution and attaches it to the GitHub release, so every
+# release has installable files: a wheel, an sdist and their checksums.
+#
+# The assets are uploaded from the runner rather than from a workstation:
+# GitHub's asset host is not reachable from every machine, and the runner
+# is where the build belongs anyway -- the artifacts are built from the
+# tagged commit, not from whatever happens to be checked out.
+#
+# PyPI publication is a separate workflow (publish.yml) because it needs a
+# trusted publisher on the PyPI account that owns the project.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write          # needed to attach files to the release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Build the distribution
+        run: |
+          python -m build
+
+      - name: Check the artifacts
+        run: |
+          twine check dist/*
+          cd dist && sha256sum *.tar.gz *.whl > SHA256SUMS && cd ..
+
+      - name: Attach the artifacts to the release
+        if: ${{ github.event_name == 'release' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            dist/iralens-*.tar.gz dist/iralens-*.whl dist/SHA256SUMS \
+            --clobber
