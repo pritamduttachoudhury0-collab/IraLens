@@ -53,6 +53,21 @@ EXTERNAL_KINDS = frozenset({
     "timeout", "transient", "network", "circuit_open", "dns", "tls",
 })
 
+#: Detail markers that mean "the provider refused us" — external.
+_EXTERNAL_DETAIL_MARKERS = (
+    "rate_limited", "rate limit", "captcha", "blocked", "too many requests",
+    "fetch failed", "urlopen error", "tls", "ssl", "connection", "dns",
+    "unreachable", "reset", "timed out", "timeout", "certificate", "proxy",
+    "circuit", "cooldown",
+)
+
+#: Detail markers that mean "this component is not installed here" — a
+#: configuration defect, and one this project can fix.
+_CONFIGURATION_DETAIL_MARKERS = (
+    "not installed", "not configured", "not found on path", "no such command",
+    "not available", "missing",
+)
+
 FAMILIES = ("AV", "DT", "SN", "SITE", "RL")
 
 
@@ -120,6 +135,29 @@ class Score:
         }
 
 
+def _classify_availability(kind: str, detail: str) -> str:
+    """Whether an engine failure is the provider's doing or ours.
+
+    An engine that could not be reached, that was rate-limited, that hit a
+    captcha, or that was skipped because its circuit was open after earlier
+    provider failures is *external*. An engine that is not installed on this
+    machine is a *configuration* defect — the project can fix that by not
+    putting it in the default chain.
+    """
+    if kind in EXTERNAL_KINDS:
+        return "external"
+    low = str(detail or "").lower()
+    if any(marker in low for marker in _CONFIGURATION_DETAIL_MARKERS):
+        return "code"
+    if any(marker in low for marker in _EXTERNAL_DETAIL_MARKERS):
+        return "external"
+    if kind == "unavailable":
+        # The engine could not serve. Without a configuration marker in the
+        # detail this is the provider being unreachable.
+        return "external"
+    return "code"
+
+
 def _host(url: str) -> str:
     text = str(url or "").lower()
     if "://" in text:
@@ -161,9 +199,7 @@ def score_record(record: Dict[str, Any]) -> Tuple[List[Finding], Dict[str, int]]
             continue
         kind = str(outcome.get("kind") or "")
         detail = str(outcome.get("detail") or "")
-        cause = "external" if kind in EXTERNAL_KINDS else "code"
-        if status == "skipped" and "circuit" in detail.lower():
-            cause = "external"
+        cause = _classify_availability(kind, detail)
         findings.append(Finding("AV", cause, f"{outcome.get('engine')}: {kind or status}"))
 
     # S-DT: a date reported as a publication date that is not one.

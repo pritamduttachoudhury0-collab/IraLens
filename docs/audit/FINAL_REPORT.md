@@ -138,7 +138,7 @@ verification environment, on 2026-10-18.
 | the audit's 17 acceptance checks, inverted | `python benchmarks/acceptance_17.py` | **17/17** |
 | the scraping test | `python benchmarks/run_scraping.py` | **12/12** |
 | the frozen 3,000-query corpus through the engine | `python benchmarks/run_audit3000.py --offline-pipeline` | **12,186/12,186 clean** |
-| the audit's own captured 3,000-row run, re-scored | `python benchmarks/run_audit3000.py --replay <baseline>` | 28,521 checks: **9,458 code-caused**, **4,935 external**, 14,128 clean |
+| the audit's own captured 3,000-row run, re-scored | `python benchmarks/run_audit3000.py --replay <baseline>` | 28,521 checks: **9,170 code-caused**, **5,223 external**, 14,128 clean |
 | the live 3,000-query run | `python benchmarks/run_audit3000.py --live` | **not_run** — see §4 |
 
 The 17 checks and the 12 scraping probes are the *inverse* of the audit's
@@ -159,7 +159,7 @@ are unreachable, so:
 - **The provider-side failures are not IraLens defects and were never
   fixable in code.** The audit's own root-cause text says so: the
   DuckDuckGo captcha is "provider-side", the S-AV root cause is "Unknown —
-  further investigation required", and the 4,935 external failures in the
+  further investigation required", and the 5,223 external failures in the
   baseline replay are captchas and throttles. The actionable residue of
   S-AV — the unconfigured `semantic-search` engine in the default chain — is
   E-23, and it is fixed.

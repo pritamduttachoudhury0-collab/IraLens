@@ -232,7 +232,7 @@ verified.
   clean** over the frozen 3,000-query corpus.
 - `python benchmarks/run_audit3000.py --replay <audit baseline>` — the audit's
   own captured 3,000-row run, re-scored with the same predicates:
-  **9,458 code-caused failures and 4,935 external failures** out of 28,521
+  **9,170 code-caused failures and 5,223 external failures** out of 28,521
   checks. Every code-caused family it names is fixed in the code above; the
   external ones (provider captchas and throttles) are outside this project's
   control and are reported as such.
