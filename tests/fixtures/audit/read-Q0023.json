@@ -1,0 +1,45 @@
+{
+  "probe": "read-Q0023",
+  "started_at": "2026-10-17T13:14:11.046938+00:00",
+  "query_id": "Q0023",
+  "url": "https://data.worldbank.org/indicator/SP.POP.TOTL",
+  "operation": "read(auto)",
+  "max_chars": 12000,
+  "status": "returned",
+  "output": {
+    "title": "Population, total | Data",
+    "url": "https://data.worldbank.org/indicator/SP.POP.TOTL",
+    "requested_url": "https://data.worldbank.org/indicator/SP.POP.TOTL",
+    "final_url": "https://data.worldbank.org/indicator/SP.POP.TOTL",
+    "source": "web",
+    "kind": "page",
+    "content": "Title: Population, total | Data\n\n[Data](/)\n[HOME](/)\n[ECONOMIES](https://data360.worldbank.org/en/economies)\n[THEMES](#)\n[DATA & RESOURCES](https://data360.worldbank.org/en/search)\n[ABOUT](https://data360.worldbank.org/en/about)\n[Population, total](/indicator/SP.POP.TOTL)\nWorld Population Prospects, United Nations ( UN ), uri: [population.un.org/wpp](https://population.un.org/wpp/), publisher: UN Population Division; Statistical databases and publications from national statistical offices, National Statistical Offices ( NSOs ), uri: [unstats.un.org/home/nso_sites](https://unstats.un.org/home/nso_sites/), publisher: National Statistical Offices; Eurostat: Demographic Statistics, Eurostat ( ESTAT ), uri: [ec.europa.eu/eurostat/data/database?node_code=earn_ses_monthly](https://ec.europa.eu/eurostat/data/database?node_code=earn_ses_monthly), publisher: Eurostat; Population and Vital Statistics Report ( various years ), United Nations ( UN ), uri: [unstats.un.org](https://unstats.un.org), publisher: UN Statistics Division\n*License * : CC BY-4.0\nLabel\n## All Countries and Economies\nCountry\nMost Recent Year\nMost Recent Value\n(Thousands)\n[Help us improve this site](http://goo.gl/forms/Hw4zfOQufm)\n- [IBRD](http://www.worldbank.org/en/about/what-we-do/brief/ibrd)\n- [IDA](http://www.worldbank.org/ida)\n- [IFC](http://www.ifc.org)\n- [MIGA](http://www.miga.org)\n- [ICSID](http://icsid.worldbank.org)\n- [Legal](http://www.worldbank.org/en/about/legal)\n- [Privacy Notice](https://www.worldbank.org/en/about/legal/privacy-notice)\n- [Access to Information](http://www.worldbank.org/en/access-to-information)\n- [Jobs](http://www.worldbank.org/jobs)\n- [Contact](http://www.worldbank.org/contacts)\n© 2026 The World Bank Group, All Rights Reserved.\n[REPORT FRAUD OR CORRUPTION](http://www.worldbank.org/fraudandcorruption?clear)\nThis site uses cookies to optimize functionality and give you the best possible experience. If you continue to navigate this website beyond this page, cookies will be placed on your browser. To learn more about cookies, [click here.](https://www.worldbank.org/en/about/legal/privacy-notice)",
+    "content_format": "markdown",
+    "metadata": {
+      "requested_url": "https://data.worldbank.org/indicator/SP.POP.TOTL",
+      "final_url": "https://data.worldbank.org/indicator/SP.POP.TOTL",
+      "redirected": false,
+      "truncated": false,
+      "status_code": 200,
+      "content_type": "text/html; charset=utf-8",
+      "max_chars": 12000
+    },
+    "retrieval_method": "direct",
+    "retrieved_at": "2026-10-17T13:14:11Z",
+    "untrusted": true,
+    "status_code": 200,
+    "content_type": "text/html; charset=utf-8",
+    "provenance": {
+      "security_flags": [],
+      "cache": {
+        "status": "miss"
+      },
+      "requested_url": "https://data.worldbank.org/indicator/SP.POP.TOTL",
+      "final_url": "https://data.worldbank.org/indicator/SP.POP.TOTL",
+      "redirected": false,
+      "status_code": 200,
+      "content_type": "text/html; charset=utf-8"
+    }
+  },
+  "latency_seconds": 0.1766341870000474
+}

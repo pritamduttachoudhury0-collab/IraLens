@@ -1,0 +1,383 @@
+{
+  "AV": {
+    "title": "Configured engine chain is degraded or cannot answer",
+    "category": "availability / external-provider / configuration",
+    "severity": "P2",
+    "confidence": "Confirmed observation; underlying provider cause unknown",
+    "root_status": "Mixed: circuit decision confirmed; external trigger unknown",
+    "location": [
+      [
+        "iralens/search/fallback.py",
+        69,
+        125
+      ],
+      [
+        "iralens/search/engines/duckduckgo.py",
+        126,
+        162
+      ],
+      [
+        "iralens/search/engines/exa.py",
+        51,
+        59
+      ]
+    ],
+    "root": "Circuit-open outcomes are intentional consequences of persistent health state, not fresh network executions. CAPTCHA and other backend failures are preserved verbatim; their external trigger is unknown. Missing mcporter is a configuration/dependency absence, not a remote service outage. These observations alone do not establish an IraLens code defect. External provider trigger: Unknown — further investigation required. Bing rate_limited is the backend HTML classifier label, not proof of an HTTP429 status; block HTML and response headers were not retained for those failures. See S-BLOCK for a separate controlled classifier defect, not an inferred explanation for every live event.",
+    "expected": "Return relevant hits from permitted reachable sources or an explicit degraded/failed result; do not imply all configured capabilities were exercised.",
+    "impact": "Search loses configured redundancy, may fall back to encyclopedia-only or no sources. P2 reflects degraded user capability in this environment, not a universal provider defect.",
+    "fix": "Investigate provider responses on an authorized network. Keep CAPTCHA/429 cooldowns; do not bypass restrictions. Exclude unconfigured optional semantic-search from the effective default chain and expose per-engine readiness. Add an operator-approved independent search backend only if available without paid activation.",
+    "test": "Fixture CAPTCHA and absent mcporter must yield distinct access-restricted and not-configured outcomes; no immediate block retries. Re-run affected IDs on an approved network and measure relevant-source availability, not just nonempty counts."
+  },
+  "SN": {
+    "title": "Wikipedia hits omit all snippets because the request excludes them",
+    "category": "implementation / missing metadata",
+    "severity": "P2",
+    "confidence": "Confirmed",
+    "root_status": "Confirmed",
+    "location": [
+      [
+        "iralens/search/engines/wikipedia.py",
+        46,
+        57
+      ],
+      [
+        "iralens/search/engines/wikipedia.py",
+        105,
+        108
+      ]
+    ],
+    "root": "WikipediaBackend.search sends srprop=timestamp only, so the API omits snippet. parse_wikipedia_payload substitutes an empty string. The independent timestamp|snippet probe yields snippets for the same question; no baseline implementation was changed.",
+    "expected": "Request and return the API's available context snippet, preserving source attribution and marking genuinely absent text.",
+    "impact": "Users receive titles with no answer context; relevance ranking and research evidence receive title-only signals. Empty strings are not proof Wikipedia lacks article content.",
+    "fix": "Request snippet|timestamp and retain sanitized snippets. Add a transport-parameter regression test, not merely a parser test that already supplies a snippet.",
+    "test": "Assert srprop includes snippet. Replay evidence/wiki-timestamp-raw.json and wiki-snippet-raw.json; a source with a snippet must produce nonempty readable snippet without searchmatch markup."
+  },
+  "DT": {
+    "title": "Wikipedia revision time is mislabeled as publication date",
+    "category": "implementation / freshness / provenance",
+    "severity": "P2",
+    "confidence": "Confirmed",
+    "root_status": "Confirmed",
+    "location": [
+      [
+        "iralens/search/engines/wikipedia.py",
+        50,
+        57
+      ],
+      [
+        "iralens/search/engine.py",
+        314,
+        345
+      ]
+    ],
+    "root": "The MediaWiki search timestamp is assigned directly to published_at; _rank then marks it date_status=known and uses it for freshness. It is a page revision timestamp, not evidence of first publication or a dated event. Raw date evidence is not retained for these hits.",
+    "expected": "Represent modified/revision time separately from publication time and specify its type/source. Unknown publication time must remain unknown.",
+    "impact": "An old article edited recently can look newly published; date filtering and freshness scores can be misleading. No factual staleness rate is inferred from this defect alone.",
+    "fix": "Extend hit/result date provenance with modified_at and date_kind; do not populate published_at from revision timestamp. Decide and document which date a filter or rank uses.",
+    "test": "Fixture a historical page with today's revision time; publication stays unknown, modification is explicit, and publication-date filters cannot treat it as a newly published article."
+  },
+  "RL": {
+    "title": "Returned results miss the specific query intent",
+    "category": "relevance / retrieval / unresolved provider behavior",
+    "severity": "P1",
+    "confidence": "Confirmed unrelated filler; full page answer coverage unresolved",
+    "root_status": "Unknown",
+    "location": [
+      [
+        "iralens/search/engines/bing.py",
+        139,
+        157
+      ],
+      [
+        "iralens/search/ranking.py",
+        75,
+        107
+      ],
+      [
+        "iralens/search/engine.py",
+        197,
+        205
+      ]
+    ],
+    "root": "Unknown — further investigation required. For Q0003, both plus-encoded and percent-space direct Bing HTML retained the full query in title and input, but returned general Python hits. This rules out simply claiming that IraLens sent only the first word. Provider behavior, network mediation, or another retrieval issue remains unresolved. IraLens accepts nonempty parsed hits without a minimum answer-coverage gate; that handling weakness is established, but does not establish the upstream cause.",
+    "expected": "Return sources addressing the distinguishing terms, exact page, or requested source type; if no such sources are found, report low coverage rather than presenting unrelated filler as usable evidence.",
+    "impact": "Core search can be technically successful but unusable for the requested factual, software, current-event, or navigational task. P1 is justified by the repeated unrelated top results in the reviewed slice, not by a claimed 3000-query accuracy score.",
+    "fix": "First reproduce source HTML with exact query and compare on another approved network. Keep the full query; do not silently simplify it. Add query-intent coverage diagnostics and distinguish retrieval completion from useful evidence. Preserve relevant partial leads with warnings rather than discarding them blindly.",
+    "test": "Replay captured SERP fixtures, including Q0003's general Python results; require low-specificity warning and prevent research coverage from reaching success solely on these hits. Freeze independent relevant URLs for reviewed queries and measure relevant-source recall against human labels, not Arena agreement alone."
+  },
+  "CACHE": {
+    "title": "Cached page inherits the preceding page's URL and HTTP metadata",
+    "category": "implementation / data-integrity / provenance",
+    "severity": "P1",
+    "confidence": "Confirmed",
+    "root_status": "Confirmed",
+    "location": [
+      [
+        "iralens/sources/web.py",
+        407,
+        432
+      ],
+      [
+        "iralens/sources/web.py",
+        578,
+        614
+      ]
+    ],
+    "root": "The page cache stores only markdown and method. Cache hits do not restore or clear _DIRECT_META_LOCAL.last. _static_artifact reads that thread-local metadata left by the previous uncached URL and assigns its final_url, redirected, status and content_type to the cached text.",
+    "expected": "A cached React page must retain React's requested/final URL and its own original HTTP metadata, independently of preceding reads and process/thread history.",
+    "impact": "Citations and session discovery attach one source's text to another source. This is a serious, directly reproduced data-integrity defect; no exploit or credential compromise is claimed.",
+    "fix": "Cache the complete sanitized retrieval metadata with the body and pass it explicitly to _static_artifact. Remove hidden thread-local dependence on cache hits; migrate/invalidate old page.v1 entries safely.",
+    "test": "Cold A=React, cold B=Brahmaputra, cached A must retain A final URL and no false redirect. Repeat with B of a different MIME/status and with cache loaded in a fresh process. All metadata and provenance must belong to A."
+  },
+  "MAIN": {
+    "title": "Wikipedia navigation consumes the read budget before the article lead",
+    "category": "implementation / extraction completeness",
+    "severity": "P2",
+    "confidence": "Confirmed",
+    "root_status": "Strongly supported",
+    "location": [
+      [
+        "iralens/extract.py",
+        39,
+        45
+      ],
+      [
+        "iralens/extract.py",
+        265,
+        279
+      ],
+      [
+        "iralens/sources/web.py",
+        425,
+        432
+      ]
+    ],
+    "root": "The static extractor removes a tag blacklist, not main article content. The actual page includes a 111-language link list outside the filtered nav tags. Budget truncation happens after the noise is retained. In the observed 12000-character read, the article lead was absent.",
+    "expected": "Prioritize the main article lead and body before multilingual navigation, then indicate any truncation.",
+    "impact": "A successful read can spend essentially its entire budget on navigation and infobox prefix, leaving research without the article's explanatory content.",
+    "fix": "Add tested main-content selection for MediaWiki (.mw-parser-output) with robust generic article/main fallback; strip language selectors and ancillary edit controls before applying the budget.",
+    "test": "Preserve the captured page as a fixture; with max_chars=12000 the Brahmaputra lead must be present and language-navigation text must not dominate. Test other languages and pages without article/main wrappers."
+  },
+  "JS": {
+    "title": "Long JavaScript data shell is accepted as a complete page",
+    "category": "implementation / extraction / browser fallback",
+    "severity": "P2",
+    "confidence": "Confirmed incomplete extraction; total browser cause unknown",
+    "root_status": "Partly established",
+    "location": [
+      [
+        "iralens/sources/web.py",
+        104,
+        119
+      ],
+      [
+        "iralens/sources/web.py",
+        439,
+        451
+      ]
+    ],
+    "root": "looks_like_js_shell only detects explicit enable-JavaScript markers or fewer than 150 visible characters. The World Bank page has 2119 characters of labels, attribution and footer, but no country-value rows, so auto returns it without rendering. A separate browser read also lacked established data rows; root cause of the browser's dynamic-data limitation is Unknown — further investigation required.",
+    "expected": "Detect empty data tables despite a long surrounding shell; mark extraction coverage incomplete and attempt permitted rendering or a linked public data endpoint without claiming table extraction succeeded.",
+    "impact": "A data-page read returns labels such as Most Recent Value but not the values. Consumers cannot safely infer data coverage from a 200 status or truncated=false.",
+    "fix": "Introduce explicit extraction-coverage signals for empty table/chart placeholders; retain partial provenance and attempt browser/data-source discovery. Investigate browser network/resource readiness separately; do not assume rendering alone solves it.",
+    "test": "Frozen World Bank page must be flagged incomplete when its value table is empty. A live authorized test must obtain at least one verified country-year-value row or explicitly return incomplete_data; never unqualified completeness."
+  },
+  "TEXT": {
+    "title": "Browser innerText leaks script source instead of visible text",
+    "category": "browser integration / extraction",
+    "severity": "P2",
+    "confidence": "Confirmed behavior; integration cause strongly supported",
+    "root_status": "Strongly supported",
+    "location": [
+      [
+        "iralens/_internal/browser_engine/vendor/obscura/crates/obscura-js/js/bootstrap.js",
+        3976,
+        4001
+      ],
+      [
+        "iralens/_internal/browser_engine/vendor/obscura/crates/obscura-js/js/bootstrap.js",
+        4143,
+        4147
+      ],
+      [
+        "iralens/_internal/browser_engine/host_ops.js",
+        1831,
+        1884
+      ],
+      [
+        "iralens/_internal/browser_engine/host_ops.js",
+        1978,
+        1981
+      ],
+      [
+        "iralens/_internal/browser_engine/vendor/obscura/crates/obscura-js/js/bootstrap.js",
+        9701,
+        9775
+      ]
+    ],
+    "root": "The integrated host/style bridge does not exclude script content from the observed rendered text. _collectInnerText traverses elements based on computed display; it does not explicitly exclude SCRIPT/STYLE. The precise style-op/default-style interaction needs a dedicated fixture. Do not attribute this to a missing public JavaScript API based on an internal-symbol probe. A separate public computed-style probe confirms script elements are reported display:block/visibility:visible. The exact minimal repair path: Unknown — further investigation required until a controlled fix/fixture isolates it.",
+    "expected": "document.body.innerText must omit script/style source and hidden content while keeping visible text; textContent may include script source by its different contract.",
+    "impact": "Agents using evaluate_js for visible-text extraction consume executable source as page content, wasting budgets and confusing content provenance. No prompt-injection exploit was demonstrated.",
+    "fix": "Implement correct default rendering/display semantics and visible-text filtering in the internal host integration. Preserve upstream provenance; add integration regressions before changing vendored code.",
+    "test": "A page with visible paragraph, script, style and hidden nodes must yield only the visible paragraph in innerText. React live smoke must not begin with the setUwu script, while textContent remains a distinct API."
+  },
+  "CAP": {
+    "title": "Hard character budget is exceeded by the appended truncation notice",
+    "category": "implementation / API contract",
+    "severity": "P3",
+    "confidence": "Confirmed",
+    "root_status": "Confirmed",
+    "location": [
+      [
+        "iralens/content_guard.py",
+        69,
+        79
+      ],
+      [
+        "iralens/sources/web.py",
+        425,
+        432
+      ]
+    ],
+    "root": "truncate_text slices to max_chars then appends a notice outside the budget. The docstring promises a hard budget; observed responses exceed it by 24–26 characters at max_chars=12000.",
+    "expected": "Clarify and enforce whether max_chars bounds the complete content field, including any truncation marker.",
+    "impact": "Strict downstream size assertions or prompt budgets can fail; modest overrun, not a resource-exhaustion claim.",
+    "fix": "Reserve notice space within the cap, or put omitted-count information only in structured metadata while maintaining explicit truncation signaling.",
+    "test": "For max_chars in 1, 20, 500, 12000, require len(content)<=max_chars and accurate omitted/truncated metadata; test Unicode and trailing whitespace."
+  },
+  "RATE": {
+    "title": "Direct-origin 429 is mislabeled as reader-service failure and loses retry guidance",
+    "category": "implementation / error handling / rate limits",
+    "severity": "P2",
+    "confidence": "Confirmed",
+    "root_status": "Confirmed",
+    "location": [
+      [
+        "iralens/sources/web.py",
+        252,
+        253
+      ],
+      [
+        "iralens/sources/web.py",
+        315,
+        333
+      ],
+      [
+        "iralens/sources/web.py",
+        445,
+        451
+      ]
+    ],
+    "root": "read_direct routes HTTPError into a shared classifier that says reader service, even with remote reading disabled. The classifier accepts only status and discards headers including Retry-After; auto mode then tries the browser and the hint suggests mode=browser for 429. The negative-control origin intentionally returned 429; its rejection is not a provider outage or search rate-limit measurement.",
+    "expected": "Identify the actual origin/transport and retain retry_after; do not suggest switching transports to escape an origin rate limit.",
+    "impact": "Users get misleading diagnostics and cannot schedule a compliant retry from returned metadata. Browser fallback can generate a needless second request to a rate-limited origin.",
+    "fix": "Make HTTP error classification transport-aware and preserve sanitized Retry-After. Stop origin fetch/fallback until the indicated cooldown; test both HTTP-date and delay-seconds forms.",
+    "test": "Local fixture 429 with Retry-After must produce origin=httpbin-like-site, correct transport, retry delay, and exactly one origin request before cooldown. The message must not mention remote reader when disabled."
+  },
+  "SESSION": {
+    "title": "Concurrent sessions share one temporary filename and race on rename",
+    "category": "implementation / concurrency / reliability",
+    "severity": "P2",
+    "confidence": "Confirmed in controlled local fixture",
+    "root_status": "Confirmed",
+    "location": [
+      [
+        "iralens/session.py",
+        48,
+        57
+      ]
+    ],
+    "root": "Session.save uses the same session.tmp filename for all writers and no coordination. A deterministic two-writer barrier at os.replace yields one successful save and one FileNotFoundError; another interleaving can lose state. The barrier is audit-only synchronization, not an implementation modification.",
+    "expected": "Concurrent API/CLI sessions must not crash on persistence or silently clobber each other's discovery state.",
+    "impact": "Concurrent consumers may see a successful retrieval fail during session bookkeeping. This was NOT observed as a search exception in the benchmark at the time of investigation; the controlled fixture is supplemental, with no invented Q ID.",
+    "fix": "Use unique atomic-write temp files plus an interprocess lock and read-merge-write transaction, or move session persistence to a transactional store. A unique temp file alone fixes rename collision but not lost updates.",
+    "test": "Two independent processes repeatedly record disjoint URLs against one home; no exceptions, valid JSON/DB state, and both discoveries retained within documented caps. Include deterministic rename-collision fixture."
+  },
+  "ACCESS": {
+    "title": "Requested URL cannot be read under current public access conditions",
+    "category": "inherent access restriction / expected negative control",
+    "severity": "P3",
+    "confidence": "Confirmed HTTP outcome; policy trigger unknown for 403",
+    "root_status": "404 controls intentional; 403 external trigger unknown",
+    "location": [
+      [
+        "iralens/sources/web.py",
+        304,
+        314
+      ],
+      [
+        "iralens/sources/web.py",
+        549,
+        566
+      ]
+    ],
+    "root": "The requested NSE public page returned HTTP403. Root cause: Unknown — further investigation required for the external policy trigger; this does not establish an IraLens defect. The two 404 URLs were intentional negative controls and correctly surfaced not-found; no implementation repair is indicated for rejecting them.",
+    "expected": "Respect 403/login/bot policy; classify 404 as not found, preserve source/status, and do not fabricate page text.",
+    "impact": "These exact URLs are unreadable in this environment (NSE), or intentionally nonexistent (404 controls). P3 records limited tested accessibility, not a severity claim about correct negative-control handling.",
+    "fix": "No code fix for correctly surfaced 404. For 403, use an explicitly permitted public export/API or owner-authorized access if available; do not bypass restrictions. Reassess only if separate evidence establishes a handling defect.",
+    "test": "404 must remain typed http_404 and return no fabricated content. Authorized 403 fixture must remain typed http_403; a documented approved alternative should be tested separately without rewriting original benchmark evidence."
+  },
+  "SITE": {
+    "title": "Raw site: queries return results outside their explicit scope",
+    "category": "constraint preservation / retrieval quality / implementation acceptance gap",
+    "severity": "P2",
+    "confidence": "Confirmed returned URL violation; upstream trigger unknown",
+    "root_status": "Post-filter gap confirmed; backend misinterpretation unresolved",
+    "location": [
+      [
+        "iralens/search/engine.py",
+        75,
+        89
+      ],
+      [
+        "iralens/search/engine.py",
+        180,
+        198
+      ],
+      [
+        "iralens/search/engine.py",
+        264,
+        285
+      ],
+      [
+        "iralens/search/fallback.py",
+        45,
+        47
+      ]
+    ],
+    "root": "Search receives the original site: wording, but initializes empty structured SearchFilters unless separately supplied and post-filters only those fields. There is no equivalent acceptance check derived from the raw site: constraint on this path. Q0007 returned no repository-scoped URLs; Q0015 returned one correct official target plus two outside sites. Root cause: Unknown — further investigation required for why the provider disregarded the operator; local validation/explicit unsupported-syntax reporting is a distinct implementation acceptance gap, not proof of deliberate query rewriting.",
+    "expected": "Preserve exact wording to providers and make any unsupported site/path syntax explicit. A constrained result must either match the requested domain/path or be rejected/reported as outside scope, rather than silently mixed into apparently scoped results.",
+    "impact": "P2: a user cannot rely on a security/license/repository-scoped search staying in scope. Q0015 partially succeeded with a correct #1 target, so it is not a total retrieval failure; the two off-site URLs are the defect.",
+    "fix": "Define supported raw operator semantics; optionally parse recognized site: constraints into separately validated effective filters without altering the original transmitted wording. Extend domain matching with explicit supported path semantics or report path restrictions unsupported. Filter/flag off-scope outputs, do not pad slots with unrelated sites.",
+    "test": "Fixtures for exact Q0007 and Q0015: every accepted result must satisfy the configured repository/domain/path scope, or the response must explicitly report unsupported syntax/constraint violations. Q0015 official result must remain; its two external URLs must not be presented as satisfying the site constraint. Add equivalence tests against explicit include_domains filters and preserve every original result in baseline evidence."
+  },
+  "BLOCK": {
+    "title": "Body substring matching falsely declares rate limits and triggers unnecessary browser fallback",
+    "category": "implementation / error classification / reliability",
+    "severity": "P2",
+    "confidence": "Confirmed in controlled no-network fixtures; live rate-limit attribution unknown",
+    "root_status": "Confirmed classifier/fallback defect; live incidence unresolved",
+    "location": [
+      [
+        "iralens/reliability.py",
+        35,
+        53
+      ],
+      [
+        "iralens/search/engines/base.py",
+        141,
+        148
+      ],
+      [
+        "iralens/search/engines/bing.py",
+        115,
+        123
+      ]
+    ],
+    "root": "classify_block scans the entire HTML for bare 429, rate limit, and challenge substrings, without HTTP status or structural block evidence. The offline archive item 1429 is falsely rate_limited; a valid one-hit HTTP429 documentation SERP triggers a browser navigation because fetch_serp_html classifies it before accepting valid hits. This proves the fixture defect, not that any specific live Bing rate_limited event was false. Live provider trigger: Unknown — further investigation required.",
+    "expected": "Distinguish ordinary discussion, echoed query text and numeric identifiers from actual access restrictions. A valid HTML results page must not incur a block fallback solely because its content discusses 429. Genuine restriction statuses must still be respected.",
+    "impact": "P2: false access failures, wrong circuit accounting and avoidable browser requests/latency. The valid-fixture browser fallback is observed; misclassification of the live benchmark events is not established because their original HTML/headers are absent.",
+    "fix": "Preserve HTTP status/Retry-After and use provider-specific structural block evidence, excluding echoed query/snippet text. Avoid bare numeric substring tests and accept structurally valid results without an unnecessary block fallback. Keep explicit restrictions fail-closed and honor real cooldowns.",
+    "test": "Run scripts/block_classifier_fixture.py: baseline reproduces false rate_limited for item1429 and extra browser calls for a valid one-hit429 SERP. After repair, both benign pages must not classify as a block and valid SERP must require zero browser navigations. Separate real429/status and known CAPTCHA fixtures must remain blocked with the instructed cooldown."
+  }
+}

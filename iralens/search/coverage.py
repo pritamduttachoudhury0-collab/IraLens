@@ -38,10 +38,17 @@ def question_terms(question: str) -> List[str]:
     return sorted(terms)
 
 
+def _field(result: Any, name: str) -> str:
+    """Read a field from a result object *or* a result mapping."""
+    if isinstance(result, dict):
+        return str(result.get(name) or "")
+    return str(getattr(result, name, "") or "")
+
+
 def _result_text(result: Any) -> str:
-    title = str(getattr(result, "title", "") or "")
-    snippet = str(getattr(result, "snippet", "") or "")
-    url = str(getattr(result, "url", "") or "")
+    title = _field(result, "title")
+    snippet = _field(result, "snippet")
+    url = _field(result, "url")
     return f"{title} {snippet} {url}".lower()
 
 

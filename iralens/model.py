@@ -50,6 +50,10 @@ class Artifact:
     # Unified retrieval metadata (HTTP fetch, browser fetch, rendered extraction, source adapters)
     requested_url: Optional[str] = None
     final_url: Optional[str] = None
+    #: The URL that actually served the content. It differs from
+    #: `requested_url` when the origin redirected, and it keeps the query
+    #: string the caller asked for, so a deep link is observable.
+    effective_url: Optional[str] = None
     status_code: Optional[int] = None
     content_type: Optional[str] = None
     warnings: List[str] = field(default_factory=list)
@@ -65,6 +69,9 @@ class Artifact:
         if self.final_url is None:
             fin = self.metadata.get("final_url")
             self.final_url = str(fin) if fin else self.url
+        if self.effective_url is None:
+            eff = self.metadata.get("effective_url")
+            self.effective_url = str(eff) if eff else self.final_url
         if self.status_code is None and isinstance(self.metadata.get("status_code"), int):
             self.status_code = int(self.metadata["status_code"])
         if self.content_type is None and isinstance(self.metadata.get("content_type"), str):
@@ -90,6 +97,8 @@ class Artifact:
             "retrieved_at": self.retrieved_at,
             "untrusted": self.untrusted,
         }
+        if self.effective_url is not None:
+            data["effective_url"] = self.effective_url
         if self.status_code is not None:
             data["status_code"] = self.status_code
         if self.content_type is not None:

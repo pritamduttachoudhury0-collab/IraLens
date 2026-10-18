@@ -20,6 +20,33 @@ The thresholds (frozen, see `benchmarks/thresholds.json`):
 
 All seven must hold on **3 consecutive full runs** for the benchmark to pass.
 
+## The audit-driven suites
+
+The independent audit of 2026-10-17 shipped its own harnesses inside its
+evidence bundle, and the repository did not. They are here now, in the
+repository, with the corpus hash-verified and never edited:
+
+| command | corpus | result on 2026-10-18 (restricted egress) |
+|---|---|---|
+| `python benchmarks/acceptance_17.py` | the audit's 17 offline acceptance checks, inverted so that each asserts the defect is **gone** | **17/17** |
+| `python benchmarks/run_scraping.py` | 12 read/extract probes (budget, main content, JS shell, script leakage, typed 429, block classification, cache provenance, concurrent saves, typed refusal) | **12/12** |
+| `python benchmarks/run_audit3000.py --offline-pipeline` | the frozen 3,000-query corpus through the real engine with a local backend | **12,186/12,186 clean** |
+| `python benchmarks/run_audit3000.py --replay <audit baseline>` | the audit's own captured 3,000-row run, re-scored with the same predicates | 28,521 checks: **9,458 code-caused**, **4,935 external**, 14,128 clean |
+| `python benchmarks/run_audit3000.py --live` | the frozen 3,000-query corpus against the live engines | **not_run** — restricted egress cannot reach the search providers |
+
+The baseline replay is the honest "before" number and it is reproducible: the
+audit's own `records/iralens.jsonl`, scored by the predicates in
+`benchmarks/run_audit3000.py`. The 9,458 code-caused failures it reports are
+the defects this repository fixed (dates labelled as publication dates,
+missing Wikipedia snippets, unenforced `site:` scope, an unconfigured engine
+in the default chain, and results that did not address the question). The
+4,935 external failures are provider-side captchas and throttles; no code
+change removes them, and the runner never counts them as IraLens defects.
+
+The `--live` run needs an unrestricted network. It is the only number here
+that is **not** measured, and it is reported as `not_run` rather than as a
+pass.
+
 ## Runs
 
 | date | commit | network | availability | quality dev | quality held-out | engines ≥80% | search p50 | search p95 | read p95 | load failure | extraction | honesty | verdict | notes |

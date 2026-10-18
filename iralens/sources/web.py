@@ -38,7 +38,7 @@ from ..errors import (
     classify_http_status,
 )
 from ..model import Artifact
-from ..reliability import HOST_RATE_LIMITER
+from ..reliability import HOST_RATE_LIMITER, TRANSPORT_HEALTH
 from ..security import normalize_public_http_url, public_message, safe_urlopen
 from ..settings import Settings
 from .base import Source, SourceHealth
@@ -89,12 +89,67 @@ def _is_antibot_page(body: bytes) -> bool:
     return (captcha_warning and challenge_structure) or cloudflare_block
 
 
+#: Link-label characters (markdown `[label](url)`) as a share of the text.
+#: A page that is mostly link labels is a navigation shell, not content.
+_JS_SHELL_LINK_RATIO = 0.55
+#: Sentences (runs of text ending in a terminator) per 1,000 characters.
+#: Prose has many; a menu of buttons has almost none.
+_JS_SHELL_MIN_SENTENCES_PER_K = 1.2
+#: A page shorter than this cannot be judged by its sentence density.
+_JS_SHELL_DENSITY_MIN_CHARS = 400
+
+_MARKDOWN_LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_SENTENCE_END_RE = re.compile(r"[.!?](?:\s|$)")
+#: A line that is nothing but markdown links (a menu item).
+_LINK_ONLY_LINE_RE = re.compile(r"^(?:[-*]\s+|#{1,6}\s+)?(?:\[[^\]]*\]\([^)]*\)\s*)+$")
+#: How many link-only lines in a row make a navigation block.
+_JS_SHELL_LINK_RUN = 4
+
+
+def _link_label_chars(text: str) -> int:
+    """How much of *text* sits inside markdown link labels."""
+    return sum(len(m.group(1)) for m in _MARKDOWN_LINK_RE.finditer(text or ""))
+
+
+def _sentence_count(text: str) -> int:
+    """How many sentences the text has (a run of text with a terminator)."""
+    return len(_SENTENCE_END_RE.findall(text or ""))
+
+
+def _max_link_run(text: str) -> int:
+    """The longest run of consecutive lines that are nothing but links.
+
+    A page that renders a menu — the World Bank's ``Data | HOME |
+    ECONOMIES | THEMES | ...`` — has a long run of them. Real prose does
+    not: its links sit inside sentences.
+    """
+    best = 0
+    current = 0
+    for line in (text or "").splitlines():
+        if _LINK_ONLY_LINE_RE.match(line.strip()):
+            current += 1
+            if current > best:
+                best = current
+        else:
+            current = 0
+    return best
+
+
 def looks_like_js_shell(text: str) -> bool:
     """Heuristic: the static text looks like an app shell, not the page content.
 
-    Two signals: an explicit "enable JavaScript" notice, or so little text that
-    no real page could be this thin. False positives are cheap (one extra
-    rendered read, and the static text is kept when rendering is not better).
+    Four signals, because a shell is not always short:
+
+    1. an explicit "enable JavaScript" notice;
+    2. so little text that no real page could be this thin;
+    3. **link density** — most of the text is link labels, i.e. a menu;
+    4. **sentence density** — a long stretch of text with no sentence in it.
+
+    A 2,000-character application shell used to pass as a complete page
+    because only signals 1 and 2 were checked. Signals 3 and 4 catch it.
+
+    False positives are cheap (one extra rendered read, and the static text is
+    kept when rendering is not better).
     """
     compact = _WHITESPACE_RE.sub(" ", text or "").strip()
     if not compact:
@@ -102,7 +157,27 @@ def looks_like_js_shell(text: str) -> bool:
     low = compact.casefold()
     if any(marker in low for marker in _JS_SHELL_MARKERS):
         return True
-    return len(compact) < _JS_SHELL_MIN_CHARS
+    if len(compact) < _JS_SHELL_MIN_CHARS:
+        return True
+
+    # Signal 3: the text is mostly link labels.
+    total = len(compact)
+    if total and _link_label_chars(compact) / total >= _JS_SHELL_LINK_RATIO:
+        return True
+
+    # Signal 4: the text is long but has almost no sentence structure.
+    if total >= _JS_SHELL_DENSITY_MIN_CHARS:
+        per_k = _sentence_count(compact) * 1000.0 / total
+        if per_k < _JS_SHELL_MIN_SENTENCES_PER_K:
+            return True
+
+    # Signal 5: a block of link-only lines — a rendered menu with no
+    # content behind it. This is what a 2,119-character data shell looks
+    # like: navigation, a title, table headings and a footer, and none of
+    # the rows the page promised.
+    if total >= _JS_SHELL_DENSITY_MIN_CHARS and _max_link_run(text) >= _JS_SHELL_LINK_RUN:
+        return True
+    return False
 
 
 def _is_soft_404(text: str) -> bool:
@@ -243,6 +318,8 @@ def read_direct(
             _DIRECT_META_LOCAL.last = {
                 "requested_url": safe_url,
                 "final_url": resp_url,
+                "effective_url": str(getattr(resp, "effective_url", None) or resp_url),
+                "redirect_chain": list(getattr(resp, "redirect_chain", None) or [safe_url]),
                 "status_code": resp_status,
                 "content_type": raw_ct or "text/html",
             }
@@ -454,6 +531,8 @@ class WebSource(Source):
                     retrieval=retrieval)
             except (PageUnavailableError, ExtractionError, OperationTimeoutError) as exc:
                 static_failure = exc
+                TRANSPORT_HEALTH.record(
+                    urllib.parse.urlsplit(safe_url).netloc.lower(), "static", ok=False)
                 if mode == "static":
                     raise
 
@@ -461,7 +540,27 @@ class WebSource(Source):
         # text) has not read the page: the useful text is rendered client-side.
         # In auto mode the browser gets its turn automatically.
         shell_detected = static_artifact is not None and looks_like_js_shell(static_artifact.content)
+        host = urllib.parse.urlsplit(safe_url).netloc.lower()
+
+        if static_artifact is not None and mode == "auto" and shell_detected:
+            # The renderer has failed for this host before. Trying it again
+            # costs a full render and returns the same static text, so the
+            # read says so instead of pretending the page was rendered.
+            if TRANSPORT_HEALTH.is_dead(host, "browser"):
+                static_artifact.metadata["static_fallback"] = "js_shell_renderer_unavailable"
+                static_artifact.metadata["fallback_result"] = "renderer_known_dead_for_host"
+                static_artifact.provenance["fallback"] = {
+                    "reason": "js_shell",
+                    "result": "renderer_known_dead_for_host",
+                }
+                static_artifact.warnings.append(
+                    "the page needs JavaScript and the renderer is known not to "
+                    "work for this host; the static text is returned as-is")
+                return static_artifact
+
         if static_artifact is not None and (mode == "static" or not shell_detected):
+            if static_artifact is not None and mode != "static":
+                TRANSPORT_HEALTH.record(host, "static", ok=True)
             return static_artifact
 
         if mode == "browser" or (mode == "auto" and (static_artifact is None or shell_detected)):
@@ -545,6 +644,7 @@ class WebSource(Source):
                 if content_type is not None:
                     provenance["content_type"] = content_type
 
+                TRANSPORT_HEALTH.record(host, "browser", ok=True)
                 if static_artifact is not None:
                     # Keep the (possibly richer) static text when rendering did
                     # not actually improve it, but say what happened.
@@ -562,6 +662,7 @@ class WebSource(Source):
                     url=final_url,
                     requested_url=safe_url,
                     final_url=final_url,
+                    effective_url=final_url,
                     status_code=status_code,
                     content_type=content_type,
                     warnings=warnings,
@@ -574,6 +675,7 @@ class WebSource(Source):
                     provenance=provenance,
                 )
             except Exception as browser_exc:
+                TRANSPORT_HEALTH.record(host, "browser", ok=False)
                 if static_artifact is not None:
                     # The static read produced text; never turn a usable read into
                     # a failure because the optional renderer is unavailable.
@@ -615,13 +717,17 @@ def _static_artifact(url: str, markdown: str, *, cache: dict, flags=None,
     """
     direct_meta = dict(retrieval or {})
     final_url = str(direct_meta.get("final_url") or url)
+    effective_url = str(direct_meta.get("effective_url") or final_url)
+    redirect_chain = list(direct_meta.get("redirect_chain") or [url, final_url])
     status_code = direct_meta.get("status_code") if isinstance(direct_meta.get("status_code"), int) else None
     content_type = direct_meta.get("content_type") if isinstance(direct_meta.get("content_type"), str) else None
     redirected = final_url != url
     metadata: Dict[str, Any] = {
         "requested_url": url,
         "final_url": final_url,
+        "effective_url": effective_url,
         "redirected": redirected,
+        "redirect_chain": redirect_chain,
         "truncated": truncated,
     }
     if status_code is not None:
@@ -655,6 +761,7 @@ def _static_artifact(url: str, markdown: str, *, cache: dict, flags=None,
         url=final_url,
         requested_url=url,
         final_url=final_url,
+        effective_url=effective_url,
         status_code=status_code,
         content_type=content_type,
         warnings=warnings,

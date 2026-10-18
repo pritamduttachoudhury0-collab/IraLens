@@ -16,7 +16,7 @@ from contextlib import contextmanager
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Iterator, Optional, Tuple, TypeVar
+from typing import Any, Callable, Dict, Iterator, Optional, Tuple, TypeVar
 
 from .config import state_dir
 
@@ -500,6 +500,73 @@ class HostRateLimiter:
 #: Process-wide polite rate budget. Shared so that a search burst and a
 #: page-read burst against the same host cannot add up.
 HOST_RATE_LIMITER = HostRateLimiter()
+
+
+class TransportHealthMemory:
+    """Which transport last worked for a host.
+
+    `mode=auto` has two paths: a static read and a rendered one. When the
+    rendered path is dead for a host — the browser engine is not installed,
+    or the page crashes the renderer — every read of that host pays for the
+    failed render and still gets the same static text. This memory lets the
+    reader converge: it remembers, per host, that the renderer does not
+    work there, and says so instead of trying again and again.
+
+    The memory is a *hint*, never a hard rule: a transport that starts
+    working again is picked up immediately.
+    """
+
+    def __init__(self, failure_threshold: int = 2, ttl_seconds: float = 900.0) -> None:
+        self.failure_threshold = max(1, int(failure_threshold))
+        self.ttl_seconds = max(0.0, float(ttl_seconds))
+        self._state: Dict[str, Dict[str, Any]] = {}
+        self._lock = threading.Lock()
+
+    def _entry(self, host: str) -> Dict[str, Any]:
+        return self._state.setdefault(
+            str(host or "").lower(),
+            {"ok": 0, "fail": 0, "last_ok": 0.0, "last_fail": 0.0},
+        )
+
+    def record(self, host: str, transport: str, *, ok: bool) -> None:
+        """Note that *transport* did (or did not) work for *host*."""
+        key = f"{str(host or '').lower()}|{transport}"
+        with self._lock:
+            entry = self._entry(key)
+            if ok:
+                entry["ok"] += 1
+                entry["fail"] = 0
+                entry["last_ok"] = time.monotonic()
+            else:
+                entry["fail"] += 1
+                entry["last_fail"] = time.monotonic()
+                entry["last_ok"] = 0.0
+
+    def is_dead(self, host: str, transport: str) -> bool:
+        """Whether *transport* has failed repeatedly for *host*."""
+        key = f"{str(host or '').lower()}|{transport}"
+        with self._lock:
+            entry = self._state.get(key)
+            if not entry:
+                return False
+            if self.ttl_seconds and (time.monotonic() - entry["last_fail"]) > self.ttl_seconds:
+                return False
+            return entry["fail"] >= self.failure_threshold
+
+    def known_good(self, host: str, transport: str) -> bool:
+        """Whether *transport* has worked for *host* at least once."""
+        key = f"{str(host or '').lower()}|{transport}"
+        with self._lock:
+            entry = self._state.get(key)
+            return bool(entry and entry["ok"] > 0)
+
+    def snapshot(self) -> Dict[str, Dict[str, Any]]:
+        with self._lock:
+            return {k: dict(v) for k, v in self._state.items()}
+
+
+#: Process-wide transport memory, shared by every read.
+TRANSPORT_HEALTH = TransportHealthMemory()
 
 
 class PerSiteConcurrencyGate:

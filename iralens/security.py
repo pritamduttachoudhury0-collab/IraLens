@@ -355,6 +355,10 @@ class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
         super().__init__()
         self._allow_private = allow_private_hosts
         self._same_origin_only = same_origin_only
+        #: Every hop the request went through, in order. The chain is
+        #: attached to the response so a read can report the URL that
+        #: actually served the content.
+        self.redirect_chain: List[str] = []
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         from .errors import SecurityBlockedError
@@ -380,6 +384,9 @@ class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
         hops = sum((getattr(req, "redirect_dict", {}) or {}).values())
         if hops >= MAX_REDIRECTS:
             raise SecurityBlockedError(f"too many redirects (> {MAX_REDIRECTS})")
+        if not self.redirect_chain:
+            self.redirect_chain.append(origin)
+        self.redirect_chain.append(newurl)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
@@ -410,10 +417,28 @@ def safe_urlopen(url: str, *, timeout: float = 30,
     """
     safe_url = normalize_public_http_url(url, allow_private_hosts=allow_private_hosts)
     request = urllib.request.Request(safe_url, data=data, headers=headers or {})
-    return build_safe_opener(
+    opener = build_safe_opener(
         allow_private_hosts=allow_private_hosts,
         same_origin_redirects=same_origin_redirects,
-    ).open(request, timeout=timeout)
+    )
+    response = opener.open(request, timeout=timeout)
+    chain: List[str] = []
+    try:
+        for handler in getattr(opener, "handlers", []):
+            if isinstance(handler, SafeRedirectHandler):
+                chain = list(getattr(handler, "redirect_chain", []) or [])
+                break
+    except Exception:  # pragma: no cover - defensive
+        chain = []
+    try:
+        # The effective URL is the one that served the content; the
+        # requested URL is what the caller asked for. Both are reported.
+        response.effective_url = str(getattr(response, "url", None) or safe_url)
+        response.redirect_chain = chain or [safe_url]
+        response.requested_url = safe_url
+    except Exception:  # pragma: no cover - defensive
+        pass
+    return response
 
 
 def domain_matches(host: str, *domains: str) -> bool:

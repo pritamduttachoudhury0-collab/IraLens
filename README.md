@@ -179,8 +179,13 @@ says so.
 
 | What | Result | Date | Evidence |
 |---|---|---|---|
-| Offline + local-fixture test suite (Python 3.11) | **463 passed, 14 skipped, 0 failed** (includes local V8 browser integration tests; skipped tests require live network) | 2026-10-17 | `tests/` · [improvement verification](docs/improvements/FINAL_REPORT.md) |
+| Offline + local-fixture test suite (Python 3.11) | **561 passed, 14 skipped, 0 failed** (includes local V8 browser integration tests; skipped tests require live network) | 2026-10-18 | `tests/` · [error register](docs/audit/ERROR_REGISTER.md) |
+| Audit acceptance suite (17 offline checks, inverted so each asserts the defect is gone) | **17/17** | 2026-10-18 | `python benchmarks/acceptance_17.py` |
+| Scraping test (read/extract probes: budget, main content, JS shell, script leakage, typed 429, block classification, cache provenance, concurrent saves, typed refusal) | **12/12** | 2026-10-18 | `python benchmarks/run_scraping.py` |
+| Frozen 3,000-query corpus through the engine (offline pipeline) | **12,186/12,186 clean**; the same corpus re-scored from the audit's own captured baseline run shows 9,458 code-caused and 4,935 external failures, every code-caused family now fixed | 2026-10-18 | `python benchmarks/run_audit3000.py --offline-pipeline` · `--replay` |
+| Lint (`ruff --select E9,F,B`) + types (`mypy`) | clean; 81 source files typed | 2026-10-18 | `docs/audit/ERROR_REGISTER.md` |
 | Evidence-driven search improvement (D1–D8) | Ranking/intent, script handling, degradation, date provenance and security regressions covered offline; live quality P@5, 100-page real extraction and live engine resilience **NOT MEASURED** in restricted egress | 2026-10-17 | [final report](docs/improvements/FINAL_REPORT.md) · frozen 300-query holdout in `benchmark/holdout/` |
+| Live 3,000-query run (frozen corpus, live engines) | **NOT MEASURED** — the verification environment reaches only package indexes and GitHub, so the provider-side captchas and throttles could not be exercised; the runner reports `not_run` with the reason | — | `python benchmarks/run_audit3000.py --live` |
 | Lint (`ruff --select E9,F,B`) + types (`mypy`) | clean; 74 source files typed | 2026-10-17 | [final verification](docs/audits/final-verification.md) |
 | Full suite on an open network | **416 passed, 0 failed**; DuckDuckGo 15/15 and Bing 15/15 independent live queries | 2026-10-14 | [audit](docs/audits/paid-search-replacement-audit-2026-10-14.md) |
 | Search quality (100-query audit slice) | exact-site top-3 **24/25**; facts top-10 **25/25**; recent news **20/20** | 2026-10-14 | [audit](docs/audits/paid-search-replacement-audit-2026-10-14.md) |
@@ -192,6 +197,25 @@ says so.
 | Paid-provider parity | not yet verified — no provider key has been supplied | — | [benchmarks/README.md](benchmarks/README.md) |
 | Docker / Compose stack | not yet verified on a live host | — | [docs/deployment.md](docs/deployment.md) |
 | Seven-day daily-watch record | accumulating — the canary runs daily; no multi-day claim yet | — | [scripts/daily_watch.py](scripts/daily_watch.py) |
+
+## Verification runners
+
+Every claim above has a command that produces it.
+
+```bash
+python benchmarks/acceptance_17.py            # 17 offline acceptance checks
+python benchmarks/run_scraping.py              # the read/extract probes
+python benchmarks/run_audit3000.py --self-test        # validate the 3,000-query harness
+python benchmarks/run_audit3000.py --offline-pipeline # 3,000 queries, no network
+python benchmarks/run_audit3000.py --live             # 3,000 queries, live engines
+python benchmarks/run_audit3000.py --replay FILE      # score a captured run
+```
+
+The 3,000-query corpus is `benchmarks/audit3000/queries.jsonl`, hash-verified
+against `benchmarks/audit3000/dataset.sha256`; it is never edited to move a
+number. Failures are separated into **code-caused** (this project can fix
+them) and **external** (a provider captcha or throttle); a family that could
+not be run is reported as `not_run`, never as a pass.
 
 ## Known limits
 

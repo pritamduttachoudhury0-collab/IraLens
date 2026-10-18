@@ -61,10 +61,15 @@ records at the end show exactly what was exercised and where.
 ## Search behavior
 
 12. **Date and language filters are approximate.** Date filters are
-    post-filtered and undated results are kept and counted. Detected scripts now
-    supply a best-effort language hint to Bing and select Wikipedia editions;
-    Latin-script language detection remains incomplete. Other unsupported filter
-    modes are reported per engine.
+    post-filtered. Undated results are kept and counted by default, so a
+    recency window is not enforced against them; pass
+    `exclude_unknown_dates=True` to drop them instead. A date recovered from a
+    snippet is recorded with its `date_evidence`, and a *revision* timestamp
+    (Wikipedia) is reported as `modified_at` with `date_kind="revision"` — it
+    is never presented as a publication date. Detected scripts supply a
+    best-effort language hint to Bing and select Wikipedia editions;
+    Latin-script language detection remains incomplete. Other unsupported
+    filter modes are reported per engine.
 13. **Exa bridge filters are post-filtered.** The bridge is called with only
     the arguments known to work, so domain and date filters do not reach the
     provider.
@@ -86,6 +91,19 @@ records at the end show exactly what was exercised and where.
 - **Mojeek is opt-in and not live-verified.** Its HTML parser has offline
   fixtures only; no claim is made about live markup stability, service terms,
   result quality, or availability. It is deliberately excluded from defaults.
+- **A non-empty result set is not an answer.** Every search carries a
+  `coverage` verdict: how much of the question the results actually address.
+  When the results are generic filler, `no_results_reason` is
+  `low_coverage`, not `none`, and the summary says so. The verdict is a
+  term-overlap heuristic, not a judgement of truth.
+- **A `site:` scope is enforced on the results.** The operator survives
+  tokenizing and reformulation, and out-of-scope hits are dropped and
+  counted. A scoped query that finds nothing in scope returns nothing; it
+  does not fall back to out-of-scope results.
+- **Pagination is real but not universal.** `SearchOptions.offset` skips
+  results; Bing (`first`), DuckDuckGo and Mojeek (`s`), SearXNG (`pageno`)
+  and Wikipedia (`sroffset`) implement it. An engine that cannot paginate
+  says so rather than returning the same page again.
 - **Short result lists are not padded.** `shortfall_reason` reports whether
   a list was capped for quality, deduplicated, filtered, or exhausted. The
   Wikipedia cap for non-definitional intents can intentionally result in fewer
@@ -99,14 +117,22 @@ records at the end show exactly what was exercised and where.
 
 18. **Local extraction is lossy for complex pages.** The stdlib extractor has
     no DOM, CSS layout, or JavaScript. Tables become pipe rows; widgets
-    disappear. Use `mode=browser` when fidelity matters.
+    disappear. Use `mode=browser` when fidelity matters. The extractor now
+    selects the page's main-content region when the page marks one
+    (`<main>`, `<article>`, `.mw-parser-output`, `.post-content`, …), so a
+    navigation-heavy page no longer spends the whole character budget on its
+    menu; a page with no recognisable content region is returned whole.
+    Script and style source never appears in the extracted text.
 19. **Soft-404 detection is heuristic.** Short bodies with not-found markers
     are classified `soft_404`; novel 404 page designs can slip through, and
     short real pages mentioning "404" are protected only by a length bound.
-20. **The JS-shell heuristic can over-trigger.** Any static page under ~150
-    visible characters (or with an "enable JavaScript" notice) is re-read
-    through the browser when the engine is installed. The cost is one extra
-    render; the static text is kept if rendering is not better.
+20. **The JS-shell heuristic can over-trigger.** A static page is re-read
+    through the browser when it has an "enable JavaScript" notice, under ~150
+    visible characters, is mostly link labels, has almost no sentence
+    structure, or renders a block of link-only lines (a menu with no content
+    behind it). The cost is one extra render; the static text is kept if
+    rendering is not better, and a renderer that is known to be dead for a
+    host is not tried again — the read says so instead.
 21. **OCR needs host tools and is bounded.** Scanned-page OCR runs only when
     `pdftoppm` and `tesseract` are installed, defaults to five pages in
     English, and never uploads the document (`IRALENS_PDF_OCR_ENABLED=false`
@@ -167,6 +193,24 @@ records at the end show exactly what was exercised and where.
     covers general web search only; proprietary Google features (knowledge
     graph, verticals) are intentionally not synthesized.
 
+## The audit-driven verification suite
+
+The repository carries the harnesses that measure the behaviour above. They
+run offline and print a score:
+
+| command | what it measures | result |
+|---|---|---|
+| `python benchmarks/acceptance_17.py` | the 17 offline acceptance checks from the independent audit, inverted so that each one asserts the defect is **gone** | **17/17** |
+| `python benchmarks/run_scraping.py` | the read/extract probes: character budget, main-content selection, JS-shell detection, script leakage, typed 429, block classification, cache provenance, concurrent session saves, typed refusal | **12/12** |
+| `python benchmarks/run_audit3000.py --offline-pipeline` | the frozen 3,000-query corpus through the real engine with a local backend: scoping, date labelling, snippet handling, engine readiness, coverage verdict | **12,186/12,186 clean** |
+| `python benchmarks/run_audit3000.py --replay FILE` | a captured run (for example the audit's own 3,000-row baseline) scored with the same predicates, so before/after are comparable | see `BENCHMARKS.md` |
+| `python benchmarks/run_audit3000.py --live` | the frozen 3,000-query corpus against the live engines | needs provider egress |
+
+The corpus is `benchmarks/audit3000/queries.jsonl` with its sha256 in
+`benchmarks/audit3000/dataset.sha256`; it is never edited to move a number.
+A family that could not be run is reported as `not_run` with its reason and
+is never counted as a pass.
+
 ## Verification records
 
 Each record states the date, the environment class, and the exact claim.
@@ -174,6 +218,28 @@ Each record states the date, the environment class, and the exact claim.
 package indexes and GitHub — live search engines and arbitrary web pages
 were not reachable there, so anything requiring them is listed as not yet
 verified.
+
+**2026-10-18, restricted egress (post-audit remediation).**
+
+- `.venv/bin/python -m pytest -q` — **561 passed, 14 skipped, 0 failed** after
+  the three-phase remediation of the independent audit (the 14 skips are
+  live-network tests).
+- `ruff check --select E9,F,B .` — clean. `mypy iralens` — clean (81 source
+  files).
+- `python benchmarks/acceptance_17.py` — **17/17**.
+- `python benchmarks/run_scraping.py` — **12/12**.
+- `python benchmarks/run_audit3000.py --offline-pipeline` — **12,186/12,186
+  clean** over the frozen 3,000-query corpus.
+- `python benchmarks/run_audit3000.py --replay <audit baseline>` — the audit's
+  own captured 3,000-row run, re-scored with the same predicates:
+  **9,458 code-caused failures and 4,935 external failures** out of 28,521
+  checks. Every code-caused family it names is fixed in the code above; the
+  external ones (provider captchas and throttles) are outside this project's
+  control and are reported as such.
+- Not verified there: live DuckDuckGo/Bing/Wikipedia runs. The environment
+  allows outbound access only to package indexes and GitHub, so the
+  `--live` 3,000-query run could not be executed; the runner is in place and
+  reports `not_run` with the reason when it cannot reach a provider.
 
 **2026-10-17, restricted egress (v0.2.1 + integrated browser engine).**
 

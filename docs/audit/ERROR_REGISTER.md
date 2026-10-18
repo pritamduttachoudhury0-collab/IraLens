@@ -172,8 +172,17 @@ they determine how much of each document can be trusted.
 | Phase | Defects | Status | Commit |
 |---|---|---|---|
 | A — Integrity & Truthfulness | E-01 … E-13 | **complete** | `ba8a658` |
-| B — Completeness & Scale | E-14 … E-27 | **complete** | see Phase B commit |
-| C — Extraction, Resilience, Safety & Test-Readiness | E-28 … E-35 | in progress | — |
+| B — Completeness & Scale | E-14 … E-27 | **complete** | `14ad8be` |
+| C — Extraction, Resilience, Safety & Test-Readiness | E-28 … E-35 | **complete** | Phase C commit |
+
+**Every entry in this register is implemented and regression-tested.** One
+test per defect lives in `tests/test_audit_phase_a.py` (E-01…E-13),
+`tests/test_audit_phase_b.py` (E-14…E-27) and `tests/test_audit_phase_c.py`
+(E-28…E-35). The audit's own 17 offline acceptance checks are inverted into
+`tests/test_audit_acceptance.py` and are also runnable on their own with
+`python benchmarks/acceptance_17.py`. The consolidated verdict, the measured
+numbers and the honest account of what could not be measured are in
+[`FINAL_REPORT.md`](FINAL_REPORT.md).
 
 **Phase A — Integrity & Truthfulness** (E-01 … E-13)
 Stop the system from reporting false things: false success, false provenance, false

@@ -2,6 +2,62 @@
 
 All notable changes to this project are documented here, newest first.
 
+## Unreleased — 2026-10-18
+
+Remediation of the independent audit of 2026-10-17, in three phases. The
+complete error register (E-01…E-35, the cross-audit ID map and the phase
+plan) is in `docs/audit/ERROR_REGISTER.md`.
+
+### Phase A — Integrity & Truthfulness (E-01…E-13)
+
+The system no longer reports things that did not happen: a typed
+`RateLimitedError` instead of a mislabeled reader failure, a shared
+mode-aware HTTP classifier, cache provenance that is threaded explicitly
+instead of inherited from the previous page, `srprop=snippet` so Wikipedia
+hits carry context, revision timestamps reported as `modified_at` instead of
+as publication dates, a scrubbed and bounded `detail` in `to_dict()`, a
+structural block classifier, a truncation notice inside the character
+budget, atomic and private session state, and a central content scan on
+every artifact that leaves the facade.
+
+### Phase B — Completeness & Scale (E-14…E-27)
+
+The `site:` operator survives tokenizing and reformulation and is enforced on
+the results; pagination is real (`offset`, Bing `first`, DuckDuckGo/Mojeek
+`s`, SearXNG `pageno`, Wikipedia `sroffset`); Reddit can list a subreddit
+through the anonymous RSS transport; a first-class Indie Hackers source
+replaces the dead `/groups` and topic routes; date filters can exclude
+undated results; a process-wide per-host rate budget paces requests and
+honours `Retry-After`; every search carries an answer-coverage verdict; an
+engine whose optional prerequisite is missing is reported as *not
+configured* rather than as a failure; provenance is the recorded `found_via`,
+not the stale `last_query`; post metadata is typed (`PostRecord`);
+de-duplication works across a sweep; RSS permalinks are canonical.
+
+### Phase C — Extraction, Resilience, Safety & Test-Readiness (E-28…E-35)
+
+Application shells are detected structurally (link density, sentence
+density, menu blocks) instead of by length alone; the extractor selects the
+page's main-content region; the vendored browser's rendered-text collector
+no longer leaks script or style source and tolerates attribute access on a
+non-element node; the reader remembers a renderer that is dead for a host;
+reads report the effective URL and the redirect chain, and preserve the
+query string; the three acceptance harnesses are in the repository; and the
+documentation matches the measured behaviour.
+
+### Measured
+
+- `pytest -q` — **561 passed, 14 skipped, 0 failed**.
+- `ruff check --select E9,F,B .` — clean. `mypy iralens` — clean.
+- `python benchmarks/acceptance_17.py` — **17/17**.
+- `python benchmarks/run_scraping.py` — **12/12**.
+- `python benchmarks/run_audit3000.py --offline-pipeline` — **12,186/12,186
+  clean** over the frozen 3,000-query corpus.
+- The live 3,000-query run is **not measured** in the verification
+  environment: it can reach package indexes and GitHub only, so the
+  provider-side captchas and throttles could not be exercised. The runner
+  reports `not_run` with the reason.
+
 ## 0.2.1 — 2026-10-16
 
 The cleanup release: one polished repository, product-language docs, and a

@@ -2796,6 +2796,14 @@ class Node {
   get nodeType() { return +_dom("node_type", this._nid); }
   get nodeName() { return _domParse("node_name", this._nid) || ""; }
   get ownerDocument() { return _nodeDocumentOf(this); }
+  // Attribute accessors on the *base* node, so that a script which calls
+  // getAttribute() on something it believes is an element but which is
+  // really a document, a fragment or a text node gets null instead of a
+  // TypeError that aborts the whole render. Element overrides these with
+  // the real attribute store.
+  getAttribute(_name) { return null; }
+  hasAttribute(_name) { return false; }
+  getAttributeNames() { return []; }
   // https://dom.spec.whatwg.org/#dom-node-baseuri
   get baseURI() {
     if (_foreignDocumentCount) {
@@ -3973,12 +3981,25 @@ const _innerTextBlockDisplays = new Set([
   'block', 'flow-root', 'flex', 'grid', 'list-item', 'table', 'table-caption',
 ]);
 
+// Elements whose *text* is never rendered text. The DOM stub gives them a
+// computed `display: block` and `visibility: visible`, so without this the
+// source of every inline <script> and <style> on the page was collected as
+// if it were page content.
+const _innerTextSkippedTags = new Set([
+  'SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'HEAD', 'TITLE', 'META', 'LINK',
+  'BASE', 'IFRAME', 'OBJECT', 'EMBED', 'CANVAS', 'SVG', 'MAP', 'AREA',
+]);
+
 function _collectInnerText(node, items, inheritedVisibility = 'visible') {
   if (node.nodeType === 3) {
     if (inheritedVisibility === 'visible') items.push(node.data ?? '');
     return;
   }
   if (node.nodeType !== 1) return;
+
+  // Skip the whole subtree of a non-rendered element (SCRIPT, STYLE, ...).
+  const tagName = node.tagName || '';
+  if (_innerTextSkippedTags.has(tagName)) return;
 
   const style = getComputedStyle(node);
   const display = style.display;

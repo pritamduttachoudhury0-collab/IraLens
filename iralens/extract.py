@@ -262,10 +262,300 @@ class _MarkdownExtractor(HTMLParser):
         self._buf.append(data)
 
 
-def html_to_markdown(html: str) -> str:
-    """Convert HTML to markdown-flavored text. Lossy by design; never raises."""
+# ------------------------------------------------------------ main content
+#: Elements that *are* the main content of a page.
+_MAIN_TAGS = ("main", "article")
+#: id/class fragments that mark a main-content container.
+_MAIN_MARKERS = (
+    "mw-parser-output", "mw-content-text", "post-content", "post-body",
+    "article-content", "article-body", "entry-content", "markdown-body",
+    "rich-text", "richtext", "prose", "main-content", "content-body",
+    "content-main", "page-content", "story-body",
+)
+#: A candidate must hold at least this share of the visible text to be
+#: preferred over the whole document.
+_MAIN_MIN_SHARE = 0.5
+#: Below this many visible characters a candidate is not worth isolating.
+_MAIN_MIN_CHARS = 200
+#: Link density of the text *outside* a candidate. Above this, what the
+#: candidate leaves behind is a menu, and the candidate is the content.
+_MAIN_OUTSIDE_LINK_RATIO = 0.5
+#: A candidate must hold at least this share of the page's *prose*.
+_MAIN_MIN_PROSE_SHARE = 0.5
+
+
+def _content_key(tag: str, attrs: List[Any]) -> Optional[str]:
+    """The identity of a main-content candidate, or None."""
+    attr = dict(attrs or [])
+    if tag in _MAIN_TAGS:
+        return f"tag:{tag}"
+    role = str(attr.get("role") or "").strip().lower()
+    if role == "main":
+        return "role:main"
+    ident = str(attr.get("id") or "").strip().lower()
+    for marker in _MAIN_MARKERS:
+        if ident == marker or ident.startswith(marker + "-") or ident.endswith("-" + marker):
+            return f"id:{ident}"
+    classes = str(attr.get("class") or "").strip().lower().split()
+    for name in classes:
+        for marker in _MAIN_MARKERS:
+            if name == marker or name.endswith("-" + marker):
+                return f"class:{name}"
+    return None
+
+
+#: Tags that end a text segment. A segment is the unit the prose test
+#: looks at, so it must not straddle two blocks.
+_SEGMENT_BOUNDARY_TAGS = frozenset("""
+p div li td th tr dd dt section article main header footer nav aside ul ol dl
+h1 h2 h3 h4 h5 h6 blockquote pre table tbody thead tfoot figure figcaption
+form fieldset details summary address hr br
+""".split())
+
+#: A text segment is prose when it has at least this many words...
+_PROSE_MIN_WORDS = 5
+#: ...and either ends like a sentence or runs on at least this long.
+_PROSE_SENTENCE_WORDS = 10
+
+
+def _is_prose_segment(segment: str) -> bool:
+    """Whether a text segment reads as prose rather than as a label.
+
+    Menus, table headers and captions are short and unpunctuated; prose
+    is either a sentence or a long run of words.
+    """
+    words = segment.split()
+    if len(words) < _PROSE_MIN_WORDS:
+        return False
+    if len(words) >= _PROSE_SENTENCE_WORDS:
+        return True
+    return bool(re.search(r"[.!?][\"')]?\s*$", segment.strip()))
+
+
+class _ContentFinder(HTMLParser):
+    """Measures the visible text of every main-content candidate.
+
+    For each candidate it records how much text its subtree holds, how much
+    of that text is prose, and how much sits inside links, so the caller
+    can tell "this element *is* the content" from "this element is a menu".
+    """
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.total_text = 0
+        self.total_link = 0
+        self.total_prose = 0
+        self.candidates: List[list] = []   # [key, ordinal, subtree_len, link_len, prose_len]
+        self._skip = 0
+        self._link_depth = 0
+        self._stack: List[tuple] = []       # (tag, key, ordinal)
+        self._open: List[list] = []         # open candidates
+        self._counters: Dict[str, int] = {}
+        self._buffer = ""
+
+    def handle_starttag(self, tag, attrs):
+        if tag in _SKIP_TAGS:
+            self._flush_buffer()
+            self._skip += 1
+            return
+        if tag == "a":
+            self._link_depth += 1
+        if tag in _SEGMENT_BOUNDARY_TAGS:
+            self._flush_buffer()
+        key = _content_key(tag, attrs)
+        if key is None:
+            self._stack.append((tag, None, 0))
+            return
+        ordinal = self._counters.get(key, 0)
+        self._counters[key] = ordinal + 1
+        self._stack.append((tag, key, ordinal))
+        self._open.append([key, ordinal, 0, 0, 0])
+
+    def handle_startendtag(self, tag, attrs):
+        key = _content_key(tag, attrs)
+        if key is None:
+            return
+        ordinal = self._counters.get(key, 0)
+        self._counters[key] = ordinal + 1
+        self.candidates.append([key, ordinal, 0, 0, 0])
+
+    def handle_endtag(self, tag):
+        if tag in _SKIP_TAGS:
+            self._flush_buffer()
+            if self._skip:
+                self._skip -= 1
+            return
+        if tag == "a" and self._link_depth:
+            self._link_depth -= 1
+        if tag in _SEGMENT_BOUNDARY_TAGS:
+            self._flush_buffer()
+        for index in range(len(self._stack) - 1, -1, -1):
+            if self._stack[index][0] == tag:
+                _, key, ordinal = self._stack.pop(index)
+                if key is not None:
+                    for position in range(len(self._open) - 1, -1, -1):
+                        entry = self._open[position]
+                        if entry[0] == key and entry[1] == ordinal:
+                            self._open.pop(position)
+                            self.candidates.append(entry)
+                            break
+                break
+
+    def handle_data(self, data):
+        if self._skip:
+            return
+        self._buffer += data
+        while "\n" in self._buffer:
+            segment, self._buffer = self._buffer.split("\n", 1)
+            self._count_segment(segment)
+
+    def close(self):  # noqa: D102 - flush the last segment
+        super().close()
+        if self._buffer:
+            self._count_segment(self._buffer)
+            self._buffer = ""
+
+    def _flush_buffer(self) -> None:
+        """Close the current text segment (a block boundary was reached)."""
+        if self._buffer:
+            self._count_segment(self._buffer)
+            self._buffer = ""
+
+    def _count_segment(self, segment: str) -> None:
+        length = len(segment.strip())
+        if not length:
+            return
+        self.total_text += length
+        in_link = 1 if self._link_depth else 0
+        if in_link:
+            self.total_link += length
+        prose = length if _is_prose_segment(segment) else 0
+        if prose:
+            self.total_prose += prose
+        for entry in self._open:
+            entry[2] += length
+            if in_link:
+                entry[3] += length
+            entry[4] += prose
+
+
+class _ScopedExtractor(_MarkdownExtractor):
+    """A markdown extractor that only collects the chosen candidate's text.
+
+    The candidate is identified by the same key and ordinal the finder
+    assigned it, so both passes agree on which element is meant without
+    having to reproduce byte offsets.
+    """
+
+    def __init__(self, want_key: str, want_ordinal: int) -> None:
+        super().__init__()
+        self._want_key = want_key
+        self._want_ordinal = want_ordinal
+        self._counters: Dict[str, int] = {}
+        self._active = False
+        self._depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        key = _content_key(tag, attrs)
+        if key is not None:
+            ordinal = self._counters.get(key, 0)
+            self._counters[key] = ordinal + 1
+            if self._active:
+                self._depth += 1
+                return
+            if key == self._want_key and ordinal == self._want_ordinal:
+                self._active = True
+                self._depth = 0
+                return
+        if self._active:
+            self._depth += 1
+            super().handle_starttag(tag, attrs)
+
+    def handle_startendtag(self, tag, attrs):
+        if self._active:
+            super().handle_startendtag(tag, attrs)
+
+    def handle_endtag(self, tag):
+        if not self._active:
+            return
+        if self._depth > 0:
+            self._depth -= 1
+            super().handle_endtag(tag)
+            return
+        # depth == 0: this closes the candidate itself.
+        self._active = False
+        super().handle_endtag(tag)
+
+    def handle_data(self, data):
+        if self._active:
+            super().handle_data(data)
+
+
+def select_main_content(html: str) -> str:
+    """The HTML of the page's main content region, or the page unchanged.
+
+    Blacklisting ``<nav>``/``<footer>`` is not enough: a page whose
+    navigation is a plain ``<ul>`` — a 111-language list, say — still spends
+    the whole character budget on the menu. When a main-content container
+    can be identified and it holds the bulk of the visible text, only that
+    region is kept.
+    """
+    if not html or not html.strip():
+        return html
+    finder = _ContentFinder()
+    try:
+        finder.feed(html)
+        finder.close()
+    except Exception:
+        return html
+    # A candidate must hold at least half of the page's prose. That is what
+    # separates "the article" from "the menu next to the article": a
+    # navigation list has no prose in it at all.
+    needed_prose = finder.total_prose * _MAIN_MIN_PROSE_SHARE
+    best = None
+    for entry in finder.candidates:
+        key, ordinal, length = entry[0], entry[1], entry[2]
+        prose = entry[4]
+        if length < _MAIN_MIN_CHARS:
+            continue
+        if prose < needed_prose:
+            continue
+        # Among the candidates that hold the prose, take the *tightest* one:
+        # the smallest region that still contains the article. That is how
+        # `<main>` (which also contains the page's language menu) loses to
+        # the article container inside it.
+        if best is None:
+            best = (key, ordinal, length, prose)
+            continue
+        if prose > best[3]:
+            best = (key, ordinal, length, prose)
+        elif prose == best[3] and length < best[2]:
+            best = (key, ordinal, length, prose)
+    if best is None:
+        return html
+    scoped = _ScopedExtractor(best[0], best[1])
+    try:
+        scoped.feed(html)
+        scoped.close()
+    except Exception:
+        return html
+    text = "\n".join(line.rstrip() for line in scoped.out)
+    if len(text.strip()) < _MAIN_MIN_CHARS:
+        return html
+    return text
+
+
+def html_to_markdown(html: str, *, main_content: bool = True) -> str:
+    """Convert HTML to markdown-flavored text. Lossy by design; never raises.
+
+    With ``main_content`` (the default) the page's main-content region is
+    isolated first, so a navigation-heavy page does not spend the whole
+    character budget on its menu.
+    """
     if not html or not html.strip():
         return ""
+    if main_content:
+        html = select_main_content(html)
     parser = _MarkdownExtractor()
     try:
         parser.feed(html)
