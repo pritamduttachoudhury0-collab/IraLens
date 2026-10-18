@@ -2,6 +2,186 @@
 
 All notable changes to this project are documented here, newest first.
 
+## Unreleased
+
+Browser resilience and honest reporting of optional features. This work is
+**not** a new release: the release version remains `0.3.1` by project
+decision, so no version was bumped. Cutting a version for these changes is a
+separate call for the maintainer.
+
+### Fixed
+
+- **A verification page could be returned as research content.** A CAPTCHA
+  widget, bot-check interstitial, login wall, or access-denied page that
+  rendered cleanly passed every downstream check as a successful read, so
+  "verify you are human" could reach the agent as evidence. New
+  `iralens/challenge.py` classifies these on both the raw response body and
+  the extracted text; the web source raises a typed
+  `VerificationRequiredError` (a subclass of `PageUnavailableError`, so
+  existing handlers are unaffected). A challenge no longer escalates to the
+  browser tier — the previous code actively recommended retrying one through
+  a full browser render, which cannot succeed.
+- **`--stealth` was a phantom flag.** It was declared on the engine CLI,
+  forwarded to the subprocess, parsed by argparse, and then never read. An
+  operator setting `stealth: true` had no way to know nothing had changed.
+  The engine now advertises what it actually implements in the MCP
+  `initialize` response (`requested` / `supported` / `applied`), and a
+  requested-but-unavailable feature is reported on stderr and in `doctor`
+  rather than being silently dropped. It warns rather than fails: taking the
+  browser tier down over an optional cosmetic flag would be worse than
+  continuing without it.
+- **Proxy credentials were exposed on the process command line.** The proxy
+  URL was passed as `["--proxy", str(proxy)]`. `/proc/<pid>/cmdline` is
+  world-readable, so a proxy URL of the common form
+  `http://user:pass@host:8080` published its password to every account on
+  the machine. The proxy now reaches the engine through its environment
+  (`IRALENS_ENGINE_PROXY`), which is owner-readable only. An explicit
+  `--proxy` flag still works and still wins over the environment.
+
+### Fixed (retrieval trust — IraPulse gap analysis)
+
+- **F-02 — silent fusion degradation.** An open circuit did not reduce the
+  result count, because another engine filled the slots, so a caller saw a
+  healthy-looking top 5 assembled by a substitute (typically an
+  entity-matching index). Every result now carries a `degradation` block
+  derived from engine outcomes, including on the legacy `search()` path.
+- **F-03 — freshness rescued irrelevant results.** A page published today
+  scores ~0.98 on freshness, so dated junk outranked undated relevance.
+  Relevance is now gated; below the floor, freshness is held at neutral.
+- **F-05 — snippets were chosen by length**, which prefers verbose
+  boilerplate over the passage carrying the answer. Selection now scores
+  term coverage and density, penalises marketing copy, and credits a figure
+  when the question asks for one.
+- **F-08 — `doctor` reported `ok` during a partial outage.** Health now
+  reads breaker state (a local read; doctor stays non-destructive) and
+  reports `warn` with the tripped engines named.
+- **F-09 — disagreements were never surfaced.** Figures sharing a unit that
+  differ by more than 5% across distinct domains now produce a conflict
+  record retaining both sides with sources and dates, plus a `sufficiency`
+  label (`insufficient` / `undated` / `sourced`). Detection is lexical and
+  heuristic and never adjudicates which source is right.
+- **F-06 and F-07** (extraction flattening; injection false positive on
+  benign documentation) were fixed in 0.3.1; the audit was run against
+  `main` before that remediation, which is recorded in `KNOWN_LIMITATIONS.md`.
+- **F-10** — README test count and cache-TTL documentation brought back in
+  line with the code.
+
+### Security
+
+- Browser **subresource** SSRF now has regression coverage: a hostile page
+  naming an internal host in a `<script src>` is refused and recorded as
+  `blocked_subresource` while the rest of the page still renders. The
+  control itself already worked; only the test was missing.
+- No security control was weakened to make anything pass: no timeout raised,
+  no assertion relaxed, no test skipped, no validation bypassed.
+
+### Still open
+
+- **F-01 — concept-level retrieval** for generic and multi-concept queries
+  is **not** fixed and is **not** claimed to be fixed. It requires live
+  queries against search providers to measure, which this offline
+  environment cannot do. See `KNOWN_LIMITATIONS.md`.
+- **F-11 — the 12,000-query paired benchmark** has still not been run
+  (0 queries submitted). The ≥98% bar remains untested.
+
+### Documentation
+
+- `KNOWN_LIMITATIONS.md`: new section stating that verification pages are
+  reported and never solved, that challenge detection is conservative, and
+  that **stealth is unreachable in every shipped configuration** (it exists
+  only behind an uncompiled Rust `stealth` feature gate).
+- `docs/security.md`: browser navigation guard, verification-stop control,
+  proxy credentials moved to the environment, and four new known gaps.
+- `README.md`: challenge pages are reported not solved; `stealth` has no
+  effect in this distribution.
+- `BROWSER_RESILIENCE_IMPLEMENTATION_REPORT.md`: full implementation report
+  separating verified facts from inferred conclusions and untested
+  assumptions.
+
+## 0.3.1 — 2026-10-18
+
+Remediation of the eight findings from the feasibility-gated partial audit of
+2026-10-18 (`F-01`…`F-08`), plus the defects found while reproducing them.
+Every fix is covered by a deterministic offline regression test; nothing in
+this release requires network access to verify.
+
+### Fixed
+
+- **F-01 — main-content extraction flattened pages and contaminated the
+  title.** `select_main_content()` returned *markdown*, which
+  `html_to_markdown()` then re-parsed as HTML; with no block tags left to
+  break on, a whole page collapsed into one line and the artifact title
+  (taken from the first heading line) became the entire body. The selector
+  now returns an HTML fragment (`_ContentSerializer`) and the document is
+  converted exactly once. Titles come from `<title>`/`<h1>` metadata, are
+  bounded to 200 characters, and the content budget applies to content only.
+  `metadata.total_chars` is now reported even when nothing was truncated.
+- **F-02 — setup and doctor rewrote a tracked launcher with machine
+  absolute paths.** `ensure_bundled_launcher()` wrote the running
+  interpreter's path into `iralens/_internal/browser_engine/bin/`, dirtying
+  every checkout. The in-package launcher is now relocatable, path-free
+  package data that is only ever read; the machine-local launcher is
+  generated into the writable per-user engine cache instead. An unrefreshable
+  target reports unavailable rather than returning a stale path.
+- **F-03 — `doctor` reported an installed yt-dlp as "not installed."**
+  Discovery used `shutil.which()` alone, so a tool installed in the running
+  interpreter's environment was invisible when that environment was not on
+  `PATH`. `proc.resolve_executable()` now also checks the interpreter's own
+  `bin`/`Scripts` directories and a `python -m` module fallback, and
+  `scripts/setup.sh`/`setup.ps1` put the venv on `PATH` for the health check.
+- **F-04 — search health over-claimed.** `SearchSource.health()` special-cased
+  only the browser status `off`; `error` fell through to an `ok` message
+  claiming a rendered fallback, and the message implied upstream providers
+  had been probed. Health now returns structured `details`
+  (`direct_search`, `browser_fallback`, `provider_probe`) and a browser
+  `error` yields `warn`, never `ok`.
+- **F-05 — search-cache TTL documentation was stale.** `docs/search.md` said
+  900 s; the configured default is 300 s. The documentation is corrected and
+  a test ties the documented number to `Settings`.
+- **F-06 — stale RSS security claim.** `docs/security.md` and
+  `KNOWN_LIMITATIONS.md` said RSS uses its own HTTP client and does not pin
+  DNS answers; `sources/rss.py` uses `safe_urlopen`. The documents now name
+  the source that actually still uses `requests` (`transcribe`).
+- **F-07 — benign documentation triggered the tool-directive flag.** The
+  `tool_directive` pattern matched the bare phrase "run function", so the
+  Python asyncio page was flagged. The rule now requires syntactic evidence
+  of an invocation (a shell, a named target, or an imperative aimed at the
+  reader). Explicit injections are still flagged; flags remain advisory.
+- **F-08 — legacy artifacts lost date provenance.** `to_artifacts()` dropped
+  `date_evidence`, `date_kind` and `modified_at`. All three are now carried
+  in both `metadata` and `provenance`, so every non-null date that affects
+  freshness is traceable.
+
+### Added
+
+- `tests/fixtures/extraction/` — eight deterministic HTML fixtures covering a
+  qualifying `<main>`/`<article>`, headings, paragraphs, both list kinds,
+  links, tables, Unicode, nested containers, malformed HTML, script/style
+  exclusion, missing and over-long titles, and the selection threshold.
+- Five new offline test modules: `test_extraction_main_content.py`,
+  `test_launcher_immutability.py`, `test_executable_discovery.py`,
+  `test_health_reporting.py`, `test_docs_runtime_agreement.py`, plus
+  `test_search_date_provenance.py` and an expanded `test_content_guard.py`.
+
+### Changed
+
+- `SourceHealth` gained an optional structured `details` mapping, carried
+  through `to_dict()` and therefore through `doctor`. Additive: existing
+  consumers see the same fields as before.
+- The browser-engine subsystem keeps its own independent version (`0.2.4`).
+
+### Notes and limitations
+
+- The 12,000-query paired benchmark referenced by the audit was **not**
+  executed. It remains unstarted: no query manifest was produced and no
+  per-query criteria were registered. Offline tests do not substitute for it.
+- F-08's suspect `published_at: 2015-03-13` on a Python 3.13 page is
+  **unresolved**. The raw engine response was never captured, so no cause is
+  assigned; the date is now inspectable and typed `unknown` rather than
+  asserted as a verified publication date.
+- Live provider reachability, DNS-rebinding, redirect-to-private and
+  scanned-PDF OCR paths were not exercised in this environment.
+
 ## 0.3.0 — 2026-10-18
 
 Remediation of the independent audit of 2026-10-17, in three phases, plus a

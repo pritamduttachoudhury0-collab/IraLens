@@ -32,6 +32,10 @@ Write-Host "==> installing iralens ($target) in editable mode"
 & "$VenvDir\Scripts\python.exe" -m pip install -e $target
 
 Write-Host "==> health check"
+# Put the venv's Scripts directory on PATH for the check (the POSIX script does
+# the same): console scripts such as yt-dlp live there, and without it doctor
+# reports them "not installed" even though this script just installed them.
+$env:PATH = "$(Resolve-Path $VenvDir)\Scripts;$env:PATH"
 & "$VenvDir\Scripts\iralens.exe" --version
 & "$VenvDir\Scripts\iralens.exe" --json doctor | Out-Null
 Write-Host "doctor: ok"

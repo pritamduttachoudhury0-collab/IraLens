@@ -1,6 +1,6 @@
 [project]
 name = "iralens"
-version = "0.3.0"
+version = "0.3.1"
 description = "IraLens — one unified Internet-access system: search, read, browse, and specialized source access behind a single interface."
 readme = "README.md"
 license = "Apache-2.0"

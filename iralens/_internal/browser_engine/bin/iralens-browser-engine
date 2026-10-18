@@ -1,6 +1,18 @@
 #!/bin/sh
-# Auto-generated launcher for the bundled IraLens native browser engine.
-if [ -x "/home/user/IraLens/.venv/bin/python" ]; then
-  exec "/home/user/IraLens/.venv/bin/python" -m iralens._internal.browser_engine.mcp_server "$@"
+# Launcher for the bundled IraLens native browser engine.
+#
+# This file is package data: it is intentionally relocatable and contains
+# no absolute paths. Do not regenerate it at runtime; the per-user,
+# machine-local launcher is written to the writable engine cache instead
+# (see ensure_generated_launcher).
+set -eu
+if [ -n "${IRALENS_PYTHON:-}" ] && [ -x "${IRALENS_PYTHON}" ]; then
+  exec "${IRALENS_PYTHON}" -m iralens._internal.browser_engine.mcp_server "$@"
 fi
-PYTHONPATH="/home/user/IraLens:${PYTHONPATH:-}" exec python3 -m iralens._internal.browser_engine.mcp_server "$@"
+for py in python3 python; do
+  if command -v "$py" >/dev/null 2>&1; then
+    exec "$py" -m iralens._internal.browser_engine.mcp_server "$@"
+  fi
+done
+echo "iralens-browser-engine: no python interpreter found" >&2
+exit 127

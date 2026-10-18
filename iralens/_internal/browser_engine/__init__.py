@@ -10,9 +10,12 @@ from __future__ import annotations
 
 from .builder import (
     BUNDLED_BIN_DIR,
+    TRACKED_LAUNCHER_PATH,
     build_rust_vendor_binary,
     ensure_bundled_launcher,
+    ensure_generated_launcher,
     install_bundled_engine,
+    relocatable_launcher_content,
 )
 from .cookies import CookieJar, StoredCookie
 from .mcp_server import ENGINE_SERVER_NAME, ENGINE_SERVER_VERSION, MCP_TOOLS_SCHEMA
@@ -32,6 +35,7 @@ from .ssrf import allow_private_network, is_blocked_ip, validate_navigation_url
 
 __all__ = [
     "BUNDLED_BIN_DIR",
+    "TRACKED_LAUNCHER_PATH",
     "CookieJar",
     "ENGINE_SERVER_NAME",
     "ENGINE_SERVER_VERSION",
@@ -50,7 +54,9 @@ __all__ = [
     "allow_private_network",
     "build_rust_vendor_binary",
     "ensure_bundled_launcher",
+    "ensure_generated_launcher",
     "install_bundled_engine",
+    "relocatable_launcher_content",
     "is_blocked_ip",
     "validate_navigation_url",
 ]

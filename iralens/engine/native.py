@@ -21,7 +21,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .. import errors
+from ..proc import utf8_env
 from ..security import public_message
+from .._internal.browser_engine.mcp_server import PROXY_ENV_VAR
 from .locate import find_engine
 
 _PROTOCOL_VERSION = "2024-11-05"
@@ -138,6 +140,12 @@ class BrowserEngine:
         self._lock = threading.Lock()
         self._restored_state = False
         self._startup_failure: Optional[errors.EngineUnavailableError] = None
+        #: What the running engine reported in its `initialize` response.
+        #: Empty until the handshake completes.
+        self.capabilities: Dict[str, Any] = {}
+        #: Diagnostics for optional features that were asked for but are not
+        #: available in this build. Never silent, never fatal.
+        self.capability_warnings: List[str] = []
 
     # ------------------------------------------------------------- lifecycle
     @property
@@ -174,12 +182,15 @@ class BrowserEngine:
                                                 detail=previous.detail)
         binary = self.binary_path()
         argv = [str(binary), "mcp"]
+        # Secrets and per-child settings travel in the environment, never on
+        # argv: the command line of a running process is world-readable.
+        child_extra: Dict[str, str] = {}
         if self.config is not None:
             if str(self.config.get("stealth", "")).lower() in ("1", "true", "yes"):
                 argv.append("--stealth")
             proxy = self.config.get("proxy")
             if proxy:
-                argv += ["--proxy", str(proxy)]
+                child_extra[PROXY_ENV_VAR] = str(proxy)
             ua = self.config.get("user_agent")
             if ua:
                 argv += ["--user-agent", str(ua)]
@@ -196,6 +207,7 @@ class BrowserEngine:
                 stderr=subprocess.PIPE,
                 text=True,
                 bufsize=1,
+                env=utf8_env(extra=child_extra),
             )
         except OSError as exc:
             raise errors.EngineUnavailableError(
@@ -205,16 +217,56 @@ class BrowserEngine:
         self._reader.start()
         threading.Thread(target=self._pump_stderr, daemon=True).start()
         try:
-            self._rpc("initialize", {
+            handshake = self._rpc("initialize", {
                 "protocolVersion": _PROTOCOL_VERSION,
                 "capabilities": {},
-                "clientInfo": {"name": "iralens", "version": "0.3.0"},
+                "clientInfo": {"name": "iralens", "version": "0.3.1"},
             }, timeout=self._handshake_timeout())
+            self._record_capabilities(handshake)
         except errors.EngineUnavailableError as exc:
             self._startup_failure = exc
             self._terminate()
             raise
         self._restore_session_state()
+
+    # ---------------------------------------------------------- capabilities
+    def _record_capabilities(self, handshake: Any) -> None:
+        """Remember what the engine says it supports.
+
+        The engine is the authority here, not this driver: the same driver
+        code talks to a bundled Python-tier engine today and could talk to a
+        compiled engine tomorrow, so support is discovered rather than
+        assumed from the config that was requested.
+        """
+        if isinstance(handshake, dict):
+            reported = handshake.get("engineCapabilities")
+            if isinstance(reported, dict):
+                self.capabilities = reported
+        stealth = self.capabilities.get("stealth")
+        if isinstance(stealth, dict) and stealth.get("requested") and not stealth.get("applied"):
+            reason = str(stealth.get("reason") or "not supported by this engine build")
+            self.capability_warnings.append(
+                "stealth was requested but is not active: " + reason
+            )
+
+    def stealth_status(self) -> Dict[str, Any]:
+        """Whether stealth is active, and why not, for `doctor` output."""
+        stealth = self.capabilities.get("stealth")
+        if not isinstance(stealth, dict):
+            return {"requested": self._wants_stealth(), "supported": None,
+                    "active": False,
+                    "note": "the engine did not report capabilities"}
+        return {
+            "requested": bool(stealth.get("requested")),
+            "supported": bool(stealth.get("supported")),
+            "active": bool(stealth.get("applied")),
+            "note": str(stealth.get("reason") or ""),
+        }
+
+    def _wants_stealth(self) -> bool:
+        if self.config is None:
+            return False
+        return str(self.config.get("stealth", "")).lower() in ("1", "true", "yes")
 
     def _terminate(self) -> None:
         """Drop the child process without persisting anything (failure path)."""
@@ -589,7 +641,13 @@ class BrowserEngine:
                 "message": "browser engine not installed — run: iralens install-engine",
             }
         if self.running:
-            return {"status": "ok", "message": "browser engine running"}
+            health: Dict[str, Any] = {"status": "ok", "message": "browser engine running"}
+            # An optional feature that was asked for but is not active is a
+            # correctness issue for the caller, not a cosmetic one: it must be
+            # visible wherever engine state is reported.
+            if self.capability_warnings:
+                health["warnings"] = list(self.capability_warnings)
+            return health
         from ..proc import probe_command
 
         probe = probe_command(str(path), ["--version"], timeout=15)

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -28,8 +29,66 @@ from .runtime import (
     ObscuraNativeEngine,
 )
 
+#: Channel used to hand the proxy to a spawned engine without putting it on
+#: the command line. `/proc/<pid>/cmdline` is world-readable, so a proxy URL
+#: carrying credentials (`http://user:pass@host`) would be readable by every
+#: local account. The environment is owner-readable only, which is weaker
+#: exposure but still not zero, so keep it out of logs either way.
+PROXY_ENV_VAR = "IRALENS_ENGINE_PROXY"
+
 ENGINE_SERVER_NAME = "iralens-browser-engine"
 ENGINE_SERVER_VERSION = f"0.2.4+rev.{UPSTREAM_REVISION[:12]}"
+
+#: What this build actually implements, as opposed to what the vendored
+#: upstream source is capable of. The distinction matters: the vendored
+#: Obscura crates carry real stealth code behind Rust `#[cfg(feature =
+#: "stealth")]` gates, and this distribution does not compile the Rust
+#: crates at all -- it runs the Python/native-V8 tier. The capability is
+#: therefore *upstream*, not *present*. Advertising it as available would
+#: let a caller believe requests are protected when they are not.
+#:
+#: Even where stealth is compiled in, it is a browser-identity consistency
+#: measure. It does not solve CAPTCHAs and does not guarantee success
+#: against interactive Cloudflare / DataDome / Akamai challenges.
+ENGINE_CAPABILITIES: Dict[str, Any] = {
+    "stealth": {
+        "supported": False,
+        "tier": "python-native-v8",
+        "reason": (
+            "stealth is implemented in the vendored Rust crate "
+            "obscura-browser behind the 'stealth' cargo feature, which this "
+            "distribution does not compile; the Python/native-V8 tier has no "
+            "stealth implementation"
+        ),
+    },
+    "javascript_rendering": {"supported": True},
+    "proxy": {"supported": True},
+    "tracker_blocking": {"supported": False},
+}
+
+
+def _stealth_notice() -> str:
+    """The diagnostic shown when `--stealth` is requested but unsupported."""
+    info = ENGINE_CAPABILITIES["stealth"]
+    return (
+        f"{ENGINE_SERVER_NAME}: --stealth was requested but is not supported by "
+        f"this build ({info['tier']}); continuing without it. {info['reason']}. "
+        "Note that stealth, where available, does not solve CAPTCHAs and does "
+        "not guarantee success against interactive challenges."
+    )
+
+
+def capabilities_payload(stealth_requested: bool = False) -> Dict[str, Any]:
+    """Capabilities for the `initialize` response.
+
+    A requested-but-unsupported feature is reported explicitly rather than
+    being dropped, so the client can tell the difference between "off
+    because you did not ask" and "off because this build cannot".
+    """
+    payload = {name: dict(value) for name, value in ENGINE_CAPABILITIES.items()}
+    payload["stealth"]["requested"] = bool(stealth_requested)
+    payload["stealth"]["applied"] = False
+    return payload
 
 
 MCP_TOOLS_SCHEMA: List[Dict[str, Any]] = [
@@ -384,7 +443,8 @@ def _serialize_tool_output(val: Any) -> str:
         return str(val)
 
 
-def run_mcp_stdio_loop(engine: ObscuraNativeEngine) -> int:
+def run_mcp_stdio_loop(engine: ObscuraNativeEngine,
+                       *, stealth_requested: bool = False) -> int:
     """Run the JSON-RPC 2.0 MCP server loop over stdin/stdout."""
     try:
         for raw_line in sys.stdin:
@@ -422,6 +482,7 @@ def run_mcp_stdio_loop(engine: ObscuraNativeEngine) -> int:
                             "name": ENGINE_SERVER_NAME,
                             "version": ENGINE_SERVER_VERSION,
                         },
+                        "engineCapabilities": capabilities_payload(stealth_requested),
                     },
                 }
             elif method == "ping":
@@ -470,7 +531,7 @@ def run_mcp_stdio_loop(engine: ObscuraNativeEngine) -> int:
     return 0
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="iralens-browser-engine",
         description="IraLens integrated native browser engine (V8 + HTML5 DOM + MCP server).",
@@ -514,7 +575,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_scrape.add_argument("--selector", required=True, help="CSS selector to extract.")
     p_scrape.add_argument("--timeout", type=float, default=30.0, help="Navigation timeout in seconds.")
     p_scrape.add_argument("--allow-private", action="store_true", help="Allow loopback/private IPs.")
+    return parser
 
+
+def main(argv: Optional[List[str]] = None) -> int:
+    parser = build_parser()
     args = parser.parse_args(argv)
     if args.version:
         print(
@@ -523,7 +588,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
         return 0
 
+    stealth_requested = bool(getattr(args, "stealth", False))
+    if stealth_requested:
+        # Loud, not fatal: a caller who believes stealth is on must be told it
+        # is not, but refusing to start would take the whole browser tier down
+        # over an optional cosmetic flag.
+        print(_stealth_notice(), file=sys.stderr)
+
     if args.subcommand in (None, "mcp"):
+        # Explicit --proxy wins; env is the safe channel used by the parent.
+        if getattr(args, "proxy", None) is None:
+            env_proxy = os.environ.get(PROXY_ENV_VAR)
+            if env_proxy:
+                args.proxy = env_proxy
         raw_storage = getattr(args, "storage_dir", None)
         storage_dir = Path(str(raw_storage)).expanduser() if raw_storage else None
         engine = ObscuraNativeEngine(
@@ -533,7 +610,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             allow_private=bool(getattr(args, "allow_private", False)),
             allow_file=bool(getattr(args, "allow_file", False)),
         )
-        return run_mcp_stdio_loop(engine)
+        return run_mcp_stdio_loop(engine, stealth_requested=stealth_requested)
 
     if args.subcommand == "fetch":
         engine = ObscuraNativeEngine(allow_private=bool(args.allow_private))

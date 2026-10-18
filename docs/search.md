@@ -157,7 +157,7 @@ per key, outside the repository:
 
 | What | Namespace | TTL | Cached? |
 |---|---|---|---|
-| Search responses | `search.v1` | `cache_search_ttl_seconds` (900) | yes, only when there are results and no engine failed |
+| Search responses | `search.v1` | `cache_search_ttl_seconds` (300) | yes, only when there are results and no engine failed |
 | Static page reads | `page.v1` | `cache_page_ttl_seconds` (3600) | yes, when markdown is non-empty |
 | Browser page reads | — | — | **never** (the browser can hold session state) |
 | Authenticated content | — | — | **never** (`cacheable=False` is required) |

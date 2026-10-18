@@ -31,6 +31,7 @@ import shutil
 import subprocess
 import tempfile
 import unicodedata
+from html import escape
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -439,66 +440,127 @@ class _ContentFinder(HTMLParser):
             entry[4] += prose
 
 
-class _ScopedExtractor(_MarkdownExtractor):
-    """A markdown extractor that only collects the chosen candidate's text.
+#: HTML void elements. They never carry a closing tag, so the serializer must
+#: not push them onto its element stack: an entry that is never popped would
+#: stop the selected subtree's own closing tag from being recognized, and the
+#: fragment would swallow the rest of the document.
+_VOID_TAGS = frozenset("""
+area base basefont br col embed frame hr img input link meta param
+source track wbr
+""".split())
 
-    The candidate is identified by the same key and ordinal the finder
-    assigned it, so both passes agree on which element is meant without
-    having to reproduce byte offsets.
+
+class _ContentSerializer(HTMLParser):
+    """Re-serialize the selected main-content subtree back to *HTML source*.
+
+    The finder identifies a container by its ``(key, ordinal)``; this pass
+    walks the same document with the same counter, so it captures the markup
+    of exactly that subtree.
+
+    Emitting markup — not markdown — is the whole point of this class. The
+    selected region is converted to markdown exactly once, afterwards, by
+    :func:`html_to_markdown`. Feeding markdown back into an HTML parser (what
+    an earlier revision did) collapses every block into one line, because
+    markdown contains no block tags for the parser to break on.
     """
 
     def __init__(self, want_key: str, want_ordinal: int) -> None:
-        super().__init__()
+        super().__init__(convert_charrefs=True)
         self._want_key = want_key
         self._want_ordinal = want_ordinal
         self._counters: Dict[str, int] = {}
         self._active = False
-        self._depth = 0
+        self._stack: List[str] = []
+        self._skip_depth = 0
+        self._parts: List[str] = []
 
+    # ---------------------------------------------------------------- output
+    def to_html(self) -> str:
+        """The captured subtree as HTML, with any dangling elements closed."""
+        if not self._parts:
+            return ""
+        text = "".join(self._parts)
+        # Malformed input can leave elements open; close them so the fragment
+        # stays parseable by the markdown pass instead of leaking structure.
+        for name in reversed(self._stack):
+            text += f"</{name}>"
+        self._stack = []
+        return text
+
+    # ------------------------------------------------------------------ tags
     def handle_starttag(self, tag, attrs):
         key = _content_key(tag, attrs)
         if key is not None:
             ordinal = self._counters.get(key, 0)
             self._counters[key] = ordinal + 1
             if self._active:
-                self._depth += 1
+                self._open(tag)
                 return
             if key == self._want_key and ordinal == self._want_ordinal:
                 self._active = True
-                self._depth = 0
-                return
+                # The candidate itself is never treated as skippable: it is
+                # the region the caller asked for.
+                self._parts.append(self.get_starttag_text() or f"<{tag}>")
+                if tag not in _VOID_TAGS:
+                    self._stack.append(tag)
+            return
         if self._active:
-            self._depth += 1
-            super().handle_starttag(tag, attrs)
+            self._open(tag)
 
     def handle_startendtag(self, tag, attrs):
-        if self._active:
-            super().handle_startendtag(tag, attrs)
+        key = _content_key(tag, attrs)
+        if key is not None:
+            ordinal = self._counters.get(key, 0)
+            self._counters[key] = ordinal + 1
+        if self._active and tag not in _SKIP_TAGS:
+            self._parts.append(self.get_starttag_text() or f"<{tag}/>")
 
     def handle_endtag(self, tag):
-        if not self._active:
+        if tag in _SKIP_TAGS:
+            if self._skip_depth:
+                self._skip_depth -= 1
             return
-        if self._depth > 0:
-            self._depth -= 1
-            super().handle_endtag(tag)
+        if not self._active or self._skip_depth:
             return
-        # depth == 0: this closes the candidate itself.
-        self._active = False
-        super().handle_endtag(tag)
+        if tag in self._stack:
+            # Close through to the matching element: an unclosed inline tag
+            # (malformed markup) must not stay open past its container.
+            while self._stack:
+                name = self._stack.pop()
+                self._parts.append(f"</{name}>")
+                if name == tag:
+                    break
+        # A stray closing tag is dropped, not emitted: writing it back would
+        # corrupt the fragment for the markdown pass.
+        if not self._stack:
+            self._active = False
 
     def handle_data(self, data):
-        if self._active:
-            super().handle_data(data)
+        if self._active and not self._skip_depth:
+            self._parts.append(escape(data, quote=False))
+
+    # ---------------------------------------------------------------- helpers
+    def _open(self, tag: str) -> None:
+        if tag in _SKIP_TAGS:
+            self._skip_depth += 1
+            return
+        self._parts.append(self.get_starttag_text() or f"<{tag}>")
+        if tag not in _VOID_TAGS:
+            self._stack.append(tag)
 
 
 def select_main_content(html: str) -> str:
-    """The HTML of the page's main content region, or the page unchanged.
+    """The HTML *source* of the page's main content region, or the page unchanged.
 
     Blacklisting ``<nav>``/``<footer>`` is not enough: a page whose
     navigation is a plain ``<ul>`` — a 111-language list, say — still spends
     the whole character budget on the menu. When a main-content container
     can be identified and it holds the bulk of the visible text, only that
     region is kept.
+
+    Contract: the return value is always **HTML**, never markdown. Callers
+    that want text must run it through :func:`html_to_markdown` exactly once;
+    running the result through an HTML parser again would flatten it.
     """
     if not html or not html.strip():
         return html
@@ -533,16 +595,27 @@ def select_main_content(html: str) -> str:
             best = (key, ordinal, length, prose)
     if best is None:
         return html
-    scoped = _ScopedExtractor(best[0], best[1])
+    serializer = _ContentSerializer(best[0], best[1])
     try:
-        scoped.feed(html)
-        scoped.close()
+        serializer.feed(html)
+        serializer.close()
     except Exception:
         return html
-    text = "\n".join(line.rstrip() for line in scoped.out)
-    if len(text.strip()) < _MAIN_MIN_CHARS:
+    fragment = serializer.to_html()
+    if not fragment.strip():
         return html
-    return text
+    # The candidate was chosen by its share of the page's text; re-measure the
+    # captured fragment so a container that serializes to (almost) nothing is
+    # not preferred over the whole document.
+    probe = _ContentFinder()
+    try:
+        probe.feed(fragment)
+        probe.close()
+    except Exception:
+        return html
+    if probe.total_text < _MAIN_MIN_CHARS:
+        return html
+    return fragment
 
 
 def html_to_markdown(html: str, *, main_content: bool = True) -> str:
@@ -551,6 +624,9 @@ def html_to_markdown(html: str, *, main_content: bool = True) -> str:
     With ``main_content`` (the default) the page's main-content region is
     isolated first, so a navigation-heavy page does not spend the whole
     character budget on its menu.
+
+    The selected region is *HTML* (see :func:`select_main_content`), so the
+    conversion below is the only one performed: the document is parsed once.
     """
     if not html or not html.strip():
         return ""

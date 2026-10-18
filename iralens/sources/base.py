@@ -14,7 +14,7 @@ sets ``active_backend`` to whatever can actually serve right now.
 from __future__ import annotations
 
 from abc import ABC
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from ..errors import OperationUnsupportedError
@@ -30,6 +30,11 @@ class SourceHealth:
     message: str
     active_backend: Optional[str] = None
     hint: str = ""
+    #: Structured, machine-readable breakdown of *why* this status was chosen.
+    #: A single status word cannot say "direct search works but the optional
+    #: rendered fallback is broken"; `details` can, so a caller never has to
+    #: parse prose to find out.
+    details: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         data: Dict[str, Any] = {"status": self.status, "message": self.message}
@@ -37,6 +42,8 @@ class SourceHealth:
             data["active_backend"] = self.active_backend
         if self.hint:
             data["hint"] = self.hint
+        if self.details:
+            data["details"] = dict(self.details)
         return data
 
 
