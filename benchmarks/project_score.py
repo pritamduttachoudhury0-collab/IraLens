@@ -102,9 +102,16 @@ def _load_jsonl(path: Path) -> List[Dict[str, Any]]:
     if not path.is_file():
         return []
     out: List[Dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
             out.append(json.loads(line))
+        except ValueError:
+            # The audit's two largest JSONL files have no closing fence in
+            # the part they start in, so the final row can arrive truncated.
+            # A truncated row is not a row.
+            continue
     return out
 
 

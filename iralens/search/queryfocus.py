@@ -49,20 +49,20 @@ from .querytext import parse_site_scopes, tokenize
 #: subject that happens to contain one of them ("primary school enrollment
 #: statistics") is not truncated.
 REQUEST_MARKERS: frozenset = frozenset("""
-academic accounts against alternatives announcement archive article articles behavior breaking browser case cases caveats
-change changes check code comment comments common comparability compare comparison competing concern conflicting consequences
-conservation contemporary context corroborated counterexample counterexamples court csv current dashboard data dataset datasets date
-dates debate debugging definition definitions disambiguation discrepancy disputed documentation documented documents downloadable earliest economic
-effect encyclopedia error errors evidence exact example examples experiment experimental explanation explanations fact facts
-factual failing failure failures fee fees fix gaps github government guidance guide guideline guidelines
-historical histories implications independent industry interactive interpretation interpretations intervals issue issues known later latest
-lecture legal legislation library limit limitations list literal literature logs main metadata methodology methods
-migration minimal misconception misconceptions navigation note notes numeric official operations page pdf peer primary
-principles proof public published recent recommended record records reference references regression release releases reliable
-rendered report reports reproduce reproducibility reproducible research retrospective review reviewed reviews revisions rigorous safety
-scoping section sections semantics simplified source sources specific spelling statistics statute studies study subscription
-superseding systematic technical terminology text texts trial troubleshooting two uncertainty university update usual variants
-version versions versus wiki without worked
+academic accounts against alternatives announcement archive article articles arxiv behavior breaking browser case cases
+caveats change changes check code comment comments common comparability compare comparison competing concern conflicting
+consequences conservation contemporary context corroborated counterexample counterexamples court csv current dashboard data dataset datasets
+date dates debate debugging definition definitions disambiguation discrepancy disputed documentation documented documents doi downloadable
+earliest economic effect encyclopedia error errors evidence exact example examples experiment experimental explanation explanations
+fact facts factual failing failure failures fee fees fix gaps github government guidance guide
+guideline guidelines historical histories implications independent industry interactive interpretation interpretations intervals issue issues known
+later latest lecture legal legislation library limit limitations list literal literature logs main metadata
+methodology methods migration minimal misconception misconceptions navigation note notes numeric official operations original page
+paper papers pdf peer primary principles proof public published recent recommended record records reference
+references regression release releases reliable rendered report reports reproduce reproducibility reproducible research retrospective review
+reviewed reviews revisions rigorous safety scoping section sections semantics simplified source sources specific spelling
+statistics statute studies study subscription superseding systematic technical terminology text texts trial troubleshooting two
+uncertainty university update usual variants version versions versus wiki without worked
 """.split())
 
 #: Words that may appear *inside* a request shape without starting one.
@@ -240,7 +240,8 @@ def _marker(word: str) -> bool:
 def _shape_word(word: str) -> bool:
     """Can this word sit inside a request shape?"""
     low = word.lower()
-    return (low in SHAPE_WORDS or low in CONNECTIVES or _is_date_like(word))
+    return (low in SHAPE_WORDS or low in REQUEST_MARKERS
+            or low in CONNECTIVES or _is_date_like(word))
 
 
 def _normalise_words(words: List[str]) -> List[str]:
@@ -348,15 +349,19 @@ def split_subject(text: str) -> Tuple[str, str]:
 
     # Scan backwards for the last request word, skipping a trailing date.
     start = len(words)
+    found = False
     for index in range(len(words) - 1, -1, -1):
         word = words[index]
         if _marker(word):
             start = index
+            found = True
             break
         if _is_date_like(word) or word.lower() in CONNECTIVES:
             continue
         break
-    else:
+    if not found:
+        # No request word anywhere: the trailing date is part of the
+        # subject, not a shape of its own.
         return raw, ""
 
     if start == 0:

@@ -84,10 +84,44 @@ reviewer was judging a page they could not see.
 
 The subject split that `focus` depends on is measured, not asserted: the
 corpus records the topic of every templated query, and the splitter
-recovers **2,619 of 2,950 = 88.78%** of them exactly
+recovers **2,622 of 2,950 = 88.88%** of them exactly
 (`benchmarks/measure_focus_split.py`). The request lexicon is derived from a
-training half of the corpus and scored on a held-out half: **89.02%**
+training half of the corpus and scored on a held-out half: **89.15%**
 (`benchmarks/derive_request_markers.py`).
+
+### Post-phase — four more defects, found in the corpus itself (E-39…E-42)
+
+The audit bundle was rebuilt from the uploaded documents
+(`benchmarks/extract_audit_bundle.py` recovers all 101 embedded files) and
+every corpus query was re-examined against the result it actually received.
+
+- **E-39 — a query that names a page was searched for, not read.** 130 of
+  the 3,000 queries (4.3%) are a URL, sometimes followed by what the caller
+  wants from that page. The engine tokenized the URL into words and searched
+  for them, so `https://docs.python.org/3/` was answered with the Wikipedia
+  article *HTTPS* and `https://react.dev/learn` with the article *Svelte*.
+  A URL at the head of a query is now a **read** request: the page is
+  fetched through the normal reader and returned, with its own text as the
+  answer. A URL followed by a question, and a query naming two pages, are
+  still searches. On the 9 of the 130 URLs the sandbox can reach, the
+  coverage verdict went from `low` to `good` in 9 of 9 cases.
+- **E-40 — the request shape named a kind of source and the ranking ignored
+  it.** "official documentation", "primary literature", "government
+  guideline" say what kind of page would answer the question. The ranking
+  now reads that and gives a page of the requested kind a bounded, additive
+  bonus of 0.20 of the relevance scale — additive, so the kind of a page
+  can never outrank a page that simply answers the question, and a bare
+  homepage is never boosted. Calibrated against the captured set
+  (`benchmarks/measure_shape_ranking.py --sweep`).
+- **E-41 — the backward scan for a request word fell through when it found
+  none**, inventing a request shape out of whatever trailed ("… arXiv
+  1706.03762" became the shape "1706.03762"). The corpus's topics are now
+  recovered exactly in 2,622 of 2,950 (88.88%), up from 88.78%.
+- **E-42 — the GitHub adapter answered a repository sub-page with the
+  repository.** Its regex matched `github.com/<owner>/<repo>` anywhere in a
+  URL, so `https://github.com/astral-sh/uv/issues` was read as the
+  repository's README. A sub-page now falls through to the generic web
+  reader, as the adapter's own error message always claimed.
 
 ### Post-phase — a defect in our own measurement (M-01)
 
@@ -111,7 +145,7 @@ under the strictest reading. It is a projection, not a measurement.
 
 ### Measured
 
-- `pytest -q` — **608 passed, 14 skipped, 0 failed**.
+- `pytest -q` — **634 passed, 14 skipped, 0 failed**.
 - `ruff check --select E9,F,B .` — clean. `mypy iralens` — clean.
 - `python benchmarks/acceptance_17.py` — **17/17**.
 - `python benchmarks/run_scraping.py` — **12/12**.
@@ -122,9 +156,18 @@ under the strictest reading. It is a projection, not a measurement.
 - `python benchmarks/project_score.py` — **3,000/3,000** with no code-caused
   failure; **2,955/3,000** with no defect at all; **1,637/3,000** strict.
 - `python benchmarks/measure_focus_split.py` — the subject split recovers
-  **2,619 / 2,950 = 88.78%** of the corpus topics exactly.
+  **2,622 / 2,950 = 88.88%** of the corpus topics exactly.
 - `python benchmarks/derive_request_markers.py` — the request lexicon, learned
-  on a training half of the corpus, scores **89.02%** on the held-out half.
+  on a training half of the corpus, scores **89.15%** on the held-out half.
+- `python benchmarks/measure_url_reads.py` — the corpus's 130 URL-anchored
+  queries, asked again: **9 of the 9** that this machine can reach go from
+  coverage `low` to `good`; the other 121 are blocked by the sandbox's
+  egress policy.
+- `python benchmarks/measure_shape_ranking.py --sweep` — the request-shape
+  preference, swept against the captured 3,000-query set: at the shipped
+  bonus of 0.20 the top result changes in 38 of the 1,159 questions that
+  ask for a kind of source, and improves about twice as often as it
+  regresses.
 - `python benchmarks/ab_query_forms.py` — over ten hand-labelled real
   provider captures: the `focus` form is **7/7** on-target where the loose
   engine returns **0/10** for the full question; the coverage metric agrees

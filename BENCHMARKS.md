@@ -34,10 +34,14 @@ repository, with the corpus hash-verified and never edited:
 | `python benchmarks/run_audit3000.py --replay <audit baseline>` | the audit's own captured 3,000-row run, re-scored with the same predicates | 31,264 checks: **8,435 code-caused**, **5,223 external**, 17,606 clean (code score 73.02%) |
 | `python benchmarks/project_score.py` | the projected per-query outcome, with each number traced to the register entry that produces it | **3,000/3,000** with no code-caused failure; **2,955/3,000** with no defect at all; **1,637/3,000** under the strictest reading |
 | `python benchmarks/run_audit3000.py --live` | the frozen 3,000-query corpus against the live engines | **not_run** — restricted egress cannot reach the search providers |
-| `python benchmarks/measure_focus_split.py` | the subject/request split, scored against the corpus's own recorded topic | **2,619 / 2,950 = 88.78%** recovered exactly |
-| `python benchmarks/derive_request_markers.py` | the request lexicon, learned on a **training half** and scored on the **held-out half** | **89.02%** held-out |
+| `python benchmarks/measure_focus_split.py` | the subject/request split, scored against the corpus's own recorded topic | **2,622 / 2,950 = 88.88%** recovered exactly |
+| `python benchmarks/derive_request_markers.py` | the request lexicon, learned on a **training half** and scored on the **held-out half** | **89.15%** held-out |
 | `python benchmarks/calibrate_coverage.py` | the coverage metric against the audit's 45 manual labels, and the E-03 contamination in them | 1,620 low over the baseline; recall 0.667 on labels of which **17 are contaminated** |
 | `python benchmarks/ab_query_forms.py` | ten hand-labelled **real provider** captures: the query form A/B, and the old and new coverage metric against the same human labels | focus **7/7** where the loose engine gives **0/10**; metric agrees **10/10** (was 6/10) |
+| `python benchmarks/measure_shape_ranking.py --sweep` | the request-shape preference, swept against the audit's own captured 3,000-query set | at the shipped bonus of **0.20** the top result changes in **38** of the 1,159 questions that ask for a kind of source, and improves about twice as often as it regresses |
+| `python benchmarks/measure_url_reads.py` | the corpus's 130 URL-anchored queries, asked again now that a named page is read rather than searched for | **9 of 9** reachable cases go from coverage `low` to `good`; the other 121 need egress this environment does not have |
+| `python benchmarks/extract_audit_bundle.py` | rebuilds the audit's evidence bundle from the uploaded documents (101 embedded files) | **101/101** recovered and hash-checked; 10 files differ in bytes (binaries and cross-part splits) |
+| `python benchmarks/analyse_unresolved.py` | what is inside the 1,620 low-coverage queries of the baseline | flat across the 88 templates (22–29 each); 1,096 already get a `focus` variant, 524 do not |
 
 The baseline replay is the honest "before" number and it is reproducible: the
 audit's own `records/iralens.jsonl`, scored by the predicates in

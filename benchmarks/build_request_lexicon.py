@@ -30,16 +30,16 @@ MODULE = REPO / "iralens" / "search" / "queryfocus.py"
 #: The generalisation prior: shapes a researcher writes that the corpus does
 #: not happen to contain, kept separate from what was learned.
 HAND_MARKERS = """
-archive articles cases change changes code comment comments comparison
+archive arxiv articles cases change changes code comment comments comparison
 concern consequences context counterexample counterexamples csv date dates
-data dataset datasets debate definition definitions discrepancy disputed
+data dataset datasets debate definition definitions discrepancy disputed doi
 documentation documents earliest economic encyclopedia error errors
 evidence example examples experiment experimental explanation explanations
 fact facts failing failure failures fee fees fix gaps guide guidelines
 github government historical implications interpretation issue issues
 latest legal legislation library literature limit limitations list literal
 logs methodology methods migration minimal misconception misconceptions
-note notes numeric official operations page pdf primary principles proof
+note notes numeric official operations original page paper papers pdf primary principles proof
 public published record records reference references release releases
 reproduce reproducibility report reports research retrospective
 revisions safety scoping sections semantics sources source statistics

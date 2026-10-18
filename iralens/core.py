@@ -96,7 +96,14 @@ class IraLens:
         The signature of this legacy form is deliberately unchanged. Use
         `search_api` for pagination and cross-query de-duplication, or
         `sweep` to run many queries with de-duplication applied.
+
+        A query that names a page ("https://react.dev/learn") is a *read*
+        request: the page is read and returned, because searching for the
+        text of a URL returns whatever happens to rank highest for it.
         """
+        named = self._read_named_page(query)
+        if named is not None:
+            return [named]
         source = get_source("web-search")
         assert source is not None
         params: Dict[str, Any] = {"query": query, "limit": limit, "backend": backend}
@@ -133,6 +140,13 @@ class IraLens:
             "engines": tuple(raw.get("engines") or ()),
             "exclude_urls": tuple(raw.get("exclude_urls") or ()),
         })
+        named = self._read_named_page(query)
+        if named is not None:
+            from .search.urlrequest import read_response
+            response = read_response(query, named.url, named,
+                                     max_chars=self._page_chars())
+            self.session.last_query = query
+            return response
         engine = self._search_engine()
         response = engine.search(query, filters=f, options=o, context=self._context)
         self.session.last_query = query
@@ -219,6 +233,32 @@ class IraLens:
         source = get_source("web-search")
         assert source is not None
         return source.search_engine(self._context)
+
+    def _page_chars(self) -> int:
+        """How much page text a read of a named page keeps."""
+        from .settings import Settings
+        return max(1000, int(Settings.from_config(self.config).research_page_chars))
+
+    def _read_named_page(self, query: str) -> Optional[Artifact]:
+        """Read the page a query names, if it names one.
+
+        Returns the artifact, or ``None`` when the query is not a read
+        request, or when the page could not be read — in which case the
+        search still runs and says what happened.
+        """
+        from .search.urlrequest import read_request
+
+        request = read_request(query)
+        if request is None:
+            return None
+        url, _shape = request
+        try:
+            return self.open(url, mode="auto", max_chars=self._page_chars())
+        except Exception:
+            # A page that cannot be read must not take the search down with
+            # it: the caller still gets whatever the engines can find for
+            # the query text, and the reason is reported to them.
+            return None
 
     def open(
         self,

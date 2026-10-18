@@ -155,6 +155,17 @@ records at the end show exactly what was exercised and where.
 22. **The remote reader is opt-in and third-party.** With
     `IRALENS_READ_REMOTE_READER_ENABLED=1`, URLs that fail the direct local
     read are sent to `r.jina.ai`. It is off by default.
+23. **A query that names a page is read, and a read can fail.** A query
+    whose head is a URL ("https://react.dev/learn", optionally followed by
+    what the caller wants from that page) is now a *read* request: the page
+    is fetched and returned with its own text, because searching for the
+    text of a URL returns whatever happens to rank highest for it. A URL
+    followed by a *question* and a query naming two pages stay searches. If
+    the page cannot be read, the search still runs and the response says
+    what happened. In the verification sandbox only 9 of the audit corpus's
+    130 URL queries were reachable at all, so the fix is measured on those
+    9 (coverage `low` → `good` in 9 of 9); the other 121 need egress this
+    environment does not have.
 
 ## Reliability and security
 
@@ -235,7 +246,7 @@ verified.
 
 **2026-10-18, restricted egress (post-audit remediation).**
 
-- `.venv/bin/python -m pytest -q` — **608 passed, 14 skipped, 0 failed** after
+- `.venv/bin/python -m pytest -q` — **634 passed, 14 skipped, 0 failed** after
   the three-phase remediation of the independent audit (the 14 skips are
   live-network tests).
 - `ruff check --select E9,F,B .` — clean. `mypy iralens` — clean (81 source
@@ -255,8 +266,8 @@ verified.
   defect at all, **1,637/3,000** under the strictest reading. A projection, not
   a measurement; the live run is the only measurement.
 - `python benchmarks/measure_focus_split.py` — the subject/request split
-  recovers **2,619 / 2,950 = 88.78%** of the corpus topics exactly; the
-  request lexicon learned on a training half scores **89.02%** on the
+  recovers **2,622 / 2,950 = 88.88%** of the corpus topics exactly; the
+  request lexicon learned on a training half scores **89.15%** on the
   held-out half. The remaining ~11% are questions whose request shape is not
   separable by the lexicon; they are left unsplit, which is the safe
   direction (the full question is still sent).

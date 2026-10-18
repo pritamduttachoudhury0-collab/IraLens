@@ -132,7 +132,7 @@ verification environment, on 2026-10-18.
 
 | what | command | result |
 |---|---|---|
-| the test suite | `.venv/bin/python -m pytest -q` | **608 passed, 14 skipped, 0 failed** |
+| the test suite | `.venv/bin/python -m pytest -q` | **634 passed, 14 skipped, 0 failed** |
 | lint | `.venv/bin/ruff check --select E9,F,B .` | clean |
 | types | `.venv/bin/mypy iralens` | clean (81 source files) |
 | the audit's 17 acceptance checks, inverted | `python benchmarks/acceptance_17.py` | **17/17** |
@@ -310,6 +310,56 @@ E-03. A live Wikipedia API fetch shows the real snippet for *"What is the
 capital of Assam?"* is *"Dispur is the capital of Assam while Dibrugarh is
 the second capital"*. The reviewer could not see it, and called a correct
 answer filler.
+
+### What was measured against the corpus itself
+
+The projection replays the baseline, so it cannot show the *new* work. The
+audit bundle was rebuilt from the uploaded documents
+(`benchmarks/extract_audit_bundle.py` recovers all 101 embedded files) and
+every corpus query was re-examined against the result it actually received.
+Four more defects fell out of that, and they are the ones that change what
+the system does with a query.
+
+**A query that names a page is a read request (E-39).** 130 of the 3,000
+queries — **4.3%** — are a URL, sometimes followed by what the caller wants
+from that page. The engine tokenized the URL into words and searched for
+them, so `https://docs.python.org/3/` was answered with the Wikipedia
+article *HTTPS*, `https://en.wikipedia.org/wiki/Brahmaputra_River` with the
+article *Ganges*, and `https://react.dev/learn` with the article *Svelte*.
+The page the user named was never fetched. It is now: the page is read
+through the normal reader and returned, with its own text as the answer. A
+URL followed by a *question* and a query naming two pages are still
+searches — one page cannot answer a comparison.
+
+The sandbox can reach 9 of those 130 URLs, and on those 9 the coverage
+verdict went from `low` to `good` in **9 of 9** cases. The other 121 are
+blocked by the sandbox's egress policy, not by the code; a run with provider
+egress would measure all 130.
+
+**The request shape names a kind of source, and the ranking now listens
+(E-40).** "official documentation", "primary literature", "government
+guideline" — these say what kind of page would answer the question. The
+ranking had no way to hear that. It does now: a page of the requested kind
+gets a bounded, additive bonus of 0.20 of the relevance scale. Additive, so
+the kind of a page can never outrank a page that simply answers the
+question; a bare homepage is never boosted, because a homepage is the entry
+point to the right kind rather than the source itself. The bonus was
+calibrated against the captured set (`benchmarks/measure_shape_ranking.py
+--sweep`): at 0.20 the top result changes in 38 of the 1,159 questions that
+ask for a kind of source, and improves about twice as often as it regresses.
+
+Note what this does **not** do: the coverage metric looks at the *best*
+result of a set, not the first, so this preference moves which answer is
+presented, not the coverage figure. It is not a number that moved in §5.
+
+**Two smaller defects came out of the same pass.** The backward scan for a
+request word fell through when it found none, inventing a request shape out
+of whatever trailed ("… arXiv 1706.03762" became the shape "1706.03762");
+the corpus's topics are now recovered exactly in **2,622 / 2,950 = 88.88%**
+of cases, up from 88.78% (E-41). And the GitHub adapter answered a
+repository *sub-page* with the repository's README, because its regex
+matched anywhere in the URL; a sub-page now falls through to the generic
+web reader as its own error message always claimed (E-42).
 
 ### The correction this projection forced
 

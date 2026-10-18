@@ -42,8 +42,17 @@ DEFAULT_EVALUATIONS = Path("/tmp/audit-bundle/iralens-audit/records/evaluations.
 def _load(path: Path) -> List[Dict[str, Any]]:
     if not path.is_file():
         return []
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
-            if line.strip()]
+    rows = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except ValueError:
+            # The audit's largest JSONL files have no closing fence in the
+            # part they start in, so the final row can arrive truncated.
+            continue
+    return rows
 
 
 def main() -> int:

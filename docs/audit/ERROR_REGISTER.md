@@ -195,16 +195,33 @@ That makes two things true at once, and both had to be fixed:
 * **The subject split is measured, not asserted.** Every templated query in
   the corpus is a `<topic> + <template suffix>` pair and records its topic, so
   the split that `focus` depends on can be scored against ground truth:
-  **2,619 / 2,950 = 88.78%** of the corpus topics are recovered exactly
+  **2,622 / 2,950 = 88.88%** of the corpus topics are recovered exactly
   (`benchmarks/measure_focus_split.py`). The request lexicon is *derived*
   from a training half of the corpus and scored on a held-out half:
-  **89.02%** held-out (`benchmarks/derive_request_markers.py`).
+  **89.15%** held-out (`benchmarks/derive_request_markers.py`).
 * **The audit's 45 manual relevance labels cannot be used as ground truth.**
   17 of the 45 are Wikipedia results whose *title* matches the question's
   subject but whose snippet was empty before E-03 — a live Wikipedia API
   fetch shows the real snippet for "What is the capital of Assam?" is
   *"Dispur is the capital of Assam while Dibrugarh is the second capital"*.
   The reviewer could not see it. Those labels are a judgement made blind.
+
+---
+
+# Part 1d — Four more defects, found by going back to the corpus itself
+
+Part 1c worked from live providers. This part works from the audit's own
+captured 3,000-query run: the records were rebuilt from the uploaded
+documents (`benchmarks/extract_audit_bundle.py` recovers all 101 embedded
+files), and every query in the corpus was re-examined against the result
+it actually received. Four defects fell out.
+
+| ID | Error | Impact |
+|----|-------|--------|
+| **E-39** | **A query that names a page was searched for, not read.** 130 of the 3,000 corpus queries (**4.3%**) are a URL, optionally followed by what the caller wants from that page ("https://react.dev/learn main article text without navigation chrome"). The engine tokenized the URL into words and searched for them, so `https://docs.python.org/3/` was answered with the Wikipedia article **HTTPS**, `https://en.wikipedia.org/wiki/Brahmaputra_River` with the article **Ganges**, and `https://react.dev/learn` with the article **Svelte**. The page the user named was never fetched. | A query whose head is a URL is now a **read** request: the page is fetched through the normal reader (source adapter, static reader or browser, in that order) and returned as the result, with the page's own text as the answer. A URL followed by a *question* ("… how do I reverse a list?") and a query naming two pages are still searches. Measured on the corpus inside the sandbox, where only 9 of the 130 URLs are reachable at all: **9 of 9** went from coverage `low` to coverage `good`. The other 121 could not be fetched here — that is the sandbox's egress policy, not the code. |
+| **E-40** | **The request shape said which kind of source was wanted, and the ranking ignored it.** "official documentation", "primary literature", "government guideline" and "official dataset download" name a *kind* of page, not just a subject. The ranking scored relevance, authority, freshness and agreement, and nothing in it knew that the question had asked for a government guideline. A page that answered the subject but was the wrong kind of page could outrank the one the question asked for. | The request shape is now read for what it asks for — `documentation`, `official`, `primary`, `latest`, `dataset`, `reference`, `encyclopedia` — and a page of that kind gets a **bounded** relevance bonus (0.20 of the relevance scale). The bonus is additive, so the kind of a page can never outrank a page that simply answers the question; a bare homepage is never boosted, because a homepage is the entry point to the right kind, not the source. Calibrated against the captured 3,000-query set (`benchmarks/measure_shape_ranking.py --sweep`): at 0.20 the top result changes in 38 of the 1,159 questions that ask for a kind of source, and improves about twice as often as it regresses. |
+| **E-41** | **The backward scan for a request word fell through when it found none.** `split_subject()` scanned backwards for the last request word; when the scan ran out of words without finding one, it kept the scan position it had reached and cut there anyway, inventing a request shape out of whatever trailed — so "… arXiv 1706.03762" was split as the shape "1706.03762" and the subject lost the paper's identifier. | The scan now returns the query unsplit when no request word is found. The measured effect: the corpus's topics are recovered exactly in **2,622 / 2,950 = 88.88%** of cases (was 2,619 / 2,950 = 88.78%), and the learned request lexicon scores **89.15%** on its held-out half (was 89.02%). |
+| **E-42** | **The GitHub adapter answered a repository sub-page with the repository.** `_REPO_RE` matched `github.com/<owner>/<repo>` anywhere in a URL, so `https://github.com/astral-sh/uv/issues` was read as the repository — its README, under the issues page's URL. The adapter's own error message claims that only repository URLs are read natively, and the generic web reader is supposed to handle the rest; the regex made that fallback unreachable. | The match now has to be the *whole* path. A sub-page (`/issues`, `/blob/main/README.md`) falls through to the generic web reader, as documented: `https://github.com/astral-sh/uv/issues` now returns the issues page. |
 
 ---
 
