@@ -82,11 +82,13 @@ def _pace_api_calls(min_interval: float = 1.0) -> None:
 
 class WikipediaBackend(SearchBackend):
     name = "wikipedia"
+    paginated = True
     handled = {"date_from": POST, "date_to": POST, "include_domains": POST,
                "exclude_domains": UNSUPPORTED, "file_type": UNSUPPORTED,
                "language": NATIVE, "region": UNSUPPORTED}
 
-    def search(self, query: str, filters: SearchFilters, limit: int, context: Any) -> List[SearchHit]:
+    def search(self, query: str, filters: SearchFilters, limit: int, context: Any,
+               *, offset: int = 0) -> List[SearchHit]:
         timeout = 15
         if getattr(context, "config", None) is not None:
             try:
@@ -115,6 +117,7 @@ class WikipediaBackend(SearchBackend):
             params = urllib.parse.urlencode({
                 "action": "query", "list": "search", "srsearch": query,
                 "srnamespace": "0", "srlimit": min(max(1, limit), 50),
+                "sroffset": max(0, int(offset)),
                 # `snippet` must be requested explicitly: the API omits it
                 # otherwise, and a title with no context is not a result.
                 "srprop": "snippet|timestamp", "format": "json", "formatversion": "2",

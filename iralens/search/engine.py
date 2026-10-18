@@ -22,6 +22,7 @@ from ..config import state_dir
 from ..reliability import CircuitBreaker, ConcurrencyGate, PerSiteConcurrencyGate, PersistentCircuitBreaker, RetryPolicy
 from ..security import normalize_public_http_url
 from ..settings import Settings
+from .coverage import assess_coverage
 from .dedup import dedup
 from .engines import LEGACY_ALIASES, build_backends
 from .engines.base import SearchBackend
@@ -83,11 +84,12 @@ class SearchEngine:
             raise FilterError(str(exc)) from exc
         filters = filters or SearchFilters()
         options = options or SearchOptions(max_results=self.settings.search_max_results)
-        chain = self.resolve_chain(options.engines)
+        chain, readiness = self.resolve_chain_with_readiness(options.engines)
 
         payload = {
             "q": question, "filters": filters.to_dict(), "max": options.max_results,
             "engines": chain, "reformulate": options.reformulate, "min": self.settings.search_min_engines,
+            "offset": options.offset,
         }
         ttl = self.settings.cache_search_ttl_seconds
         if options.cache == "use":
@@ -99,7 +101,8 @@ class SearchEngine:
                 return response
 
         with self.gate:
-            response = self._run(question, filters, options, chain, context)
+            response = self._run(question, filters, options, chain, context,
+                                 readiness=readiness)
 
         if options.cache != "bypass":
             cacheable = bool(response.results) and not response.degraded
@@ -111,6 +114,17 @@ class SearchEngine:
         return response
 
     def resolve_chain(self, requested: Sequence[str] = ()) -> List[str]:
+        """The effective engine chain (kept for callers that want only it)."""
+        return self.resolve_chain_with_readiness(requested)[0]
+
+    def resolve_chain_with_readiness(self, requested: Sequence[str] = ()) -> tuple:
+        """(chain, readiness) — configured engines that can actually serve.
+
+        An engine whose optional prerequisite is missing is *not configured*,
+        not *failing*. It is dropped from the effective chain and reported
+        separately, so the default chain is not permanently degraded by an
+        optional bridge nobody installed.
+        """
         explicit = bool(requested)
         names = list(requested) or list(self.settings.search_engines)
         if not explicit and self.settings.searxng_instances and "searxng" not in names:
@@ -129,11 +143,30 @@ class SearchEngine:
                     raise FilterError(f"unknown search engine {name!r}; known: {sorted(self.backends)}")
                 if real not in expanded:
                     expanded.append(real)
-        return expanded
+        readiness: Dict[str, Any] = {}
+        ready: List[str] = []
+        for name in expanded:
+            backend = self.backends[name]
+            try:
+                available, reason = backend.availability()
+            except Exception:  # pragma: no cover - defensive
+                available, reason = True, ""
+            readiness[name] = {"available": bool(available),
+                               "reason": reason,
+                               "paginated": bool(getattr(backend, "paginated", False))}
+            if available:
+                ready.append(name)
+            elif explicit:
+                # An explicitly requested engine that cannot serve is still
+                # reported, so the caller is not silently given less than
+                # they asked for.
+                readiness[name]["requested_explicitly"] = True
+        return ready, readiness
 
     # ----------------------------------------------------------- pipeline
     def _run(self, question: str, filters: SearchFilters, options: SearchOptions,
-             chain: List[str], context: Any) -> SearchResponse:
+             chain: List[str], context: Any,
+             readiness: Optional[Dict[str, Any]] = None) -> SearchResponse:
         # A `site:` operator in the query is an explicit scope. It becomes a
         # structured filter (so engines that can scope natively do) *and* it
         # is enforced on the results (so engines that cannot, like Wikipedia,
@@ -158,6 +191,7 @@ class SearchEngine:
                 q["text"], filters, options.max_results, chain, self.backends, context,
                 min_engines=self.settings.search_min_engines, policy=self.policy,
                 breaker=self.breaker, site_gate=self.site_gate,
+                offset=options.offset,
             )
 
         # Query variants run concurrently when allowed. Browser-backed
@@ -187,6 +221,21 @@ class SearchEngine:
 
         public_hits, rejected = self._public_only(all_hits)
         filtered, filter_report = self._post_filter(public_hits, filters, scope_domains)
+
+        # Cross-query de-duplication: the caller supplies the URLs it has
+        # already collected, and they are dropped here. Dedup inside one
+        # response cannot stop a sweep from returning (and re-paying for)
+        # the same pages over and over.
+        if options.exclude_urls:
+            seen = {str(u) for u in options.exclude_urls}
+            canonical_seen = {canonical_url(u) or str(u) for u in options.exclude_urls}
+            before = len(filtered)
+            filtered = [h for h in filtered
+                        if h.url not in seen and (canonical_url(h.url) or h.url) not in canonical_seen]
+            dropped = before - len(filtered)
+            if dropped:
+                filter_report["excluded_seen"] = dropped
+                filter_report.setdefault("applied_post", []).append("exclude_urls")
         filter_report["non_public_dropped"] = rejected
         for hit in filtered:
             # Scan the raw text first: sanitizing strips invisible characters,
@@ -212,8 +261,12 @@ class SearchEngine:
         flags = sorted({f for r in results for f in r.security_flags})
         engine_answered = any(o.status in ("results", "empty") for o in outcomes)
         any_failed = any(o.status in ("failed", "skipped") for o in outcomes)
+        coverage = assess_coverage(question, results)
         if results:
-            reason = "none"
+            # Results are not the same as an answer. When nothing in the
+            # result set addresses the question, the response must not
+            # claim a clean "none".
+            reason = "none" if coverage.get("status") != "low" else "low_coverage"
         elif not engine_answered and any_failed:
             reason = "engines_failed"
         elif all_hits:
@@ -240,6 +293,16 @@ class SearchEngine:
         summary = _summarize(question, results, outcomes, reason, filter_report)
         if shortfall:
             summary += f"; shortfall: {shortfall} ({len(results)}/{options.max_results})"
+
+        # Answer coverage: retrieval completed is not the same as the question
+        # being addressed. The verdict travels with the results.
+        if coverage.get("status") == "low" and results:
+            summary += f"; coverage: {coverage.get('note')}"
+        not_configured = sorted(
+            name for name, info in (readiness or {}).items()
+            if not info.get("available"))
+        if not_configured:
+            summary += (f"; not configured (skipped, not failed): {', '.join(not_configured)}")
         return SearchResponse(
             query=question,
             results=results,
@@ -253,6 +316,8 @@ class SearchEngine:
             no_results_reason=reason,
             security_flags=flags,
             summary=summary,
+            engine_readiness=readiness or {},
+            coverage=coverage,
         )
 
     # --------------------------------------------------------- filtering
@@ -305,6 +370,14 @@ class SearchEngine:
                 continue
             if f.date_from or f.date_to:
                 if not hit.published_at:
+                    # A recency window cannot be enforced by keeping results
+                    # whose date is unknown — unless the caller says to keep
+                    # them (the default, so the filter never hides results
+                    # silently).
+                    if f.exclude_unknown_dates:
+                        report["dropped"] += 1
+                        report["date_unknown_dropped"] = report.get("date_unknown_dropped", 0) + 1
+                        continue
                     report["date_unknown_kept"] += 1
                 else:
                     day = hit.published_at[:10]
@@ -421,6 +494,9 @@ def _summarize(question: str, results: List[RankedResult], outcomes: List[Any],
         if failed:
             text += f"; degraded: {', '.join(failed)} failed or were skipped"
         return text
+    if reason == "low_coverage":
+        return (f"{len(results)} results, but they do not address the question; "
+                f"treat them as generic filler, not evidence")
     if reason == "filtered_out":
         dropped = filter_report.get("dropped", 0)
         non_public = filter_report.get("non_public_dropped", 0)

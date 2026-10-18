@@ -38,6 +38,7 @@ from ..errors import (
     classify_http_status,
 )
 from ..model import Artifact
+from ..reliability import HOST_RATE_LIMITER
 from ..security import normalize_public_http_url, public_message, safe_urlopen
 from ..settings import Settings
 from .base import Source, SourceHealth
@@ -229,6 +230,9 @@ def read_direct(
     limit = max_bytes or _DEFAULT_MAX_BYTES
     deadline = time.monotonic() + (deadline_seconds if deadline_seconds else _DEFAULT_DEADLINE_SECONDS)
     _DIRECT_META_LOCAL.last = None
+    host = urllib.parse.urlsplit(safe_url).netloc.lower()
+    # Pacing, not just concurrency: never hammer the same host.
+    HOST_RATE_LIMITER.wait(host)
     try:
         with safe_urlopen(safe_url, timeout=timeout,
                           headers={"User-Agent": _UA, "Accept": "text/html,application/pdf,*/*"}) as resp:
@@ -251,6 +255,7 @@ def read_direct(
                 resp, max(limit, pdf_max_bytes or limit) if is_pdf_target else limit, deadline
             )
     except urllib.error.HTTPError as exc:
+        _note_retry_after(exc, host)
         raise _classify_http_error(exc, mode="static", layer="origin") from exc
     except (OperationTimeoutError, ExtractionError):
         raise
@@ -292,6 +297,20 @@ def read_direct(
             detail="soft_404",
         )
     return text
+
+
+def _note_retry_after(exc: urllib.error.HTTPError, host: str) -> None:
+    """Record an origin's `Retry-After` so the next hit on that host waits."""
+    headers = getattr(exc, "headers", None) or {}
+    raw = headers.get("Retry-After") if hasattr(headers, "get") else None
+    if not raw:
+        return
+    try:
+        seconds = float(str(raw).strip())
+    except (TypeError, ValueError):
+        # HTTP-date form: not parsed here, the default interval still applies.
+        return
+    HOST_RATE_LIMITER.note_retry_after(host, seconds)
 
 
 def _classify_http_status(status: int, *, mode: str = "", layer: str = "origin",

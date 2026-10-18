@@ -322,6 +322,19 @@ class Session:
             del self.discovered[:-_MAX_DISCOVERED]
             self._write_locked()
 
+    def found_via_for(self, url: str) -> str:
+        """The recorded provenance for *url* ("" when it was never discovered).
+
+        The session's `last_query` is the *most recent* query, not the one
+        that surfaced this particular URL. Using it as the provenance of an
+        artifact misattributes how the artifact was found.
+        """
+        target = str(url)
+        for item in self.discovered:
+            if item.get("url") == target:
+                return str(item.get("found_via") or "")
+        return ""
+
     # --------------------------------------------------------- engine state
     def save_engine_state(self, state: Dict[str, Any]) -> None:
         """Persist the browser's storage state atomically and privately."""

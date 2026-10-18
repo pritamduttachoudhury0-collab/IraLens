@@ -151,7 +151,7 @@ class ResearchPlanner:
             self._read_top(question, sources, options.read_top_n, pages, today)
             analysis = self.analyze(question, sources, today)
             contested = [c.subject_terms for c in analysis[1]]
-            coverage = self._coverage(sources, options.min_sources)
+            coverage = self._coverage(sources, options.min_sources, question)
             if coverage >= s.research_coverage_threshold:
                 stop = STOP_COVERAGE
                 break
@@ -164,7 +164,7 @@ class ResearchPlanner:
                 break
 
         claims, contradictions, statements = self.analyze(question, sources, today)
-        coverage = self._coverage(sources, options.min_sources)
+        coverage = self._coverage(sources, options.min_sources, question)
         graph = self._graph(question, steps, sources, claims, contradictions, statements)
         flags = sorted({f for s_ in sources.values() for f in s_.security_flags}
                        | {f for c in claims for f in c.security_flags})
@@ -290,8 +290,31 @@ class ResearchPlanner:
         return checked
 
     @staticmethod
-    def _coverage(sources: Dict[str, EvidenceSource], min_sources: int) -> float:
+    def _coverage(sources: Dict[str, EvidenceSource], min_sources: int,
+                 question: str = "") -> float:
+        """How well the evidence covers the question.
+
+        Distinct domains is necessary but not sufficient: five domains that
+        say nothing about the question are not coverage. When the question
+        is known, the domains that actually address it are counted.
+        """
         domains = {s_.domain for s_ in sources.values() if s_.score_breakdown.get("relevance", 0) > 0}
+        if not domains:
+            return 0.0
+        if question:
+            from ..search.coverage import question_terms
+
+            terms = question_terms(question)
+            if terms:
+                addressing = set()
+                for src in sources.values():
+                    if src.score_breakdown.get("relevance", 0) <= 0:
+                        continue
+                    haystack = f"{src.title} {src.snippet}".lower()
+                    if any(term in haystack for term in terms):
+                        addressing.add(src.domain)
+                if addressing:
+                    domains = addressing
         return min(1.0, len(domains) / max(1, min_sources))
 
     @staticmethod

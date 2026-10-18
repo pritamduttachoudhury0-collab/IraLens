@@ -13,6 +13,8 @@ from __future__ import annotations
 from dataclasses import MISSING, dataclass, field, fields
 from typing import Any, Dict, Tuple
 
+from .reliability import HOST_RATE_LIMITER
+
 DEFAULT_AUTHORITY: Dict[str, float] = {
     ".gov": 0.9, ".gov.in": 0.9, ".nic.in": 0.9,
     ".edu": 0.85, ".ac.in": 0.85, ".org": 0.6,
@@ -42,6 +44,8 @@ class Settings:
     # --- resource management -----------------------------------------------
     search_max_concurrent: int = 20        # simultaneous searches on the shared engine (target 20+)
     search_per_site_concurrent: int = 3    # polite per-site limit to protect upstream backends
+    web_host_min_interval_seconds: float = 0.25  # minimum gap between requests to one host
+    web_host_max_interval_seconds: float = 5.0   # ceiling for a server's Retry-After
     search_acquire_timeout_seconds: int = 15
     search_parallel_queries: bool = True   # run reformulated query variants in parallel
     # --- page reading --------------------------------------------------------
@@ -102,6 +106,13 @@ class Settings:
     confidence_base: float = 0.3
     confidence_per_domain: float = 0.2
     contested_penalty: float = 0.3
+
+    def __post_init__(self) -> None:
+        # The polite per-host pacing is process-wide, so it is configured
+        # from the settings that are actually in force.
+        HOST_RATE_LIMITER.min_interval = max(0.0, float(self.web_host_min_interval_seconds))
+        HOST_RATE_LIMITER.default_min_interval = HOST_RATE_LIMITER.min_interval
+        HOST_RATE_LIMITER.max_cooldown = max(0.0, float(self.web_host_max_interval_seconds))
 
     @classmethod
     def from_config(cls, config: Any = None) -> "Settings":

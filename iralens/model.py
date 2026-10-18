@@ -121,6 +121,95 @@ class Artifact:
 
 
 @dataclass
+class PostRecord:
+    """One community post with its metadata *typed*, not prose.
+
+    Author, score, comment count, creation time and permalink are first
+    class fields, so a consumer can filter or sort on them instead of
+    scraping them out of a sentence. `extra` keeps whatever else the
+    platform provided, so typing never costs information.
+    """
+
+    title: str = ""
+    url: str = ""
+    permalink: str = ""
+    author: str = ""
+    subreddit: str = ""
+    score: Optional[int] = None
+    comments: Optional[int] = None
+    created_at: Optional[str] = None
+    body: str = ""
+    source: str = ""
+    extra: Dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_mapping(cls, data: Dict[str, Any], *, source: str = "") -> "PostRecord":
+        """Build a record from a platform payload, whatever it calls the fields."""
+        if not isinstance(data, dict):
+            return cls(source=source)
+
+        def pick(*names: str) -> Any:
+            for name in names:
+                if name in data and data[name] not in (None, ""):
+                    return data[name]
+            return None
+
+        def as_int(value: Any) -> Optional[int]:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+
+        permalink = str(pick("permalink", "link", "url") or "")
+        url = str(pick("url", "link", "permalink") or permalink)
+        known = {
+            "title", "url", "permalink", "link", "author", "username", "subreddit",
+            "score", "points", "upvotes", "num_comments", "comments", "comment_count",
+            "created_at", "created", "created_utc", "published", "published_at", "date",
+            "selftext", "body", "text", "content", "summary",
+        }
+        return cls(
+            title=str(pick("title", "name") or ""),
+            url=url,
+            permalink=permalink,
+            author=str(pick("author", "username", "user") or ""),
+            subreddit=str(pick("subreddit", "community", "group", "channel") or ""),
+            score=as_int(pick("score", "points", "upvotes")),
+            comments=as_int(pick("num_comments", "comments", "comment_count")),
+            created_at=str(pick("created_at", "created", "created_utc", "published",
+                                "published_at", "date") or "") or None,
+            body=str(pick("selftext", "body", "text", "content", "summary") or ""),
+            source=source,
+            extra={k: v for k, v in data.items() if k not in known},
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        data: Dict[str, Any] = {
+            "title": self.title,
+            "url": self.url,
+        }
+        if self.permalink:
+            data["permalink"] = self.permalink
+        if self.author:
+            data["author"] = self.author
+        if self.subreddit:
+            data["subreddit"] = self.subreddit
+        if self.score is not None:
+            data["score"] = self.score
+        if self.comments is not None:
+            data["comments"] = self.comments
+        if self.created_at:
+            data["created_at"] = self.created_at
+        if self.body:
+            data["body"] = self.body
+        if self.source:
+            data["source"] = self.source
+        if self.extra:
+            data["extra"] = dict(self.extra)
+        return data
+
+
+@dataclass
 class SearchResult:
     """One hit from a web search, before/while being normalized."""
 

@@ -425,6 +425,83 @@ class ConcurrencyGate:
         self._sem.release()
 
 
+class HostRateLimiter:
+    """A polite *rate* budget per host — pacing, not just concurrency.
+
+    `PerSiteConcurrencyGate` bounds how many requests are in flight at
+    once, but three simultaneous requests are still three requests in the
+    same instant, and that is what earns a 429 or a captcha. This limiter
+    additionally enforces a minimum interval *between* requests to the
+    same host, and it honours the origin's `Retry-After` when one is
+    given: after a 429 the next request to that host waits for the
+    interval the origin asked for.
+    """
+
+    def __init__(self, min_interval: float = 0.25, default_min_interval: float = 0.25,
+                 max_cooldown: float = 60.0) -> None:
+        self.min_interval = max(0.0, float(min_interval))
+        self.default_min_interval = max(0.0, float(default_min_interval))
+        self.max_cooldown = max(0.0, float(max_cooldown))
+        self._intervals: Dict[str, float] = {}        # per-host minimum gap
+        self._last_request: Dict[str, float] = {}    # per-host last request time
+        self._cooldown_until: Dict[str, float] = {}  # per-host Retry-After deadline
+        self._lock = threading.Lock()
+
+    def interval_for(self, host: str) -> float:
+        """The minimum gap this limiter will keep for *host*."""
+        with self._lock:
+            return max(self.min_interval,
+                       self._intervals.get(host, self.default_min_interval))
+
+    def set_interval(self, host: str, seconds: float) -> None:
+        """Set a per-host minimum gap."""
+        try:
+            value = max(0.0, float(seconds))
+        except (TypeError, ValueError):
+            return
+        with self._lock:
+            self._intervals[host] = value
+
+    def note_retry_after(self, host: str, seconds: float) -> None:
+        """Remember an origin's `Retry-After` so the next request waits."""
+        try:
+            value = float(seconds)
+        except (TypeError, ValueError):
+            return
+        if value <= 0:
+            return
+        value = min(value, self.max_cooldown)
+        with self._lock:
+            deadline = time.monotonic() + value
+            self._cooldown_until[host] = max(self._cooldown_until.get(host, 0.0), deadline)
+
+    def cooldown_remaining(self, host: str) -> float:
+        """Seconds until *host* may be contacted again (0 when free)."""
+        now = time.monotonic()
+        with self._lock:
+            return max(0.0, self._cooldown_until.get(host, 0.0) - now)
+
+    def wait(self, host: str, *, sleep: Optional[Callable[[float], None]] = None) -> float:
+        """Block until *host* may be contacted again. Returns the slept time."""
+        now = time.monotonic()
+        with self._lock:
+            gap = max(self.min_interval,
+                      self._intervals.get(host, self.default_min_interval))
+            cooldown = self._cooldown_until.get(host, 0.0)
+            last = self._last_request.get(host, 0.0)
+            delay = max(0.0, cooldown - now, last + gap - now)
+        if delay > 0:
+            (sleep or time.sleep)(delay)
+        with self._lock:
+            self._last_request[host] = time.monotonic()
+        return delay
+
+
+#: Process-wide polite rate budget. Shared so that a search burst and a
+#: page-read burst against the same host cannot add up.
+HOST_RATE_LIMITER = HostRateLimiter()
+
+
 class PerSiteConcurrencyGate:
     """Polite concurrency gate per target host or engine name.
 

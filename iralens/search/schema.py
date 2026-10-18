@@ -30,6 +30,10 @@ class SearchFilters:
     file_type: Optional[str] = None          # e.g. "pdf"
     language: Optional[str] = None           # BCP-47-ish, e.g. "en"
     region: Optional[str] = None             # e.g. "in-en"
+    #: Drop results whose publication date is unknown. Off by default (a
+    #: date filter that silently keeps undated results cannot enforce a
+    #: recency window), but available when a window must be strict.
+    exclude_unknown_dates: bool = False
 
     @classmethod
     def build(
@@ -42,6 +46,7 @@ class SearchFilters:
         file_type: Optional[str] = None,
         language: Optional[str] = None,
         region: Optional[str] = None,
+        exclude_unknown_dates: bool = False,
     ) -> "SearchFilters":
         """Validate and normalize user input. Raises FilterError on bad input."""
         for label, value in (("date_from", date_from), ("date_to", date_to)):
@@ -67,6 +72,7 @@ class SearchFilters:
             file_type=ext,
             language=(language or None),
             region=(region or None),
+            exclude_unknown_dates=bool(exclude_unknown_dates),
         )
 
     def is_empty(self) -> bool:
@@ -93,12 +99,24 @@ class SearchOptions:
     engines: tuple = ()          # empty = configured chain
     reformulate: bool = True
     cache: str = "use"           # use | bypass | refresh
+    #: How many results to skip. This is the pagination primitive: with no
+    #: offset every page of a query is byte-identical, so a corpus can
+    #: never grow past the first page.
+    offset: int = 0
+    #: URLs the caller has already collected. They are removed from the
+    #: result set, which is how a multi-query sweep avoids re-returning
+    #: (and re-paying for) the same pages.
+    exclude_urls: tuple = ()
 
     def __post_init__(self) -> None:
         if self.cache not in ("use", "bypass", "refresh"):
             raise FilterError("cache must be one of: use, bypass, refresh")
         if not 1 <= self.max_results <= 50:
             raise FilterError("max_results must be between 1 and 50")
+        if self.offset < 0:
+            raise FilterError("offset must not be negative")
+        if self.offset > 10000:
+            raise FilterError("offset must not exceed 10000")
 
 
 @dataclass
@@ -178,6 +196,12 @@ class SearchResponse:
     # D6: why fewer than max_results came back ("" when full):
     # exhausted | deduped | capped | filtered
     shortfall_reason: str = ""
+    # Per-engine readiness: which configured engines can serve right now, and
+    # why not. A configured-but-not-installed engine is *not* a failure and
+    # must not be reported as one.
+    engine_readiness: Dict[str, Any] = field(default_factory=dict)
+    # How much of the question the results actually address.
+    coverage: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SearchResponse":
@@ -194,6 +218,8 @@ class SearchResponse:
             security_flags=data.get("security_flags", []),
             summary=data.get("summary", ""),
             shortfall_reason=data.get("shortfall_reason", ""),
+            engine_readiness=data.get("engine_readiness", {}),
+            coverage=data.get("coverage", {}),
         )
 
     @property

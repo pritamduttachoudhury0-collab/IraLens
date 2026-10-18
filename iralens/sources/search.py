@@ -97,12 +97,13 @@ class SearchSource(Source):
             raise ExtractionError("search requires a non-empty 'query'")
         limit = int(params.get("limit") or 8)
         engine = self.search_engine(context)
-        response = engine.search(
-            query,
-            filters=SearchFilters(),
-            options=SearchOptions(max_results=limit, engines=self._legacy_engines(params.get("backend"), engine)),
-            context=context,
+        options = SearchOptions(
+            max_results=limit,
+            engines=self._legacy_engines(params.get("backend"), engine),
+            offset=int(params.get("offset") or 0),
+            exclude_urls=tuple(params.get("exclude_urls") or ()),
         )
+        response = engine.search(query, filters=SearchFilters(), options=options, context=context)
         if response.no_results_reason == "engines_failed":
             raise SearchEnginesFailedError(
                 "web search failed on every backend",

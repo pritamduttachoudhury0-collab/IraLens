@@ -4,7 +4,8 @@
 from __future__ import annotations
 
 import urllib.error
-from typing import Any, Dict, Optional, TYPE_CHECKING
+import urllib.parse
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from ..errors import (
     ExtractionError,
@@ -24,6 +25,45 @@ _UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 #: Hard cap on a feed download. A feed is metadata, not a document; a
 #: multi-hundred-megabyte "feed" is an attack, not a subscription.
 _MAX_FEED_BYTES = 8 * 1024 * 1024
+
+
+def _canonical_entry_link(entry: Any, feed_link: str, feed_url: str,
+                          warnings: List[str]) -> str:
+    """The entry's canonical, absolute permalink.
+
+    A relative `<link>` is resolved against the feed's own `<link>` (the
+    site's root), not against the feed document URL, because a feed URL
+    like ``https://site.example/feed.xml`` would turn ``/posts/1`` into
+    ``https://site.example/posts/1`` only by accident of the path, and
+    ``posts/1`` into ``https://site.example/feed/posts/1`` otherwise.
+    A `guid` that is a URL is the next best answer.
+    """
+    raw = str(entry.get("link") or "").strip()
+    if not raw:
+        guid = str(entry.get("id") or "").strip()
+        if guid.lower().startswith(("http://", "https://")):
+            raw = guid
+    if not raw:
+        warnings.append("entry has no link and no URL guid; the permalink is unknown")
+        return ""
+    try:
+        parsed = urllib.parse.urlsplit(raw)
+    except ValueError:
+        warnings.append(f"entry link is not a valid URL: {raw[:120]!r}")
+        return raw
+    if parsed.scheme and parsed.netloc:
+        return raw
+    if raw.startswith("//"):
+        return "https:" + raw
+    base = feed_link if str(feed_link).lower().startswith(("http://", "https://")) else feed_url
+    try:
+        joined = urllib.parse.urljoin(base, raw)
+    except ValueError:
+        warnings.append(f"entry link could not be resolved: {raw[:120]!r}")
+        return raw
+    if not joined:
+        warnings.append(f"entry link could not be resolved: {raw[:120]!r}")
+    return joined
 
 
 class RSSSource(Source):
@@ -107,11 +147,14 @@ class RSSSource(Source):
 
         feed = parsed.feed
         title = feed.get("title") or safe_url
+        feed_link = feed.get("link", "") or ""
         entries = parsed.entries[:limit]
         lines = [f"# {title}", ""]
+        entry_records: List[Dict[str, Any]] = []
+        warnings: List[str] = []
         for i, entry in enumerate(entries, 1):
             entry_title = entry.get("title", "(untitled)")
-            link = entry.get("link", "")
+            link = _canonical_entry_link(entry, feed_link, safe_url, warnings)
             published = entry.get("published", entry.get("updated", ""))
             lines.append(f"{i}. {entry_title}")
             if link:
@@ -122,21 +165,28 @@ class RSSSource(Source):
             if summary:
                 lines.append(f"   {summary[:300]}")
             lines.append("")
+            entry_records.append(
+                {
+                    "title": entry.get("title", ""),
+                    "url": link,
+                    "published": entry.get("published", entry.get("updated", "")),
+                    "guid": entry.get("id", ""),
+                    "author": entry.get("author", ""),
+                }
+            )
 
         metadata = {
             "feed_title": title,
-            "feed_link": feed.get("link", ""),
+            "feed_link": feed_link,
             "entry_count": len(parsed.entries),
             "returned": len(entries),
-            "entries": [
-                {
-                    "title": e.get("title", ""),
-                    "url": e.get("link", ""),
-                    "published": e.get("published", e.get("updated", "")),
-                }
-                for e in entries
-            ],
+            "entries": entry_records,
         }
+        if warnings:
+            # A malformed entry must not disappear silently: the feed said
+            # N entries and the caller gets N-1, so say which one and why.
+            metadata["entry_warnings"] = warnings
+            metadata["entry_warning_count"] = len(warnings)
         return Artifact(
             title=title,
             url=final_url,

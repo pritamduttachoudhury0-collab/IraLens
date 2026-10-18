@@ -167,6 +167,14 @@ they determine how much of each document can be trusted.
 
 # Part 4 — Phase plan
 
+### Status
+
+| Phase | Defects | Status | Commit |
+|---|---|---|---|
+| A — Integrity & Truthfulness | E-01 … E-13 | **complete** | `ba8a658` |
+| B — Completeness & Scale | E-14 … E-27 | **complete** | see Phase B commit |
+| C — Extraction, Resilience, Safety & Test-Readiness | E-28 … E-35 | in progress | — |
+
 **Phase A — Integrity & Truthfulness** (E-01 … E-13)
 Stop the system from reporting false things: false success, false provenance, false
 dates, false metadata, blind errors, false block detection, over-budget content,

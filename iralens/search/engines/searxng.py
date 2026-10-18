@@ -60,6 +60,7 @@ def parse_response(payload: Any) -> List[Dict[str, str]]:
 
 class SearxngBackend(SearchBackend):
     name = "searxng"
+    paginated = True
     handled = {"language": NATIVE, "region": NATIVE, "include_domains": EMULATED,
                "file_type": EMULATED, "date_from": POST, "date_to": POST,
                "exclude_domains": POST}
@@ -132,7 +133,8 @@ class SearxngBackend(SearchBackend):
             parts.append(f"filetype:{filters.file_type}")
         return " ".join(parts)
 
-    def search(self, query: str, filters: SearchFilters, limit: int, context: Any) -> List[SearchHit]:
+    def search(self, query: str, filters: SearchFilters, limit: int, context: Any,
+               *, offset: int = 0) -> List[SearchHit]:
         settings = Settings.from_config(getattr(context, "config", None))
         cooldown = float(settings.searxng_cooldown_seconds)
         timeout = int(settings.searxng_timeout_seconds)
@@ -153,7 +155,7 @@ class SearxngBackend(SearchBackend):
             )
         errors: List[str] = []
         for instance in candidates:
-            url = self._build_url(instance, query, filters, limit)
+            url = self._build_url(instance, query, filters, limit, offset)
             try:
                 text = fetch_url_text(url, timeout=timeout,
                                       headers={"Accept": "application/json"},
@@ -198,11 +200,14 @@ class SearxngBackend(SearchBackend):
             detail="; ".join(errors)[:300],
         )
 
-    def _build_url(self, instance: str, query: str, filters: SearchFilters, limit: int) -> str:
+    def _build_url(self, instance: str, query: str, filters: SearchFilters, limit: int,
+                   offset: int = 0) -> str:
         params: Dict[str, str] = {
             "q": self.build_query(query, filters),
             "format": "json",
-            "pageno": "1",
+            # SearXNG pages hold `limit` results each, so the page number
+            # follows from the offset.
+            "pageno": str(1 + (int(offset) // max(1, int(limit)))),
         }
         if filters.language:
             params["language"] = filters.language

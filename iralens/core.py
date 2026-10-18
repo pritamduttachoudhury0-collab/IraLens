@@ -91,12 +91,16 @@ class IraLens:
 
     # ------------------------------------------------------------- discovery
     def search(self, query: str, limit: int = 8, backend: str = "") -> List[Artifact]:
-        """Search the open web. Returns unified artifacts with provenance."""
+        """Search the open web. Returns unified artifacts with provenance.
+
+        The signature of this legacy form is deliberately unchanged. Use
+        `search_api` for pagination and cross-query de-duplication, or
+        `sweep` to run many queries with de-duplication applied.
+        """
         source = get_source("web-search")
         assert source is not None
-        results = source.fetch(
-            "query", {"query": query, "limit": limit, "backend": backend}, self._context
-        )
+        params: Dict[str, Any] = {"query": query, "limit": limit, "backend": backend}
+        results = source.fetch("query", params, self._context)
         results = results if isinstance(results, list) else [results]
         self.session.last_query = query
         for artifact in results:
@@ -123,9 +127,11 @@ class IraLens:
         from .search.schema import SearchFilters as _Filters, SearchOptions as _Options
 
         f = filters if isinstance(filters, _Filters) else _Filters.build(**(filters or {}))
+        raw = dict(options) if isinstance(options, dict) else {}
         o = options if isinstance(options, _Options) else _Options(**{
-            "max_results": 8, **(options or {}),
-            "engines": tuple((options or {}).get("engines") or ()),
+            "max_results": 8, **raw,
+            "engines": tuple(raw.get("engines") or ()),
+            "exclude_urls": tuple(raw.get("exclude_urls") or ()),
         })
         engine = self._search_engine()
         response = engine.search(query, filters=f, options=o, context=self._context)
@@ -137,6 +143,33 @@ class IraLens:
                 found_via=f"search:{query}",
             )
         return response
+
+    def sweep(self, queries: List[str], *, limit: int = 8,
+              options: Optional[Dict[str, Any]] = None) -> List[Artifact]:
+        """Run several queries and return one de-duplicated corpus.
+
+        De-duplication inside a single response cannot stop a sweep from
+        returning the same pages over and over: the same URL comes back for
+        the second, third and fourth query, and the result budget is spent
+        on pages the caller already has. Here every URL seen in an earlier
+        query is excluded from the later ones.
+        """
+        seen: List[str] = []
+        seen_set = set()
+        out: List[Artifact] = []
+        for query in queries or []:
+            opts = dict(options or {})
+            opts["exclude_urls"] = tuple(seen)
+            response = self.search_api(query, options=opts)
+            from .search import to_artifacts as _to_artifacts
+            for artifact in _to_artifacts(response, query):
+                key = artifact.url
+                if key in seen_set:
+                    continue
+                seen_set.add(key)
+                seen.append(key)
+                out.append(artifact)
+        return out
 
     def research(self, question: str, options: Optional[Dict[str, Any]] = None) -> "ResearchReport":
         """Multi-round research with a cited report.
@@ -237,10 +270,15 @@ class IraLens:
 
         if discovered_from:
             artifact.discovered_from = discovered_from
-        elif self.session.last_query and artifact.url in {
-            d["url"] for d in self.session.discovered
-        }:
-            artifact.discovered_from = f"search:{self.session.last_query}"
+        else:
+            # The provenance is whatever actually surfaced this URL. The
+            # session's `last_query` is only the most recent query, and
+            # using it here attributes a stale search to an unrelated page.
+            recorded = self.session.found_via_for(artifact.url)
+            if recorded:
+                artifact.discovered_from = recorded
+            else:
+                artifact.discovered_from = "open"
 
         self.session.record_open(
             artifact.url, title=artifact.title, source=artifact.source,
