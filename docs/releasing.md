@@ -47,9 +47,14 @@ GitHub release, not committed.
 ```bash
 git tag -a v0.3.0 -m "IraLens 0.3.0"
 git push origin v0.3.0
-gh release create v0.3.0 dist/iralens-0.3.0.tar.gz dist/iralens-0.3.0-*.whl dist/SHA256SUMS \
-  --title "IraLens 0.3.0" --notes-file notes.md
+gh release create v0.3.0 --title "IraLens 0.3.0" --notes-file notes.md
 ```
+
+The assets are attached by the `release.yml` workflow, which builds the
+sdist and the wheel from the tagged commit, checks them with `twine`, and
+uploads them (with their `SHA256SUMS`) to the release. It runs on the
+`release: published` event, and can be re-run by hand with
+`workflow_dispatch`.
 
 The release assets are installable on their own:
 
@@ -73,10 +78,13 @@ To enable it, once, in the PyPI account that owns the project:
 1. Create the project `iralens` at <https://pypi.org/manage/project/iralens/settings/publishing/>
    (or claim the name from an existing account).
 2. Add a **pending publisher** for the repository
-   `pritamduttachoudhury0-collab/IraLens`, the workflow
-   `.github/workflows/publish.yml`, and the environment name `pypi`
-   (or leave the environment empty if the workflow is not changed).
-3. Publish a release — the workflow uploads the artifacts automatically.
+   `pritamduttachoudhury0-collab/IraLens` and the workflow
+   `.github/workflows/publish.yml` (leave the environment empty — the
+   workflow does not declare one).
+3. Run the `Publish to PyPI` workflow (`workflow_dispatch`): it builds the
+   artifacts, publishes them, and attaches them to the release.
+4. To make every future release publish itself, add
+   `release: [published]` to the `on:` block of `publish.yml`.
 
 If the project must be created by the account holder, the same artifacts
 can be uploaded by hand with `twine upload dist/*` after

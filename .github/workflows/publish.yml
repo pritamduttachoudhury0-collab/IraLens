@@ -1,7 +1,7 @@
 name: Publish to PyPI
 
 # The release artifacts (sdist + wheel) are built and attached to every
-# GitHub release by hand (see docs/releasing.md), so a release always has
+# GitHub release by the `release.yml` workflow, so a release always has
 # installable files even if this workflow never runs.
 #
 # This workflow publishes the same artifacts to PyPI using *trusted
@@ -15,12 +15,15 @@ name: Publish to PyPI
 # which is the honest outcome — the release itself is unaffected.
 
 on:
-  release:
-    types: [published]
+  # Manual on purpose: this workflow needs a trusted publisher registered on
+  # the PyPI account that owns the project, and until that exists the run
+  # would fail with "no publisher for this project". Once the publisher is
+  # registered, add `release: [published]` here and the release publishes
+  # itself. See docs/releasing.md.
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write          # to attach the artifacts to the release
   id-token: write          # required for trusted publishing
 
 jobs:
@@ -50,3 +53,12 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Attach the artifacts to the release
+        if: ${{ github.ref_type == 'tag' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" \
+            dist/iralens-*.tar.gz dist/iralens-*.whl \
+            --clobber
