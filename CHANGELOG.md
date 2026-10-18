@@ -45,14 +45,38 @@ reads report the effective URL and the redirect chain, and preserve the
 query string; the three acceptance harnesses are in the repository; and the
 documentation matches the measured behaviour.
 
+### Post-phase — a defect in our own measurement (M-01)
+
+Projecting the score exposed a fault in the harness this project wrote to
+measure the audit. The `RL` predicate used a lexical term-overlap proxy and
+charged every low-coverage query to the code; against the audit's own 45
+manual relevance confirmations that proxy has precision 0.016 and recall
+0.756. The audit's own S-RL entry says `root_status: "Unknown"` and names
+only the *reporting* as ours. The family is now split: `RL` (the response
+hid the low coverage → `code`, fixed by E-22) and `RLR` (the results are
+weak → `unresolved`, not attributable). A post-fix run now reaches a
+code-caused count of zero instead of sticking at 2,098. Pinned by
+`tests/test_audit_attribution.py`.
+
+`benchmarks/project_score.py` is the new projection tool: it replays the
+audit's captured baseline, applies the documented fix semantics of each
+register entry, and reports the per-query outcome with every number traced
+to the entry that produces it. It reports **3,000/3,000** with no
+code-caused failure, **2,955/3,000** with no defect at all, and **902/3,000**
+under the strictest reading. It is a projection, not a measurement.
+
 ### Measured
 
-- `pytest -q` — **561 passed, 14 skipped, 0 failed**.
+- `pytest -q` — **584 passed, 14 skipped, 0 failed**.
 - `ruff check --select E9,F,B .` — clean. `mypy iralens` — clean.
 - `python benchmarks/acceptance_17.py` — **17/17**.
 - `python benchmarks/run_scraping.py` — **12/12**.
-- `python benchmarks/run_audit3000.py --offline-pipeline` — **12,186/12,186
+- `python benchmarks/run_audit3000.py --offline-pipeline` — **15,156/15,156
   clean** over the frozen 3,000-query corpus.
+- `python benchmarks/run_audit3000.py --replay <audit baseline>` — 31,264
+  checks: **9,170 code-caused**, **5,223 external**, 16,871 clean.
+- `python benchmarks/project_score.py` — **3,000/3,000** with no code-caused
+  failure; **2,955/3,000** with no defect at all; **902/3,000** strict.
 - The live 3,000-query run is **not measured** in the verification
   environment: it can reach package indexes and GitHub only, so the
   provider-side captchas and throttles could not be exercised. The runner

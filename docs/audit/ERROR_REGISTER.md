@@ -132,6 +132,23 @@ dropped; where two audits describe one defect the entry lists both.
 
 ---
 
+## Part 1b — A defect in our own measurement
+
+Found while projecting the score, after the three phases were complete. It
+is recorded here because the mandate is that no error goes unreported, and
+this one was in the harness this project wrote to measure the audit.
+
+| ID | Error | Impact |
+|----|-------|--------|
+| **M-01** | The `RL` predicate in `benchmarks/run_audit3000.py` used a lexical term-overlap proxy and charged **every** low-coverage query to the code. Against the audit's own 45 manual relevance confirmations the proxy has precision **0.016** and recall **0.756**: it flags 2,098 queries the audit never reviewed, and misses 11 the audit did confirm. The audit's S-RL entry says `root_status: "Unknown"`, and its `expected` clause names only the *reporting* as ours ("report low coverage rather than presenting unrelated filler as usable evidence"). | A post-fix run would have reported 2,098 permanent code failures that are not code failures, making a 100% code score unreachable and mis-stating what the fixes achieved. **Fixed**: the family is split into `RL` (the response hid the low coverage → `code`, fixed by E-22) and `RLR` (the results are weak → `unresolved`, not attributable). Pinned by `tests/test_audit_attribution.py`. The baseline replay totals are unchanged, because the baseline genuinely did hide the coverage. |
+
+The projection tool that found it — `benchmarks/project_score.py` — reports
+**3,000/3,000** with no code-caused failure, **2,955/3,000** with no defect
+at all, and **902/3,000** under the strictest reading, with each number
+traced to the register entry that produces it.
+
+---
+
 # Part 2 — Errors in the audit documents themselves
 
 These do not require code changes but are reported for completeness and because
@@ -174,11 +191,13 @@ they determine how much of each document can be trusted.
 | A — Integrity & Truthfulness | E-01 … E-13 | **complete** | `ba8a658` |
 | B — Completeness & Scale | E-14 … E-27 | **complete** | `14ad8be` |
 | C — Extraction, Resilience, Safety & Test-Readiness | E-28 … E-35 | **complete** | `f7f1059` |
+| Post-phase — our own measurement | M-01 | **complete** | this commit |
 
 **Every entry in this register is implemented and regression-tested.** One
 test per defect lives in `tests/test_audit_phase_a.py` (E-01…E-13),
 `tests/test_audit_phase_b.py` (E-14…E-27) and `tests/test_audit_phase_c.py`
-(E-28…E-35). The audit's own 17 offline acceptance checks are inverted into
+(E-28…E-35); M-01 is pinned by `tests/test_audit_attribution.py`. The audit's
+own 17 offline acceptance checks are inverted into
 `tests/test_audit_acceptance.py` and are also runnable on their own with
 `python benchmarks/acceptance_17.py`. The consolidated verdict, the measured
 numbers and the honest account of what could not be measured are in

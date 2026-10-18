@@ -30,22 +30,78 @@ repository, with the corpus hash-verified and never edited:
 |---|---|---|
 | `python benchmarks/acceptance_17.py` | the audit's 17 offline acceptance checks, inverted so that each asserts the defect is **gone** | **17/17** |
 | `python benchmarks/run_scraping.py` | 12 read/extract probes (budget, main content, JS shell, script leakage, typed 429, block classification, cache provenance, concurrent saves, typed refusal) | **12/12** |
-| `python benchmarks/run_audit3000.py --offline-pipeline` | the frozen 3,000-query corpus through the real engine with a local backend | **12,186/12,186 clean** |
-| `python benchmarks/run_audit3000.py --replay <audit baseline>` | the audit's own captured 3,000-row run, re-scored with the same predicates | 28,521 checks: **9,170 code-caused**, **5,223 external**, 14,128 clean |
+| `python benchmarks/run_audit3000.py --offline-pipeline` | the frozen 3,000-query corpus through the real engine with a local backend | **15,156/15,156 clean** (100% code score, 100% strict clean) |
+| `python benchmarks/run_audit3000.py --replay <audit baseline>` | the audit's own captured 3,000-row run, re-scored with the same predicates | 31,264 checks: **9,170 code-caused**, **5,223 external**, 16,871 clean (code score 70.67%) |
+| `python benchmarks/project_score.py` | the projected per-query outcome, with each number traced to the register entry that produces it | **3,000/3,000** with no code-caused failure; **2,955/3,000** with no defect at all; **902/3,000** under the strictest reading |
 | `python benchmarks/run_audit3000.py --live` | the frozen 3,000-query corpus against the live engines | **not_run** — restricted egress cannot reach the search providers |
 
 The baseline replay is the honest "before" number and it is reproducible: the
 audit's own `records/iralens.jsonl`, scored by the predicates in
-`benchmarks/run_audit3000.py`. The 9,170 code-caused failures it reports are
+`benchmarks/run_audit3000.py`. (The check count rose from 28,521 to 31,264
+when the relevance family was split — see below. The failure totals did not
+change: the baseline genuinely did hide its low coverage, so those findings
+were correctly code-caused.) The 9,170 code-caused failures it reports are
 the defects this repository fixed (dates labelled as publication dates,
 missing Wikipedia snippets, unenforced `site:` scope, an unconfigured engine
 in the default chain, and results that did not address the question). The
 5,223 external failures are provider-side captchas and throttles; no code
 change removes them, and the runner never counts them as IraLens defects.
 
+### The relevance family is split, on purpose
+
+The audit's own S-RL entry carries `root_status: "Unknown"`. It established
+that IraLens presented unrelated filler as usable evidence — a handling
+defect, ours, and the one its `expected` clause names ("report low coverage
+rather than presenting unrelated filler as usable evidence"). It could **not**
+establish why the provider returned that filler. The audit manually confirmed
+a relevance defect on **45 of 3,000** queries; the other **2,955** were never
+reviewed and are recorded as `unresolved`.
+
+So the harness scores two families, not one:
+
+| family | what it means | cause | who fixes it |
+|---|---|---|---|
+| `RL` | the response **hid** low coverage (`no_results_reason: "none"` while the coverage verdict is `low`) | `code` | E-22 |
+| `RLR` | the results themselves are weak | `unresolved` | not attributable — the audit says so itself |
+
+A lexical term-overlap proxy stands in for the audit's manual review, and it
+is a blunt instrument: against the audit's own 45 manual confirmations it has
+precision **0.016** and recall **0.756** — it flags 2,098 queries the audit
+never examined, and misses 11 the audit did confirm. That is why the proxy's
+verdict is reported as `unresolved`: never charged to the code, never counted
+as a pass.
+
 The `--live` run needs an unrestricted network. It is the only number here
 that is **not** measured, and it is reported as `not_run` rather than as a
 pass.
+
+### What the 3,000-query score should be
+
+`benchmarks/project_score.py` replays the audit's captured baseline, applies
+the documented fix semantics of each register entry, and reports the
+per-query outcome. It is a **projection, not a measurement** — only a live
+run measures a score — but it is traceable: every number below names the
+entry that produces it.
+
+| reading | score | what it means |
+|---|---|---|
+| no **code-caused** failure | **3,000/3,000** (100%) | every defect this project can fix is fixed; this is the number that should be 100% |
+| no defect at all | **2,955/3,000** (98.5%) | the audit's own manually confirmed relevance defects (45) are upstream and remain; the system now *discloses* them instead of hiding them |
+| no finding at all (strictest) | **902/3,000** (30.1%) | the lexical proxy still objects to 2,098 queries, 2,053 of which the audit never reviewed |
+
+Two conditions move the middle and lower rows, and they are outside the
+code's control:
+
+* **Providers healthy.** The 3,000 `S-AV` failures in the baseline were
+  provider-side (DuckDuckGo captcha, a rate-limited Bing, an unconfigured
+  `mcporter` engine). With working providers they disappear. With degraded
+  providers every one of the 3,000 queries carries an external failure and
+  the raw index is 0/3,000 — exactly as in the baseline, for reasons no
+  patch can reach.
+* **The relevance gap.** The audit confirmed 45 relevance defects by hand.
+  Its own `root_status` for that family is "Unknown", and 2,955 queries were
+  never reviewed at all, so the true count is a range, not a number. The
+  projection reports the range rather than picking the flattering end of it.
 
 ## Runs
 

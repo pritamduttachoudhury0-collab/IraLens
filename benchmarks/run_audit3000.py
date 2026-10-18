@@ -68,7 +68,16 @@ _CONFIGURATION_DETAIL_MARKERS = (
     "not available", "missing",
 )
 
-FAMILIES = ("AV", "DT", "SN", "SITE", "RL")
+#: The issue families this runner scores.
+#:
+#: `RL` and `RLR` are deliberately *separate*. The audit's S-RL entry has
+#: `root_status: "Unknown"`: it established that IraLens presented unrelated
+#: filler as usable evidence (a handling defect, ours), but it could not
+#: establish why the provider returned that filler (not ours). The audit
+#: itself only confirmed a relevance defect on 45 of 3,000 queries, because
+#: the other 2,955 were never manually reviewed. Splitting the family keeps
+#: the two apart instead of charging an upstream gap to the code.
+FAMILIES = ("AV", "DT", "SN", "SITE", "RL", "RLR")
 
 
 def _now() -> str:
@@ -97,7 +106,7 @@ def load_corpus() -> List[Dict[str, Any]]:
 @dataclass
 class Finding:
     family: str
-    cause: str          # "code" | "external"
+    cause: str          # "code" | "external" | "unresolved"
     detail: str
 
     def to_dict(self) -> Dict[str, Any]:
@@ -111,26 +120,32 @@ class Score:
 
     def add(self, family: str, cause: str) -> None:
         entry = self.families.setdefault(
-            family, {"code": 0, "external": 0, "checked": 0})
+            family, {"code": 0, "external": 0, "unresolved": 0, "checked": 0})
         entry[cause] = entry.get(cause, 0) + 1
 
     def checked(self, family: str, count: int) -> None:
         entry = self.families.setdefault(
-            family, {"code": 0, "external": 0, "checked": 0})
+            family, {"code": 0, "external": 0, "unresolved": 0, "checked": 0})
         entry["checked"] += count
 
     def to_dict(self) -> Dict[str, Any]:
         code = sum(f["code"] for f in self.families.values())
         external = sum(f["external"] for f in self.families.values())
+        unresolved = sum(f.get("unresolved", 0) for f in self.families.values())
         checked = sum(f["checked"] for f in self.families.values())
-        clean = checked - code - external
+        clean = checked - code - external - unresolved
         return {
             "queries": self.total,
             "checks": checked,
             "clean": clean,
             "code_failures": code,
             "external_failures": external,
-            "code_score": round(clean / checked, 6) if checked else None,
+            "unresolved_failures": unresolved,
+            # The score that matters: the share of checks IraLens could have
+            # controlled and got right. An upstream gap is not a mark against
+            # the code, and it is not quietly counted as a pass either.
+            "code_score": round((checked - code) / checked, 6) if checked else None,
+            "strict_clean_rate": round(clean / checked, 6) if checked else None,
             "by_family": self.families,
         }
 
@@ -231,13 +246,37 @@ def score_record(record: Dict[str, Any]) -> Tuple[List[Finding], Dict[str, int]]
             if not any(host == d or host.endswith("." + d) for d in scope):
                 findings.append(Finding("SITE", "code", str(result.get("url"))))
 
-    # S-RL: the results do not address the question (machine proxy for the
-    # audit's manual intent review).
+    # S-RL: the results do not address the question.
+    #
+    # Two separate things, kept separate:
+    #
+    #   RL  — *ours*. The response presents those results as usable
+    #         evidence, i.e. it does not disclose the low coverage. The
+    #         audit's expectation is explicit: "if no such sources are
+    #         found, report low coverage rather than presenting unrelated
+    #         filler as usable evidence". A response that says
+    #         `no_results_reason: "none"` while the coverage verdict is
+    #         "low" is that defect.
+    #
+    #   RLR — *not ours, and not resolved by the audit either*. The
+    #         provider returned filler. The audit's own `root_status` for
+    #         S-RL is "Unknown", and it confirmed a relevance defect on
+    #         only 45 of 3,000 queries by manual review. A lexical
+    #         overlap proxy is a blunt instrument here, so its verdict is
+    #         reported as "unresolved" — never charged to the code and
+    #         never presented as a pass.
     checked["RL"] = 1 if results else 0
+    checked["RLR"] = 1 if results else 0
     if results:
         verdict = assess_coverage(query, results)
         if verdict.get("status") == "low":
-            findings.append(Finding("RL", "code", str(verdict.get("note"))[:120]))
+            reason = str(response.get("no_results_reason") or "")
+            if reason in ("none", ""):
+                findings.append(Finding("RL", "code", str(verdict.get("note"))[:120]))
+            else:
+                # The low coverage is disclosed; the results are still
+                # weak, but the system is being honest about it.
+                findings.append(Finding("RLR", "unresolved", str(verdict.get("note"))[:120]))
     return findings, checked
 
 
@@ -340,22 +379,26 @@ def report(score: Score, examples: List[Dict[str, Any]], out_dir: Path,
         json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
 
     print()
-    print(f"{'family':10s} {'checked':>8s} {'code':>8s} {'external':>10s}")
-    print("-" * 40)
+    print(f"{'family':10s} {'checked':>8s} {'code':>8s} {'external':>10s} {'unresolved':>11s}")
+    print("-" * 56)
     for family in FAMILIES:
         entry = score.families.get(family)
         if not entry:
             continue
-        print(f"{family:10s} {entry['checked']:8d} {entry['code']:8d} {entry['external']:10d}")
-    print("-" * 40)
+        print(f"{family:10s} {entry['checked']:8d} {entry['code']:8d} "
+              f"{entry['external']:10d} {entry.get('unresolved', 0):11d}")
+    print("-" * 56)
     print(f"{'TOTAL':10s} {summary['checks']:8d} {summary['code_failures']:8d} "
-          f"{summary['external_failures']:10d}")
+          f"{summary['external_failures']:10d} {summary['unresolved_failures']:11d}")
     print()
     if summary["code_score"] is not None:
         print(f"code-caused failures: {summary['code_failures']}")
         print(f"external failures:     {summary['external_failures']}")
-        print(f"clean checks:         {summary['clean']}/{summary['checks']} "
-              f"({summary['code_score'] * 100:.2f}%)")
+        print(f"unresolved (upstream): {summary['unresolved_failures']}")
+        print(f"code score:           {(summary['code_score'] * 100):.2f}% "
+              f"({summary['checks'] - summary['code_failures']}/{summary['checks']} checks)")
+        print(f"strict clean:         {(summary['strict_clean_rate'] * 100):.2f}% "
+              f"({summary['clean']}/{summary['checks']} checks)")
     print(f"\nwritten: {out_dir / 'results.json'}")
     return summary
 
@@ -470,6 +513,22 @@ def self_test() -> int:
     captcha = json.loads(json.dumps(good))
     captcha["response"]["outcomes"].append(
         {"engine": "duckduckgo", "status": "failed", "kind": "captcha"})
+    # Low coverage that the response does not disclose: ours.
+    hidden = json.loads(json.dumps(good))
+    hidden["query"] = "What is the capital of Assam?"
+    hidden["response"]["results"] = [{
+        "title": "Global Learning - Boise State University",
+        "url": "https://boisestate.edu/global",
+        "snippet": "Global programs",
+        "published_at": None,
+        "date_kind": "",
+        "date_evidence": "",
+        "engines": ["bing"],
+    }]
+    hidden["response"]["no_results_reason"] = "none"
+    # Low coverage that the response *does* disclose: upstream, not ours.
+    disclosed = json.loads(json.dumps(hidden))
+    disclosed["response"]["no_results_reason"] = "low_coverage"
 
     cases = [
         ("clean record has no finding", score_record(good)[0] == []),
@@ -481,6 +540,12 @@ def self_test() -> int:
          any(f.family == "SITE" for f in score_record(offsite)[0])),
         ("a captcha is external, not code",
          any(f.family == "AV" and f.cause == "external" for f in score_record(captcha)[0])),
+        ("undisclosed low coverage is an RL (code) finding",
+         any(f.family == "RL" and f.cause == "code" for f in score_record(hidden)[0])),
+        ("disclosed low coverage is RLR (unresolved), not code",
+         any(f.family == "RLR" and f.cause == "unresolved"
+             for f in score_record(disclosed)[0])
+         and not any(f.cause == "code" for f in score_record(disclosed)[0])),
     ]
     ok = True
     for name, passed in cases:

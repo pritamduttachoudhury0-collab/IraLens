@@ -96,6 +96,19 @@ records at the end show exactly what was exercised and where.
   When the results are generic filler, `no_results_reason` is
   `low_coverage`, not `none`, and the summary says so. The verdict is a
   term-overlap heuristic, not a judgement of truth.
+- **The relevance gap itself is not closed, and the audit could not close
+  it either.** The independent audit's S-RL entry carries
+  `root_status: "Unknown"`: it confirmed that IraLens presented unrelated
+  filler as usable evidence (fixed — the response now reports
+  `low_coverage` and the research layer will not call such a search a
+  success), but it could not establish *why* the providers returned that
+  filler. It manually confirmed a relevance defect on **45 of 3,000**
+  queries and left the other **2,955** as `unresolved`. A lexical
+  term-overlap proxy against those 45 has precision **0.016** and recall
+  **0.756**, so the true count of weak-result queries is a range, not a
+  number, and is reported as one. Fixing the upstream cause means fixing
+  Bing and DuckDuckGo, not this repository — and the audit explicitly
+  forbade the shortcut: "keep the full query; do not silently simplify it."
 - **A `site:` scope is enforced on the results.** The operator survives
   tokenizing and reformulation, and out-of-scope hits are dropped and
   counted. A scoped query that finds nothing in scope returns nothing; it
@@ -202,8 +215,9 @@ run offline and print a score:
 |---|---|---|
 | `python benchmarks/acceptance_17.py` | the 17 offline acceptance checks from the independent audit, inverted so that each one asserts the defect is **gone** | **17/17** |
 | `python benchmarks/run_scraping.py` | the read/extract probes: character budget, main-content selection, JS-shell detection, script leakage, typed 429, block classification, cache provenance, concurrent session saves, typed refusal | **12/12** |
-| `python benchmarks/run_audit3000.py --offline-pipeline` | the frozen 3,000-query corpus through the real engine with a local backend: scoping, date labelling, snippet handling, engine readiness, coverage verdict | **12,186/12,186 clean** |
+| `python benchmarks/run_audit3000.py --offline-pipeline` | the frozen 3,000-query corpus through the real engine with a local backend: scoping, date labelling, snippet handling, engine readiness, coverage verdict | **15,156/15,156 clean** |
 | `python benchmarks/run_audit3000.py --replay FILE` | a captured run (for example the audit's own 3,000-row baseline) scored with the same predicates, so before/after are comparable | see `BENCHMARKS.md` |
+| `python benchmarks/project_score.py` | the projected per-query score, each number traced to the register entry that produces it | **3,000/3,000** with no code-caused failure; see `BENCHMARKS.md` |
 | `python benchmarks/run_audit3000.py --live` | the frozen 3,000-query corpus against the live engines | needs provider egress |
 
 The corpus is `benchmarks/audit3000/queries.jsonl` with its sha256 in
@@ -221,21 +235,25 @@ verified.
 
 **2026-10-18, restricted egress (post-audit remediation).**
 
-- `.venv/bin/python -m pytest -q` — **561 passed, 14 skipped, 0 failed** after
+- `.venv/bin/python -m pytest -q` — **584 passed, 14 skipped, 0 failed** after
   the three-phase remediation of the independent audit (the 14 skips are
   live-network tests).
 - `ruff check --select E9,F,B .` — clean. `mypy iralens` — clean (81 source
   files).
 - `python benchmarks/acceptance_17.py` — **17/17**.
 - `python benchmarks/run_scraping.py` — **12/12**.
-- `python benchmarks/run_audit3000.py --offline-pipeline` — **12,186/12,186
+- `python benchmarks/run_audit3000.py --offline-pipeline` — **15,156/15,156
   clean** over the frozen 3,000-query corpus.
 - `python benchmarks/run_audit3000.py --replay <audit baseline>` — the audit's
   own captured 3,000-row run, re-scored with the same predicates:
-  **9,170 code-caused failures and 5,223 external failures** out of 28,521
+  **9,170 code-caused failures and 5,223 external failures** out of 31,264
   checks. Every code-caused family it names is fixed in the code above; the
   external ones (provider captchas and throttles) are outside this project's
   control and are reported as such.
+- `python benchmarks/project_score.py` — the projected per-query score:
+  **3,000/3,000** with no code-caused failure, **2,955/3,000** with no
+  defect at all, **902/3,000** under the strictest reading. A projection, not
+  a measurement; the live run is the only measurement.
 - Not verified there: live DuckDuckGo/Bing/Wikipedia runs. The environment
   allows outbound access only to package indexes and GitHub, so the
   `--live` 3,000-query run could not be executed; the runner is in place and

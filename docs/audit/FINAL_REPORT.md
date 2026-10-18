@@ -132,13 +132,14 @@ verification environment, on 2026-10-18.
 
 | what | command | result |
 |---|---|---|
-| the test suite | `.venv/bin/python -m pytest -q` | **578 passed, 14 skipped, 0 failed** |
+| the test suite | `.venv/bin/python -m pytest -q` | **584 passed, 14 skipped, 0 failed** |
 | lint | `.venv/bin/ruff check --select E9,F,B .` | clean |
 | types | `.venv/bin/mypy iralens` | clean (81 source files) |
 | the audit's 17 acceptance checks, inverted | `python benchmarks/acceptance_17.py` | **17/17** |
 | the scraping test | `python benchmarks/run_scraping.py` | **12/12** |
-| the frozen 3,000-query corpus through the engine | `python benchmarks/run_audit3000.py --offline-pipeline` | **12,186/12,186 clean** |
-| the audit's own captured 3,000-row run, re-scored | `python benchmarks/run_audit3000.py --replay <baseline>` | 28,521 checks: **9,170 code-caused**, **5,223 external**, 14,128 clean |
+| the frozen 3,000-query corpus through the engine | `python benchmarks/run_audit3000.py --offline-pipeline` | **15,156/15,156 clean** |
+| the audit's own captured 3,000-row run, re-scored | `python benchmarks/run_audit3000.py --replay <baseline>` | 31,264 checks: **9,170 code-caused**, **5,223 external**, 16,871 clean |
+| the projected per-query score | `python benchmarks/project_score.py` | **3,000/3,000** with no code-caused failure — see §5 |
 | the live 3,000-query run | `python benchmarks/run_audit3000.py --live` | **not_run** — see §4 |
 
 The 17 checks and the 12 scraping probes are the *inverse* of the audit's
@@ -169,6 +170,13 @@ are unreachable, so:
   nonempty set of filler was reported as `no_results_reason: "none"`. That
   is E-22, and it is fixed — the results are still what the provider
   returned, but the response now says the question was not addressed.
+- **The size of the relevance gap is a range, not a number.** The audit
+  manually confirmed a relevance defect on **45 of 3,000** queries and left
+  the other **2,955** as `unresolved` — the Arena comparison was never run
+  for them. The lexical term-overlap proxy that stands in for that manual
+  review has precision **0.016** and recall **0.756** against the audit's
+  own 45 confirmations. It is reported as `unresolved` in the harness
+  (`RLR`), never charged to the code and never counted as a pass.
 
 So a raw "3,000/3,000 zero failures" was never attainable by code alone,
 and this report does not claim it. What *is* claimed, and measured, is:
@@ -176,13 +184,69 @@ and this report does not claim it. What *is* claimed, and measured, is:
 - every **code-caused** failure the audit could identify is fixed, and each
   fix has a named regression test;
 - the **3,000-query pipeline** is clean on every check the code controls
-  (12,186/12,186);
+  (15,156/15,156);
 - the **scraping test** is 12/12 and the **acceptance suite** is 17/17;
 - what remains is named, classified and reproducible.
 
 ---
 
-## 5. Honest notes on the audit itself
+## 5. What the 3,000-query score should be
+
+`benchmarks/project_score.py` replays the audit's captured baseline, applies
+the documented fix semantics of each register entry, and reports the
+per-query outcome. It is a **projection, not a measurement** — a live run is
+the only measurement — but it is traceable: every number below names the
+entry that produces it.
+
+| reading | score | what it means |
+|---|---|---|
+| no **code-caused** failure | **3,000/3,000** (100%) | every defect this project can fix is fixed; this is the number that should be 100% |
+| no defect at all | **2,955/3,000** (98.5%) | the audit's own manually confirmed relevance defects (45) are upstream and remain; the system now *discloses* them instead of hiding them |
+| no finding at all (strictest) | **902/3,000** (30.1%) | the lexical proxy still objects to 2,098 queries, 2,053 of which the audit never reviewed |
+
+Two conditions move the middle and lower rows, and neither is in the code's
+control.
+
+**Providers healthy.** All 3,000 `S-AV` failures in the baseline were
+provider-side: a DuckDuckGo captcha, a rate-limited Bing, an unconfigured
+`mcporter` engine. With working providers they disappear. With degraded
+providers every one of the 3,000 queries carries an external failure and the
+raw index reads 0/3,000 — exactly as in the baseline, for reasons no patch
+can reach. This is why the raw index is not the score: it is a measurement
+of the network as much as of the code.
+
+**The relevance gap.** The audit confirmed 45 relevance defects by hand. Its
+own `root_status` for that family is "Unknown", and 2,955 queries were never
+reviewed, so the true count is a range, not a number. The projection reports
+the range rather than picking the flattering end of it. Closing it upstream
+means changing Bing and DuckDuckGo, and the audit explicitly forbade the
+shortcut it would otherwise invite: "keep the full query; do not silently
+simplify it."
+
+### The correction this projection forced
+
+Scoring the baseline exposed a fault in *our own harness*, not in IraLens.
+The `RL` predicate used a lexical term-overlap proxy and charged every
+low-coverage query to the code. Against the audit's own 45 manual
+confirmations that proxy has precision **0.016** and recall **0.756** — it
+flags 2,098 queries the audit never examined, and misses 11 the audit did
+confirm. The harness now scores two families:
+
+| family | what it means | cause | fixed by |
+|---|---|---|---|
+| `RL` | the response **hid** low coverage (`no_results_reason: "none"` while the coverage verdict is `low`) | `code` | E-22 |
+| `RLR` | the results themselves are weak | `unresolved` | not attributable — the audit says so itself |
+
+The baseline replay totals are unchanged (the baseline genuinely did hide the
+coverage, so those findings were correctly code-caused). What changed is what
+a *post-fix* run reports: the 2,098 queries now disclose the gap and move
+from `RL` to `RLR`, so the code-caused count reaches zero instead of
+sticking at 2,098 forever. `tests/test_audit_attribution.py` pins the
+separation.
+
+---
+
+## 6. Honest notes on the audit itself
 
 - Two of its assertions encoded the *defects* and had to be rewritten
   (`tests/test_wikipedia.py` asserted a revision timestamp as
@@ -199,7 +263,7 @@ and this report does not claim it. What *is* claimed, and measured, is:
 
 ---
 
-## 6. Where to look
+## 7. Where to look
 
 | path | what it holds |
 |---|---|
@@ -209,8 +273,10 @@ and this report does not claim it. What *is* claimed, and measured, is:
 | `tests/test_audit_phase_a.py` | one test per E-01…E-13 |
 | `tests/test_audit_phase_b.py` | one test per E-14…E-27 |
 | `tests/test_audit_phase_c.py` | one test per E-28…E-35 |
+| `tests/test_audit_attribution.py` | the `RL`/`RLR` attribution split and the projection tool |
 | `benchmarks/acceptance_17.py` | the 17 checks as a standalone runner |
 | `benchmarks/run_scraping.py` | the scraping-test runner |
 | `benchmarks/run_audit3000.py` | the 3,000-query runner (live, replay, offline-pipeline) |
+| `benchmarks/project_score.py` | the score projection: every number traced to the fix that produces it |
 | `benchmarks/audit3000/` | the frozen, hash-verified 3,000-query corpus and the issue definitions |
 | `tests/fixtures/audit/` | the audit's captured evidence, kept so the checks are reproducible |
