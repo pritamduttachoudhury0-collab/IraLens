@@ -115,20 +115,58 @@ def _write(text: str, name: str, words: List[str], sep: str) -> str:
     Word sets are wrapped; a phrase set keeps one phrase per line, because
     the phrases are separated by the ``|`` delimiter and must not be merged.
     """
+    if sep == '"|"':
+        # One phrase per line, because the phrases are separated by the
+        # ``|`` delimiter and must not be merged. Each phrase is stripped,
+        # so the set holds phrases and not lines of layout.
+        start = text.index(f"{name}: frozenset = frozenset(")
+        end = text.index(f'""".split({sep}))', start) + len(f'""".split({sep}))')
+        body = "\n".join(f"{w}|" for w in words)
+        block = (f'{name}: frozenset = frozenset(\n'
+                 f'    phrase.strip()\n'
+                 f'    for phrase in """\n{body}\n""".split({sep})\n'
+                 f'    if phrase.strip()\n'
+                 f')')
+        return text[:start] + block + text[end:]
     start = text.index(f"{name}: frozenset = frozenset(\"\"\"")
     end = text.index(f'""".split({sep}))', start) + len(f'""".split({sep}))')
-    if sep == '"|"':
-        body = "\n".join(f"{w}|" for w in words)
-    else:
-        body = "\n".join(" ".join(words[i:i + 14]) for i in range(0, len(words), 14))
+    body = "\n".join(" ".join(words[i:i + 14]) for i in range(0, len(words), 14))
     return text[:start] + f'{name}: frozenset = frozenset("""\n{body}\n""".split({sep}))' + text[end:]
+
+
+#: Month names, so that a phrase made only of dates can be recognised.
+_MONTHS = frozenset("""
+    january february march april may june july august september october
+    november december jan feb mar apr jun jul aug sep sept oct nov dec
+""".split())
+
+
+def _date_only(phrase: str) -> bool:
+    """Is this phrase nothing but a date?
+
+    "2026" was learned as a request phrase, and every query that ends in a
+    year was then split there — the year became the request shape and the
+    question lost it. A date is part of the subject, never a request.
+    """
+    words = [w for w in phrase.split() if w]
+    if not words:
+        return True
+    for word in words:
+        low = word.strip(".,;:!?()[]\"'").lower()
+        if low in _MONTHS:
+            continue
+        if any(ch.isdigit() for ch in low):
+            continue
+        return False
+    return True
 
 
 def main() -> int:
     learned_markers, learned_shapes, learned_phrases = _learned()
     markers = sorted(set(HAND_MARKERS) | set(learned_markers))
     shapes = sorted(set(HAND_SHAPE_WORDS) | set(learned_shapes))
-    phrases = sorted({p.strip() for p in HAND_PHRASES if p.strip()} | set(learned_phrases))
+    phrases = sorted({p.strip() for p in HAND_PHRASES if p.strip()}
+                     | {p.strip() for p in learned_phrases if not _date_only(p)})
 
     text = MODULE.read_text(encoding="utf-8")
     text = _write(text, "REQUEST_MARKERS", markers, "")

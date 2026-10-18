@@ -95,8 +95,9 @@ which who why wikipedia without worked year
 #: The learned ones come from `benchmarks/derive_request_markers.py`; the
 #: hand-written ones cover the shapes a researcher writes that the corpus
 #: does not happen to contain.
-REQUEST_PHRASES: frozenset = frozenset("""
-2026|
+REQUEST_PHRASES: frozenset = frozenset(
+    phrase.strip()
+    for phrase in """
 academic source references|
 archive documents|
 arxiv|
@@ -192,7 +193,9 @@ who guidance|
 wikipedia references|
 worked counterexample|
 worked numerical example|
-""".split("|"))
+""".split("|")
+    if phrase.strip()
+)
 
 #: Function words that may appear *inside* a request shape without starting
 #: a new one.
@@ -219,6 +222,17 @@ def _words_with_case(text: str) -> List[str]:
     from .querytext import _RUN_RE
 
     return [m.group(0) for m in _RUN_RE.finditer(text or "")]
+
+
+def _is_bare_year(word: str) -> bool:
+    """Is this token a bare year, like "2026"?
+
+    A bare year at the end of a question is a temporal qualifier ("as of
+    2026"), not part of the subject and not a request for a kind of source.
+    """
+    stripped = word.strip(".,;:!?()[]\"'")
+    return (len(stripped) == 4 and stripped.isdigit()
+            and 1900 <= int(stripped) <= 2099)
 
 
 def _is_date_like(word: str) -> bool:
@@ -264,6 +278,10 @@ def _match_phrase(words: List[str]) -> Tuple[int, List[str]] | None:
     for phrase in REQUEST_PHRASES:
         phrase_words = phrase.split()
         if not phrase_words or len(phrase_words) >= len(plain):
+            continue
+        if all(_is_date_like(word) for word in phrase_words):
+            # A date is part of the subject, never a request: "… October
+            # 2026" must not be split so that "2026" becomes the shape.
             continue
         if plain[-len(phrase_words):] != phrase_words:
             continue
@@ -360,8 +378,13 @@ def split_subject(text: str) -> Tuple[str, str]:
             continue
         break
     if not found:
-        # No request word anywhere: the trailing date is part of the
-        # subject, not a shape of its own.
+        # No request word anywhere. A trailing bare year is a temporal
+        # qualifier ("as of 2026"): it is not the subject, and it says
+        # nothing about the kind of source wanted, but it is separable.
+        if len(words) > 1 and _is_bare_year(words[-1]):
+            return _cut(cleaned, spans, len(words) - 1)
+        # Otherwise the trailing date is part of the subject, not a shape
+        # of its own.
         return raw, ""
 
     if start == 0:

@@ -132,7 +132,7 @@ verification environment, on 2026-10-18.
 
 | what | command | result |
 |---|---|---|
-| the test suite | `.venv/bin/python -m pytest -q` | **634 passed, 14 skipped, 0 failed** |
+| the test suite | `.venv/bin/python -m pytest -q` | **636 passed, 14 skipped, 0 failed** |
 | lint | `.venv/bin/ruff check --select E9,F,B .` | clean |
 | types | `.venv/bin/mypy iralens` | clean (81 source files) |
 | the audit's 17 acceptance checks, inverted | `python benchmarks/acceptance_17.py` | **17/17** |
@@ -345,7 +345,7 @@ the kind of a page can never outrank a page that simply answers the
 question; a bare homepage is never boosted, because a homepage is the entry
 point to the right kind rather than the source itself. The bonus was
 calibrated against the captured set (`benchmarks/measure_shape_ranking.py
---sweep`): at 0.20 the top result changes in 31 of the 1,159 questions that
+--sweep`): at 0.20 the top result changes in 32 of the 1,250 questions that
 ask for a kind of source — 5 of those changes improve the answer and 3
 make it worse.
 
@@ -358,6 +358,18 @@ question none of the ten results was on target, so no kind of source could
 have been better. The preference is measured where it can be measured — on
 the captured 3,000-query set — and reported as the modest improvement it
 is.
+
+**A bare year in the request lexicon was hiding the request shape
+(E-43).** The learned phrase set contained "2026" — a year, not a request —
+and the high-precision matcher takes the longest known phrase at the end of
+a query. So every query ending in a year was split *at the year*:
+"India GDP official dataset download October 2026" became the subject
+"India GDP official dataset download October" and the request shape
+"2026", which says nothing about the kind of source wanted. A year is a
+temporal qualifier, not a request: it is separable on its own, but it never
+shadows the request that precedes it. Every templated query in the corpus
+now gets a shape (0 of 2,519 without one), and the number of questions that
+ask for a kind of source rises from 1,159 to **1,250**.
 
 **Two smaller defects came out of the same pass.** The backward scan for a
 request word fell through when it found none, inventing a request shape out

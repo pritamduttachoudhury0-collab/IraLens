@@ -246,7 +246,7 @@ verified.
 
 **2026-10-18, restricted egress (post-audit remediation).**
 
-- `.venv/bin/python -m pytest -q` — **634 passed, 14 skipped, 0 failed** after
+- `.venv/bin/python -m pytest -q` — **636 passed, 14 skipped, 0 failed** after
   the three-phase remediation of the independent audit (the 14 skips are
   live-network tests).
 - `ruff check --select E9,F,B .` — clean. `mypy iralens` — clean (81 source

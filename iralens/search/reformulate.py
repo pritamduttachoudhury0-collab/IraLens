@@ -85,6 +85,17 @@ def reformulate(
     # the question. The full question is still sent — this is an *additional*
     # variant, never a replacement for it.
     split = match_request_phrase(question)
+    scope_prefixes: List[str] = []
+    if split is None:
+        # A `site:` scope is a constraint, not a request, so the splitter
+        # leaves a scoped query alone — but the shape inside a scoped query
+        # is still a shape. The scope is taken off, the rest is split, and
+        # the scope is put back on the variant: the constraint survives
+        # exactly as the caller wrote it.
+        scopes, cleaned = parse_site_scopes(question)
+        if scopes:
+            split = match_request_phrase(cleaned)
+            scope_prefixes = [f"site:{scope}" for scope in scopes]
     if split:
         subject, _shape = split
         subject_terms = _keywords(subject) if subject else []
@@ -93,6 +104,8 @@ def reformulate(
         # real substance is worth a variant of its own.
         if len(subject_terms) >= 3:
             subject_text = " ".join(subject_terms)
+            if scope_prefixes:
+                subject_text = " ".join(scope_prefixes + subject_terms)
             if subject_text.lower() != question.lower():
                 candidates.append({"text": subject_text, "strategy": "focus"})
 

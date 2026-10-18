@@ -196,3 +196,47 @@ def test_a_path_scoped_query_keeps_its_scope_in_every_variant():
     assert variants
     for variant in variants:
         assert "site:github.com/scipy/scipy" in variant["text"], variant
+
+
+# --------------------------------------------------------- temporal qualifiers
+def test_a_trailing_year_is_a_temporal_qualifier_not_a_request_shape():
+    """A bare year says "as of 2026", not "give me a different kind of page".
+
+    It is separable from the subject, but it must never *shadow* the real
+    request shape: "… official dataset download October 2026" asks for a
+    dataset, and the year at the end of it used to hide that.
+    """
+    from iralens.search.queryfocus import match_request_phrase, split_subject
+
+    subject, shape = split_subject("WHO mpox emergency status latest official update October 2026")
+    assert subject == "WHO mpox emergency status"
+    assert "official" in shape and "2026" in shape
+
+    # A query whose only suffix is the year: the year is separable, and the
+    # subject is everything before it.
+    subject, shape = split_subject("অসম বন্যা চৰকাৰী তথ্য 2026")
+    assert subject == "অসম বন্যা চৰকাৰী তথ্য"
+    assert shape == "2026"
+
+    # A bare year is not a known request *phrase*, so it does not split a
+    # query on its own: a phrase that covers the whole query has no
+    # subject to leave behind.
+    assert match_request_phrase("অসম বন্যা চৰকাৰী তথ্য 2026") is None
+
+
+def test_a_version_qualifies_the_request_rather_than_being_cut_off():
+    """A version number belongs with the request it qualifies.
+
+    "Python 3.12 release notes" asks for the release notes of 3.12: the
+    version is part of the request, and the product name is the subject. It
+    is certainly not a date that may be cut off and dropped.
+    """
+    from iralens.search.queryfocus import split_subject
+
+    subject, shape = split_subject("Python 3.12 release notes")
+    assert subject == "Python"
+    assert "3.12" in shape
+
+    subject, shape = split_subject("Attention Is All You Need original paper arXiv 1706.03762")
+    assert subject == "Attention Is All You Need"
+    assert "1706.03762" in shape

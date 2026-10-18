@@ -113,12 +113,23 @@ every corpus query was re-examined against the result it actually received.
   can never outrank a page that simply answers the question, and a bare
   homepage is never boosted. Calibrated against the captured set
   (`benchmarks/measure_shape_ranking.py --sweep`): at the shipped 0.20 the
-  top result changes in 31 of the 1,159 questions that ask for a kind of
+  top result changes in 32 of the 1,250 questions that ask for a kind of
   source, 5 of them for the better and 3 for the worse.
 - **E-41 — the backward scan for a request word fell through when it found
   none**, inventing a request shape out of whatever trailed ("… arXiv
   1706.03762" became the shape "1706.03762"). The corpus's topics are now
   recovered exactly in 2,622 of 2,950 (88.88%), up from 88.78%.
+- **E-43 — a bare year in the request lexicon was hiding the request
+  shape.** The learned phrase set contained "2026", and the high-precision
+  matcher takes the longest known phrase at the end of a query, so every
+  query ending in a year was split *at the year*: "India GDP official
+  dataset download October 2026" became the shape "2026", which says
+  nothing about the kind of source wanted. A year is a temporal qualifier,
+  not a request: it is separable on its own, but it never shadows the
+  request before it. Every templated query in the corpus now gets a shape
+  (0 of 2,519 without one), and the questions that ask for a kind of source
+  rise from 1,159 to 1,250. The corpus's topics are still recovered in
+  2,622 of 2,950 (88.88%) and the lexicon still scores 89.15% held-out.
 - **E-42 — the GitHub adapter answered a repository sub-page with the
   repository.** Its regex matched `github.com/<owner>/<repo>` anywhere in a
   URL, so `https://github.com/astral-sh/uv/issues` was read as the
@@ -147,7 +158,7 @@ under the strictest reading. It is a projection, not a measurement.
 
 ### Measured
 
-- `pytest -q` — **634 passed, 14 skipped, 0 failed**.
+- `pytest -q` — **636 passed, 14 skipped, 0 failed**.
 - `ruff check --select E9,F,B .` — clean. `mypy iralens` — clean.
 - `python benchmarks/acceptance_17.py` — **17/17**.
 - `python benchmarks/run_scraping.py` — **12/12**.
@@ -167,7 +178,7 @@ under the strictest reading. It is a projection, not a measurement.
   egress policy.
 - `python benchmarks/measure_shape_ranking.py --sweep` — the request-shape
   preference, swept against the captured 3,000-query set: at the shipped
-  bonus of 0.20 the top result changes in 31 of the 1,159 questions that
+  bonus of 0.20 the top result changes in 32 of the 1,250 questions that
   ask for a kind of source, 5 of them for the better and 3 for the worse.
 - `python benchmarks/ab_query_forms.py` — over ten hand-labelled real
   provider captures: the `focus` form is **7/7** on-target where the loose
