@@ -27,7 +27,26 @@ internal targets.
    Every redirect hop is re-validated against the public-URL policy; https→http
    downgrades and chains longer than `MAX_REDIRECTS` (5) are refused.
 5. **Credential isolation.** Caching never stores authenticated content. Browser
-   reads are never cached. Search and static reads send no cookies.
+   reads are never cached. Search and static reads send no cookies. Proxy
+   credentials are never passed on a command line: `/proc/<pid>/cmdline` is
+   world-readable, so the proxy reaches the engine through its environment
+   (`IRALENS_ENGINE_PROXY`), which is owner-readable only. Error messages and
+   reports are scrubbed of URL credentials (`security.scrub_url_credentials`)
+   before they leave the process.
+5b. **Browser navigation guard.** The browser tier applies the same SSRF policy
+   as the fetch path: the URL is validated before navigation, **every redirect
+   hop is re-validated**, and cross-origin hops strip `Authorization`,
+   `Proxy-Authorization`, and `Cookie`. Subresources are validated too — a
+   hostile page naming an internal host in a `<script src>` is refused and
+   recorded as `blocked_subresource`; the rest of the page still renders.
+   Subresource count and byte budgets are enforced, and the Chrome DevTools
+   Protocol server is deliberately not vendored, so there is no WebSocket
+   control port: the engine speaks MCP over stdio only.
+5c. **Verification pages stop the read.** A CAPTCHA, bot-check interstitial,
+   login wall, or access-denied page is detected and raised as
+   `verification_required` rather than returned as content. It is never retried
+   through another transport, and only the page's marker phrase and provider
+   name are retained — never page content.
 6. **Third-party reader (opt-in).** Reads are local-first: direct fetch
    plus local extraction, no third party. Only if you opt in
    (`IRALENS_READ_REMOTE_READER_ENABLED=1`) does the remote reader
@@ -60,3 +79,15 @@ internal targets.
   checksum it did not verify.
 - Soft-404 detection is a heuristic (short body + not-found markers) and can
   miss novel 404 page designs.
+- Challenge/interstitial detection is a heuristic. It is deliberately
+  conservative to avoid failing legitimate pages: widget identifiers are
+  decisive, but interstitial *phrasing* requires corroboration. Novel designs
+  and non-English challenges will be missed. A missed challenge looks like a
+  successful read.
+- Proxy credentials remain readable by the same user through the child
+  process's environment. Eliminating that needs an out-of-band channel
+  (a pipe or inherited file descriptor) and is not implemented.
+- Stealth, where an engine provides it, is a browser-identity consistency
+  measure. It is not a security control, does not solve CAPTCHAs, and does not
+  guarantee success against interactive challenges. It is unreachable in every
+  shipped configuration of this distribution (see `KNOWN_LIMITATIONS.md`).

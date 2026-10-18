@@ -247,8 +247,16 @@ measures a score.
 Live results depend on your network and the search sources you configure;
 bot walls and rate limits are reported honestly rather than hidden. The
 browser engine is optional and anything that needs it says so. Research
-output is evidence leads, not verified answers. The full list —
-verification gaps, research heuristics, search behavior, packaging — is in
+output is evidence leads, not verified answers.
+
+Sites that answer with a CAPTCHA, a bot check, a login wall, or an
+access-denied page are **reported, not solved**: the read stops with a typed
+`verification_required` error instead of returning the challenge page as if
+it were content, and it is not retried through another transport. The
+optional `stealth` setting is accepted and reported but has no effect in
+this distribution — the underlying capability exists only behind an
+uncompiled Rust feature gate. See the
+[security model](docs/security.md) and the full list of limits in
 [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
 
 ## Responsible use

@@ -191,6 +191,50 @@ records at the end show exactly what was exercised and where.
     hosts still cannot be fetched. Link-local and metadata names are refused
     even when allowlisted.
 
+## Browser resilience, verification, and optional features
+
+28. **Verification pages are reported, never solved.** A CAPTCHA widget, a
+    bot-check interstitial, an authentication wall, or an access-denied page
+    is detected on both the raw response body *and* the extracted text, and
+    raises a typed `verification_required` error. IraLens does not solve,
+    bypass, or interfere with any verification control, and does not retry a
+    challenge through a different transport — a second render cannot clear an
+    interactive check, so the read stops instead. Where a supported
+    authorized human-verification workflow exists it is not wired up, so the
+    result is a clear recoverable failure.
+29. **Challenge detection is heuristic and deliberately conservative.**
+    Widget identifiers (`cdn-cgi/challenge-platform`, `g-recaptcha`,
+    `cf-turnstile`, …) are treated as decisive because they do not occur in
+    ordinary prose. Marketing or editorial copy containing the word
+    "captcha" or the name "Cloudflare" must not be misread, so interstitial
+    *phrasing* alone is not enough: it requires corroboration by a provider
+    fingerprint, a reference ID, or a refusing status code, and is otherwise
+    reported as detected-but-unconfirmed. Novel challenge designs, and
+    challenges served in languages other than English, will be missed.
+30. **Stealth is an upstream capability, not a shipped one.** The vendored
+    Obscura source implements stealth, but only behind a Rust
+    `#[cfg(feature = "stealth")]` gate, `obscura-browser` declares
+    `default = []`, and the optional Rust build does not pass
+    `--features stealth`. The default execution tier is Python plus native
+    V8 and contains no stealth code at all. **Stealth is therefore
+    unreachable in every shipped configuration.** Setting it is accepted,
+    reported, and has no effect. Even where a browser engine does implement
+    stealth, it is a browser-identity consistency measure: it does not solve
+    CAPTCHAs and does not guarantee success against interactive Cloudflare,
+    DataDome, or Akamai challenges.
+31. **Optional features now advertise what they actually do.** The engine
+    reports its capabilities in the MCP `initialize` response, including
+    whether a feature was *requested*, whether it is *supported*, and
+    whether it was *applied*. A requested-but-unavailable feature produces a
+    warning on stderr and in `doctor` rather than being silently dropped, or
+    refusing to start — taking the browser tier down over a cosmetic option
+    would be the worse failure.
+32. **Standing claim: no anti-detection effectiveness is asserted.** No
+    statement is made about Obscura's real-world anti-bot effectiveness. It
+    was evaluated only from the vendored source in this repository; the
+    upstream repository was not fetched, and no live test against any
+    bot-detection service was run.
+
 ## Platform and packaging
 
 27. **Not published to PyPI.** Install from a checkout, or straight from

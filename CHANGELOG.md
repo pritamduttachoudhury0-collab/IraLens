@@ -2,6 +2,65 @@
 
 All notable changes to this project are documented here, newest first.
 
+## Unreleased
+
+Browser resilience and honest reporting of optional features. This work is
+**not** a new release: the release version remains `0.3.1` by project
+decision, so no version was bumped. Cutting a version for these changes is a
+separate call for the maintainer.
+
+### Fixed
+
+- **A verification page could be returned as research content.** A CAPTCHA
+  widget, bot-check interstitial, login wall, or access-denied page that
+  rendered cleanly passed every downstream check as a successful read, so
+  "verify you are human" could reach the agent as evidence. New
+  `iralens/challenge.py` classifies these on both the raw response body and
+  the extracted text; the web source raises a typed
+  `VerificationRequiredError` (a subclass of `PageUnavailableError`, so
+  existing handlers are unaffected). A challenge no longer escalates to the
+  browser tier — the previous code actively recommended retrying one through
+  a full browser render, which cannot succeed.
+- **`--stealth` was a phantom flag.** It was declared on the engine CLI,
+  forwarded to the subprocess, parsed by argparse, and then never read. An
+  operator setting `stealth: true` had no way to know nothing had changed.
+  The engine now advertises what it actually implements in the MCP
+  `initialize` response (`requested` / `supported` / `applied`), and a
+  requested-but-unavailable feature is reported on stderr and in `doctor`
+  rather than being silently dropped. It warns rather than fails: taking the
+  browser tier down over an optional cosmetic flag would be worse than
+  continuing without it.
+- **Proxy credentials were exposed on the process command line.** The proxy
+  URL was passed as `["--proxy", str(proxy)]`. `/proc/<pid>/cmdline` is
+  world-readable, so a proxy URL of the common form
+  `http://user:pass@host:8080` published its password to every account on
+  the machine. The proxy now reaches the engine through its environment
+  (`IRALENS_ENGINE_PROXY`), which is owner-readable only. An explicit
+  `--proxy` flag still works and still wins over the environment.
+
+### Security
+
+- Browser **subresource** SSRF now has regression coverage: a hostile page
+  naming an internal host in a `<script src>` is refused and recorded as
+  `blocked_subresource` while the rest of the page still renders. The
+  control itself already worked; only the test was missing.
+- No security control was weakened to make anything pass: no timeout raised,
+  no assertion relaxed, no test skipped, no validation bypassed.
+
+### Documentation
+
+- `KNOWN_LIMITATIONS.md`: new section stating that verification pages are
+  reported and never solved, that challenge detection is conservative, and
+  that **stealth is unreachable in every shipped configuration** (it exists
+  only behind an uncompiled Rust `stealth` feature gate).
+- `docs/security.md`: browser navigation guard, verification-stop control,
+  proxy credentials moved to the environment, and four new known gaps.
+- `README.md`: challenge pages are reported not solved; `stealth` has no
+  effect in this distribution.
+- `BROWSER_RESILIENCE_IMPLEMENTATION_REPORT.md`: full implementation report
+  separating verified facts from inferred conclusions and untested
+  assumptions.
+
 ## 0.3.1 — 2026-10-18
 
 Remediation of the eight findings from the feasibility-gated partial audit of
