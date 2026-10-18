@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from .. import content_guard
 from ..cache import ResponseCache
+import re
 from ..config import state_dir
 from ..reliability import CircuitBreaker, ConcurrencyGate, PerSiteConcurrencyGate, PersistentCircuitBreaker, RetryPolicy
 from ..security import normalize_public_http_url
@@ -28,8 +29,10 @@ from .engines import LEGACY_ALIASES, build_backends
 from .engines.base import SearchBackend
 from .fallback import run_chain
 from .intent import classify_query, intent_multiplier
-from .querytext import parse_site_scopes, sanitize_query
-from .ranking import authority, combine, freshness, relevance, today_utc
+from .querytext import parse_site_scopes, sanitize_query, term_set
+from .ranking import (
+    authority, combine, freshness, relevance, relevance_gate, today_utc,
+)
 from ..model import Artifact
 from .reformulate import DEFAULT_SYNONYMS
 from .reformulate import reformulate as _reformulate
@@ -411,7 +414,7 @@ class SearchEngine:
                 ranks[h.engine] = min(h.position, ranks.get(h.engine, h.position))
             best_rank = min(ranks.values())
             title = max((h.title for h in hits), key=len)
-            snippet = max((h.snippet for h in hits), key=len)
+            snippet = _best_snippet(hits, question)
             dates = sorted(h.published_at for h in hits if h.published_at)
             published = dates[0] if dates else None
             # A revision time is reported separately: it must never be
@@ -437,6 +440,15 @@ class SearchEngine:
                 "freshness": freshness(published, today, s.freshness_half_life_days, s.neutral_freshness),
                 "agreement": round(len(engines) / n_engines, 4),
             }
+            # Relevance gate: recency must not rescue a result the query does
+            # not match. A page published today scores ~1.0 on freshness, so
+            # without this a dated piece of junk ("15 best pizza places",
+            # refreshed weekly) outranks an undated page that actually answers
+            # the question. Freshness is capped at neutral -- it can no longer
+            # help, but it no longer lies about the page being timely either.
+            gated = relevance_gate(
+                factors, floor=getattr(s, "relevance_gate_floor", 0.30),
+                neutral=s.neutral_freshness)
             queries = sorted({h.query for h in hits if h.query})
             ranked.append(RankedResult(
                 title=title,
@@ -456,6 +468,7 @@ class SearchEngine:
                                     if h.raw.get("date_evidence")), ""),
                 modified_at=modified,
                 date_kind=date_kind,
+                freshness_gated=gated,
             ))
         ranked.sort(key=lambda r: (-r.score, r.url))
         # D5: Wikipedia is an entity/definition source. For procedure,
@@ -515,11 +528,232 @@ def _summarize(question: str, results: List[RankedResult], outcomes: List[Any],
     return "no results: every engine answered with zero hits"
 
 
+# Marketing and navigation copy that matches query terms while answering
+# nothing. Matched case-insensitively against a candidate snippet.
+_BOILERPLATE_RE = re.compile(
+    r"\b(find out|find .{0,30}information|learn more|read more|welcome to|"
+    r"official (site|website)|sign in|log in|sign up|all rights reserved|"
+    r"we use cookies|cookie policy|privacy policy|terms of (use|service)|"
+    r"skip to (main )?content|toggle navigation|breadcrumb|you are here)\b",
+    re.IGNORECASE,
+)
+# A figure is what a pricing/rate/date question is actually asking for.
+_FIGURE_RE = re.compile(r"\d[\d,.]*\s*(%|percent|\$|€|£|₹|usd|inr|bn|billion|mn|million|k)?")
+_FACTOID_RE = re.compile(
+    r"\b(price|pricing|fee|fees|rate|rates|cost|costs|cpm|rpm|how much|"
+    r"market size|benchmark|conversion rate|percentage|percent|"
+    r"released?|release date|announced?|launch(ed)?)\b",
+    re.IGNORECASE,
+)
+
+
+def _best_snippet(hits, question: str) -> str:
+    """The candidate snippet that actually speaks to the query.
+
+    Choosing the longest snippet preferred generic site copy -- "Find Stripe
+    fees and pricing information", "Python was created in the early 1990s" --
+    over the passage carrying the rate or the date, because boilerplate is
+    verbose and answers are terse. That produced results whose URL was right
+    and whose evidence was unquotable.
+
+    Raw term count is not sufficient either: marketing copy tends to contain
+    *more* query words than the answer does. So candidates are scored on term
+    coverage and density, penalised for boilerplate, and credited for
+    carrying a figure when the question asks for one.
+    """
+    wanted = {t for t in term_set(question) if len(t) > 2}
+    candidates = [h.snippet for h in hits if h.snippet]
+    if not candidates:
+        return ""
+    if not wanted:
+        return max(candidates, key=len)
+
+    factoid = bool(_FACTOID_RE.search(question or ""))
+
+    def score(snippet: str) -> float:
+        low = snippet.casefold()
+        covered = sum(1 for t in wanted if t in low)
+        tokens = max(1, len(low.split()))
+        density = covered / tokens
+        value = covered + density
+        if _BOILERPLATE_RE.search(snippet):
+            value -= 2.0
+        if factoid and _FIGURE_RE.search(snippet):
+            value += 0.75
+        return value
+
+    best = max(candidates, key=score)
+    # Nothing matched any query term, so coverage is not a usable signal.
+    # Fall back to the longest candidate rather than picking arbitrarily:
+    # an uninformative choice should still be a deterministic one.
+    if not any(t in best.casefold() for t in wanted):
+        return max(candidates, key=len)
+    return best
+
+
+_NUM_RE = re.compile(
+    r"(?<!\w)(\d[\d,]*(?:\.\d+)?)\s*"
+    r"(percent|per\s+cent|%|usd|inr|eur|gbp|\$|€|£|₹|"
+    r"billion|bn|million|mm|mn|thousand|k|crore|lakh)?",
+    re.IGNORECASE,
+)
+_UNIT_CANON = {
+    "": "count", "%": "percent", "percent": "percent", "per cent": "percent",
+    "$": "usd", "usd": "usd", "€": "eur", "eur": "eur",
+    "£": "gbp", "gbp": "gbp", "₹": "inr", "inr": "inr",
+    "bn": "billions", "billion": "billions",
+    "mn": "millions", "mm": "millions", "million": "millions",
+    "k": "thousands", "thousand": "thousands",
+    "crore": "crores", "lakh": "lakhs",
+}
+
+
+def _claims(text: str) -> Dict[str, float]:
+    """Numbers found in *text*, keyed by canonical unit. Best value per unit."""
+    found: Dict[str, float] = {}
+    for raw, unit in _NUM_RE.findall(text or ""):
+        try:
+            value = float(raw.replace(",", ""))
+        except ValueError:
+            continue
+        key = _UNIT_CANON.get((unit or "").strip().casefold(), "count")
+        found.setdefault(key, value)
+    return found
+
+
+def _materially_different(a: float, b: float) -> bool:
+    """True when two figures differ by more than rounding or restatement."""
+    if a == b:
+        return False
+    high, low = max(abs(a), abs(b)), min(abs(a), abs(b))
+    if low == 0:
+        return True
+    return (high - low) / low > 0.05
+
+
+def conflict_report(response: "SearchResponse") -> Dict[str, Any]:
+    """Disagreements between sources in this result set, with both sides kept.
+
+    Returns ``{"conflicts": [...], "sufficiency": {...}}``. Every conflict
+    entry names both sources, both values, and both dates, so a consumer can
+    present the disagreement rather than hide it. The detector is lexical and
+    says so; it never decides which side is correct.
+    """
+    by_unit: Dict[str, List[Dict[str, Any]]] = {}
+    for r in response.results:
+        for unit, value in _claims(f"{r.title} {r.snippet}").items():
+            by_unit.setdefault(unit, []).append({
+                "value": value, "url": r.url, "domain": domain_of(r.url),
+                "title": r.title, "published_at": r.published_at,
+                "date_status": r.date_status,
+            })
+
+    conflicts: List[Dict[str, Any]] = []
+    for unit, entries in by_unit.items():
+        # Only compare across distinct sources: one page restating itself is
+        # not a disagreement.
+        domains = {e["domain"] for e in entries}
+        if len(domains) < 2:
+            continue
+        distinct: List[Dict[str, Any]] = []
+        for e in entries:
+            # Keep a value only when it differs materially from every value
+            # already kept: two sources stating the same figure are agreement,
+            # not conflict.
+            if all(_materially_different(e["value"], d["value"])
+                   for d in distinct):
+                distinct.append(e)
+        if len(distinct) < 2:
+            continue
+        values = sorted({d["value"] for d in distinct})
+        conflicts.append({
+            "unit": unit,
+            "values": values,
+            "sources": distinct,
+            "spread_ratio": round(max(values) / min(values), 4)
+            if min(values) else None,
+            "detection": "lexical",
+            "confidence": "heuristic",
+            "note": ("numeric disagreement detected by comparing figures that "
+                     "share a unit; not a judgement of which source is correct"),
+        })
+
+    domains = {domain_of(r.url) for r in response.results}
+    dated = sum(1 for r in response.results if r.date_status == "known")
+    sufficiency: Dict[str, Any] = {
+        "independent_domains": len(domains),
+        "results": len(response.results),
+        "dated_results": dated,
+    }
+    # A single weak source must not be rendered as a confident number.
+    if len(domains) < 2:
+        sufficiency["label"] = "insufficient"
+        sufficiency["note"] = ("fewer than two independent domains; treat any "
+                               "figure as assumed, not established")
+    elif dated == 0:
+        sufficiency["label"] = "undated"
+        sufficiency["note"] = ("multiple sources but no publication dates; "
+                               "freshness of the evidence is unknown")
+    else:
+        sufficiency["label"] = "sourced"
+    return {"conflicts": conflicts, "sufficiency": sufficiency}
+
+
+def degradation_report(response: "SearchResponse") -> Dict[str, Any]:
+    """Whether this result set is trustworthy, and why not.
+
+    An engine that is circuit-open or failed does not reduce the *count* of
+    results -- another engine fills the slots -- so a caller sees a full,
+    healthy-looking top-5 that was actually assembled by a substitute. The
+    substitute is typically an entity-matching index, which answers "what is
+    this word" rather than the question, which is how a demand-validation
+    query returns pizza restaurants.
+
+    This is computed from engine outcomes, so it is a fact about what
+    happened, not an estimate of quality.
+    """
+    served = sorted({o.engine for o in response.outcomes if o.status == "results"})
+    impaired: List[str] = []
+    reasons: List[str] = []
+    for o in response.outcomes:
+        if o.status in ("failed", "skipped"):
+            impaired.append(o.engine)
+            label = o.kind or o.status
+            detail = f"{o.engine}: {label}"
+            if o.detail:
+                detail += f" ({o.detail})"
+            reasons.append(detail)
+    degraded = bool(impaired)
+    # Filler risk: results arrived only because a primary engine was impaired,
+    # and the surviving engine is a substitute rather than a general web index.
+    filler_risk = degraded and bool(served) and served != sorted(
+        {o.engine for o in response.outcomes})
+    report: Dict[str, Any] = {
+        "degraded": degraded,
+        "engines_served": served,
+        "engines_impaired": sorted(set(impaired)),
+        "reasons": reasons,
+        "filler_risk": filler_risk,
+    }
+    if degraded:
+        report["summary"] = (
+            "result set assembled with "
+            f"{len(set(impaired))} of {len({o.engine for o in response.outcomes})} "
+            "engines impaired; treat coverage as partial"
+        )
+    return report
+
+
 def to_artifacts(response: SearchResponse, question: str) -> List[Artifact]:
     """Legacy shape: one `Artifact` per ranked result, provenance attached."""
     backend_label = "search:" + "+".join(sorted({o.engine for o in response.outcomes if o.status == "results"})
                                         or ["none"])
     out: List[Artifact] = []
+    # The legacy `search()` path returns bare artifacts, so degradation has to
+    # ride along on each one. Without it an integration cannot tell a healthy
+    # result set from one assembled by a fallback after an engine tripped.
+    degradation = degradation_report(response)
+    evidence = conflict_report(response)
     for rank, r in enumerate(response.results, start=1):
         # `published_at` alone is not auditable: a caller cannot tell whether
         # the date came from a provider field, was parsed out of a snippet, or
@@ -538,6 +772,9 @@ def to_artifacts(response: SearchResponse, question: str) -> List[Artifact]:
             metadata["date_kind"] = r.date_kind
         if r.modified_at:
             metadata["modified_at"] = r.modified_at
+        if degradation["degraded"]:
+            metadata["degraded"] = True
+            metadata["degradation"] = degradation
         provenance: Dict[str, Any] = {
             "engines": r.engines,
             "engine_ranks": r.engine_ranks,
@@ -553,6 +790,9 @@ def to_artifacts(response: SearchResponse, question: str) -> List[Artifact]:
             # a publication date; keeping both lets a consumer see the
             # difference instead of inferring it.
             "modified_at": r.modified_at,
+            "degradation": degradation,
+            "conflicts": evidence["conflicts"],
+            "sufficiency": evidence["sufficiency"],
         }
         out.append(Artifact(
             title=r.title,

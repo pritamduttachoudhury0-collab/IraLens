@@ -344,6 +344,24 @@ def freshness(published_at: Optional[str], now: date, half_life_days: float, neu
     return round(math.pow(0.5, age / max(1e-6, half_life_days)), 4)
 
 
+def relevance_gate(factors: Dict[str, float], *, floor: float,
+                   neutral: float) -> bool:
+    """Hold freshness at neutral when relevance failed the floor.
+
+    Returns True when the gate fired. Recency must not rescue a result the
+    query does not match: freshness decays toward 1.0 for anything published
+    today, so without this a dated page of unrelated content outranks an
+    undated page that actually answers the question.
+
+    The cap only ever removes freshness's *upside*. A stale-but-relevant
+    result keeps its (lower) freshness, so the gate cannot inflate a score.
+    """
+    if factors.get("relevance", 0.0) >= floor:
+        return False
+    factors["freshness"] = min(factors.get("freshness", neutral), neutral)
+    return True
+
+
 def combine(factors: Dict[str, float], weights: Dict[str, float]) -> float:
     total = sum(weights.values()) or 1.0
     return round(sum(factors[k] * weights.get(k, 0.0) for k in factors) / total, 4)

@@ -62,6 +62,11 @@ class Settings:
     weight_agreement: float = 0.2
     freshness_half_life_days: float = 365.0
     neutral_freshness: float = 0.5         # used when a result has no date
+    #: Relevance below which freshness is not allowed to lift a result.
+    #: Without this, a dated but unrelated page outranks an undated
+    #: relevant one: freshness decays toward 1.0 for anything published
+    #: today, so recency was silently compensating for failed relevance.
+    relevance_gate_floor: float = 0.30
     authority_weights: Dict[str, float] = field(default_factory=lambda: dict(DEFAULT_AUTHORITY))
     default_authority: float = 0.5
     # --- dedup ----------------------------------------------------------------

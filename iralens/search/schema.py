@@ -161,6 +161,9 @@ class RankedResult:
     modified_at: Optional[str] = None
     #: "publication" | "revision" | "" — what `published_at` means.
     date_kind: str = ""
+    #: True when freshness was held at neutral because relevance failed the
+    #: gate. Reported so a capped score is explainable rather than mysterious.
+    freshness_gated: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

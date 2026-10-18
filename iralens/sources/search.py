@@ -31,6 +31,46 @@ if TYPE_CHECKING:
     from ..core import Context
 
 
+#: Engine names the search chain may draw on, used to filter the circuit
+#: snapshot down to the engines this source actually uses.
+_SEARCH_ENGINE_KEYS = ("duckduckgo", "bing", "wikipedia", "startpage",
+                       "brave", "mojeek", "marginalia", "semantic-search")
+
+
+def _engine_circuits() -> Dict[str, Dict[str, object]]:
+    """Per-engine circuit state, or ``{}`` when it cannot be read.
+
+    A local SQLite read of the breaker's own state file. It makes no upstream
+    request, so `doctor` stays non-destructive, and it fails open: an
+    unreadable store reports no circuit information rather than turning a
+    storage problem into a health alarm.
+    """
+    try:
+        from ..config import state_dir
+        from ..reliability import PersistentCircuitBreaker
+        from ..settings import Settings
+        st = Settings()
+        breaker = PersistentCircuitBreaker(
+            st.breaker_failure_threshold,
+            st.breaker_cooldown_seconds,
+            blocked_cooldown=st.breaker_block_cooldown_seconds,
+            state_path=state_dir() / "search-health.sqlite3",
+        )
+        raw = breaker.snapshot()
+    except Exception:
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    out: Dict[str, Dict[str, object]] = {}
+    for name, state in raw.items():
+        if isinstance(state, dict):
+            out[str(name)] = {
+                "state": state.get("state", "closed"),
+                "consecutive_failures": state.get("consecutive_failures", 0),
+            }
+    return out
+
+
 class SearchSource(Source):
     name = "web-search"
     description = "Web search"
@@ -91,7 +131,36 @@ class SearchSource(Source):
         if engine_message:
             details["browser_fallback_message"] = engine_message[:200]
 
+        # Per-engine circuit state. Doctor used to say "ok" during a partial
+        # outage: the breaker was open for one engine, another engine filled
+        # the slots, and nothing in health reflected it. Reading the breaker
+        # is a local SQLite read -- no upstream request, so doctor stays
+        # non-destructive.
+        circuits = _engine_circuits()
+        if circuits:
+            details["engine_circuits"] = circuits
+            impaired = sorted(
+                name for name, st in circuits.items()
+                if str(st.get("state")) in ("open", "half_open")
+            )
+            if impaired:
+                details["engines_impaired"] = impaired
+
         if engine_status == "off":
+            tripped = details.get("engines_impaired") or []
+            if tripped:
+                return SourceHealth(
+                    "warn",
+                    "direct SERP fetch over HTTP; rendered browser fallback not "
+                    "installed; " + f"{len(tripped)} search engine(s) are "
+                    f"circuit-open ({', '.join(tripped)}), so coverage is "
+                    "partial; upstream search providers not probed",
+                    self.active_backend,
+                    hint="an engine trips after repeated failures and recovers "
+                         "after its cooldown; results carry a degradation "
+                         "marker while this persists",
+                    details=details,
+                )
             return SourceHealth(
                 "ok",
                 "direct SERP fetch over HTTP; rendered browser fallback not "
@@ -115,6 +184,20 @@ class SearchSource(Source):
         if engine_status != "ok":
             # An unrecognized engine status is not evidence that the fallback
             # works: say it is unproven rather than claiming readiness.
+            tripped = details.get("engines_impaired") or []
+            if tripped:
+                return SourceHealth(
+                    "warn",
+                    "direct SERP fetch over HTTP is ready; rendered browser "
+                    f"fallback status unrecognized ({engine_status or 'empty'}); "
+                    f"{len(tripped)} search engine(s) are circuit-open "
+                    f"({', '.join(tripped)}), so coverage is partial; "
+                    "upstream search providers not probed",
+                    self.active_backend,
+                    hint="an engine trips after repeated failures and recovers "
+                         "after its cooldown",
+                    details=details,
+                )
             return SourceHealth(
                 "ok",
                 "direct SERP fetch over HTTP is ready; rendered browser fallback "
@@ -124,6 +207,24 @@ class SearchSource(Source):
                 details=details,
             )
         self.active_backend = "browser-search"
+        tripped = details.get("engines_impaired") or []
+        if tripped:
+            # The transport works; coverage does not. Reporting "ok" here is
+            # what let a production integration keep serving filler results
+            # while its monitoring showed green.
+            return SourceHealth(
+                "warn",
+                "direct SERP fetch is ready, but "
+                f"{len(tripped)} search engine(s) are circuit-open "
+                f"({', '.join(tripped)}); results will be assembled from "
+                "fewer sources and coverage is partial; upstream providers "
+                "not probed",
+                self.active_backend,
+                hint="an engine trips after repeated failures and recovers "
+                     "after its cooldown; results carry a degradation marker "
+                     "while this persists",
+                details=details,
+            )
         return SourceHealth(
             "ok",
             "direct SERP fetch with rendered browser fallback available "
