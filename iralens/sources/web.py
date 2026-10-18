@@ -35,6 +35,7 @@ from ..errors import (
     IraLensError,
     OperationTimeoutError,
     PageUnavailableError,
+    classify_http_status,
 )
 from ..model import Artifact
 from ..security import normalize_public_http_url, public_message, safe_urlopen
@@ -161,7 +162,7 @@ def read_with_static_reader(
                           headers={"User-Agent": _UA, "Accept": "text/plain"}) as resp:
             body = _read_body_with_deadline(resp, limit, deadline)
     except urllib.error.HTTPError as exc:
-        raise _classify_http_error(exc) from exc
+        raise _classify_http_error(exc, mode="static", layer="reader") from exc
     except (OperationTimeoutError, ExtractionError):
         raise
     except Exception as exc:
@@ -250,7 +251,7 @@ def read_direct(
                 resp, max(limit, pdf_max_bytes or limit) if is_pdf_target else limit, deadline
             )
     except urllib.error.HTTPError as exc:
-        raise _classify_http_error(exc) from exc
+        raise _classify_http_error(exc, mode="static", layer="origin") from exc
     except (OperationTimeoutError, ExtractionError):
         raise
     except Exception as exc:
@@ -293,44 +294,35 @@ def read_direct(
     return text
 
 
-def _classify_http_status(status: int) -> PageUnavailableError:
-    """Map an HTTP status code onto a specific, honest error."""
-    if status in (301, 302, 303, 307, 308):
-        return PageUnavailableError(
-            "too many redirects (redirect loop suspected)",
-            hint="the page keeps redirecting; try a different URL",
-            detail="redirect_loop",
-        )
-    if status == 404:
-        return PageUnavailableError(
-            "page not found (404)", hint="check the URL for typos", detail="http_404"
-        )
-    if status in (401, 403):
-        return PageUnavailableError(
-            f"the site denied anonymous access (HTTP {status}); likely a bot check "
-            "or login wall",
-            hint="retry with mode=browser",
-            detail=f"http_{status}",
-        )
-    if status == 429:
-        return PageUnavailableError(
-            "the reader service is rate-limited (429)",
-            hint="wait a moment and retry, or use mode=browser",
-            detail="http_429",
-        )
-    if 500 <= status <= 599:
-        return PageUnavailableError(
-            f"the reader service failed (HTTP {status})",
-            hint="temporary; retry shortly",
-            detail=f"http_{status}",
-        )
-    return PageUnavailableError(f"the reader returned HTTP {status}",
-                                detail=f"http_{status}")
+def _classify_http_status(status: int, *, mode: str = "", layer: str = "origin",
+                          retry_after: Optional[float] = None) -> IraLensError:
+    """Map an HTTP status code onto a specific, honest error.
+
+    Thin wrapper over `errors.classify_http_status` so the web path and the
+    other fetch paths (RSS, Reddit, source adapters) agree on one taxonomy.
+    `layer` says who answered; `mode` says which retrieval mode is in use, so
+    the hint never tells the caller to switch to the mode they already use.
+    """
+    return classify_http_status(status, layer=layer, mode=mode, retry_after=retry_after)
 
 
-def _classify_http_error(exc: urllib.error.HTTPError) -> PageUnavailableError:
+def _classify_http_error(exc: urllib.error.HTTPError, *, mode: str = "",
+                         layer: str = "origin") -> IraLensError:
     """Map an HTTP status from the reader onto a specific, honest error."""
-    return _classify_http_status(exc.code)
+    retry_after = None
+    headers = getattr(exc, "headers", None)
+    if headers is not None:
+        try:
+            raw = headers.get("Retry-After")
+        except Exception:
+            raw = None
+        if raw:
+            try:
+                retry_after = float(str(raw).strip())
+            except (TypeError, ValueError):
+                retry_after = None
+    return _classify_http_status(exc.code, mode=mode, layer=layer,
+                                 retry_after=retry_after)
 
 
 class WebSource(Source):
@@ -401,22 +393,37 @@ class WebSource(Source):
         cache = ResponseCache(enabled=settings.cache_enabled)
         static_failure: Optional[IraLensError] = None
         static_artifact: Optional[Artifact] = None
+        # Clear any transport metadata left by an earlier read on this thread.
+        # The artifact builder no longer reads it, but nothing else should
+        # inherit it either.
+        _DIRECT_META_LOCAL.last = None
 
         if mode in ("auto", "static"):
             try:
+                # The transport metadata of *this* read is captured explicitly.
+                # It used to be read back from a thread-local that only the
+                # uncached path populated, so a cache hit inherited the
+                # previous page's final_url/status/content_type and reported
+                # one page's content under another page's identity.
+                retrieval: Dict[str, Any] = {}
                 cached = cache.get(_PAGE_NS, {"url": safe_url}, settings.cache_page_ttl_seconds)
                 if cached is not None:
                     value, age = cached
                     markdown = value["markdown"]
                     method = value.get("method", "direct")
+                    retrieval = dict(value.get("retrieval") or {})
                     cache_info = {"status": "hit", "age_seconds": round(age, 1)}
                 else:
                     markdown, method = self._fetch_static(safe_url, settings)
+                    retrieval = dict(getattr(_DIRECT_META_LOCAL, "last", None) or {})
                     cache_info = {"status": "miss"}
                     # Only successful reads are cached; a flagged page is still
                     # cacheable because it is public, and the flags travel with it.
+                    # The retrieval metadata is cached *with* the body so a hit
+                    # can describe itself truthfully.
                     cache.put(_PAGE_NS, {"url": safe_url},
-                              {"markdown": markdown, "method": method},
+                              {"markdown": markdown, "method": method,
+                               "retrieval": retrieval},
                               cacheable=bool(markdown.strip()))
                 flags = content_guard.scan(markdown)
                 # The cache keeps the full text; the budget is enforced when
@@ -424,7 +431,8 @@ class WebSource(Source):
                 content, truncated = content_guard.truncate_text(markdown, max_chars)
                 static_artifact = _static_artifact(
                     safe_url, content, cache=cache_info, flags=flags, truncated=truncated,
-                    total_chars=len(markdown), max_chars=max_chars, method=method)
+                    total_chars=len(markdown), max_chars=max_chars, method=method,
+                    retrieval=retrieval)
             except (PageUnavailableError, ExtractionError, OperationTimeoutError) as exc:
                 static_failure = exc
                 if mode == "static":
@@ -449,7 +457,7 @@ class WebSource(Source):
                     else None
                 )
                 if status_code is not None and status_code >= 400:
-                    raise _classify_http_status(status_code)
+                    raise _classify_http_status(status_code, mode="browser")
 
                 markdown = engine.markdown(max_chars=max_chars)
                 current = engine.current_url_title()
@@ -577,8 +585,16 @@ _PAGE_NS = "page.v1"
 
 def _static_artifact(url: str, markdown: str, *, cache: dict, flags=None,
                      truncated: bool = False, total_chars: int = 0,
-                     max_chars: int = 0, method: str = "direct") -> Artifact:
-    direct_meta = getattr(_DIRECT_META_LOCAL, "last", None) or {}
+                     max_chars: int = 0, method: str = "direct",
+                     retrieval: Optional[Dict[str, Any]] = None) -> Artifact:
+    """Build the artifact for a static read.
+
+    `retrieval` carries the transport metadata of *this* read (final URL,
+    status, content type). It is passed explicitly rather than read from a
+    thread-local, because a cache hit never performs a fetch and would
+    otherwise inherit the previous page's identity.
+    """
+    direct_meta = dict(retrieval or {})
     final_url = str(direct_meta.get("final_url") or url)
     status_code = direct_meta.get("status_code") if isinstance(direct_meta.get("status_code"), int) else None
     content_type = direct_meta.get("content_type") if isinstance(direct_meta.get("content_type"), str) else None
@@ -607,6 +623,9 @@ def _static_artifact(url: str, markdown: str, *, cache: dict, flags=None,
         "requested_url": url,
         "final_url": final_url,
         "redirected": redirected,
+        # A cache hit is a distinct provenance fact: the bytes were not
+        # fetched during this call, and the consumer should know that.
+        "cache_hit": bool((cache or {}).get("status") == "hit"),
     }
     if status_code is not None:
         prov["status_code"] = status_code

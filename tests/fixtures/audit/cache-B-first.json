@@ -1,0 +1,49 @@
+{
+  "probe": "cache-B-first",
+  "started_at": "2026-10-17T13:16:54.754479+00:00",
+  "query_id": "Q0014",
+  "status": "returned",
+  "output": {
+    "title": "Brahmaputra River",
+    "url": "https://en.wikipedia.org/wiki/Brahmaputra_River",
+    "requested_url": "https://en.wikipedia.org/wiki/Brahmaputra_River",
+    "final_url": "https://en.wikipedia.org/wiki/Brahmaputra_River",
+    "source": "web",
+    "kind": "page",
+    "content": "[Jump to content](#bodyContent)\n[Search](/wiki/Special:Search)\n# Brahmaputra River\n111 languages\n- [Afrikaans](https://af.wikipedia.org/wiki/Brahmaputra)\n- [अंगिका](https://anp.wikipedia.org/wiki/%E0%A4%AC%E0%A5%8D%E0%A4%B0%E0%A4%B9%E0%A5%8D%E0%A4%AE%E0%A4%AA%E0%A5%81%E0%A4%A4%E0%A5%8D%E0%A4%B0)\n- [العربية](https://ar.wikipedia.org/wiki/%D9%86%D9%87%D8%B1_%D8%A8%D8%B1%D8%A7%D9%87%D9%85%D8%A7%D8%A8%D9%88%D8%AA%D8%B1%D8%A7)\n- [مصرى](https://arz.wikipedia.org/wiki/%D9%86%D9%87%D8%B1_%D8%A8%D8%B1%D8\n\n…[truncated 108570 chars]",
+    "content_format": "markdown",
+    "metadata": {
+      "requested_url": "https://en.wikipedia.org/wiki/Brahmaputra_River",
+      "final_url": "https://en.wikipedia.org/wiki/Brahmaputra_River",
+      "redirected": false,
+      "truncated": true,
+      "status_code": 200,
+      "content_type": "text/html; charset=UTF-8",
+      "max_chars": 500,
+      "total_chars": 109070
+    },
+    "retrieval_method": "direct",
+    "retrieved_at": "2026-10-17T13:16:55Z",
+    "untrusted": true,
+    "status_code": 200,
+    "content_type": "text/html; charset=UTF-8",
+    "warnings": [
+      "security:invisible_characters",
+      "content_truncated"
+    ],
+    "provenance": {
+      "security_flags": [
+        "invisible_characters"
+      ],
+      "cache": {
+        "status": "miss"
+      },
+      "requested_url": "https://en.wikipedia.org/wiki/Brahmaputra_River",
+      "final_url": "https://en.wikipedia.org/wiki/Brahmaputra_River",
+      "redirected": false,
+      "status_code": 200,
+      "content_type": "text/html; charset=UTF-8"
+    }
+  },
+  "latency_seconds": 0.3884761529999423
+}

@@ -255,10 +255,22 @@ def test_browser_path_receives_max_chars(monkeypatch, tmp_path):
 def test_truncate_text_reports_omitted_chars():
     text, truncated = content_guard.truncate_text("a" * 1000, 100)
     assert truncated is True
-    assert text.startswith("a" * 100)
-    assert "900 chars" in text
+    # The budget is a hard ceiling: the notice is reserved *inside* it.
+    # (It used to be appended, so the result was 126 chars for a 100-char
+    # budget and the caller could not rely on the documented cap.)
+    assert len(text) <= 100
+    assert text.startswith("a" * 10)
+    omitted = int(text.split("truncated ")[1].split(" chars")[0])
+    assert omitted == 1000 - len(text.split("\n\n…[truncated")[0])
     same, not_truncated = content_guard.truncate_text("short", 100)
     assert same == "short" and not_truncated is False
+
+
+@pytest.mark.parametrize("budget", [1, 5, 10, 24, 40, 100, 1000, 12000])
+def test_truncate_text_never_exceeds_the_budget(budget):
+    text, truncated = content_guard.truncate_text("a" * (budget + 500), budget)
+    assert truncated is True
+    assert len(text) <= budget
 
 
 # ------------------------------------------ local-first direct read

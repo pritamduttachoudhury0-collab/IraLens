@@ -3,17 +3,27 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, TYPE_CHECKING
+import urllib.error
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
-from ..errors import ExtractionError, PageUnavailableError
+from ..errors import (
+    ExtractionError,
+    OperationTimeoutError,
+    PageUnavailableError,
+    classify_http_status,
+)
 from ..model import Artifact
-from ..security import normalize_public_http_url
+from ..security import normalize_public_http_url, safe_urlopen
 from .base import Source, SourceHealth
 
 if TYPE_CHECKING:
     from ..core import Context
 
 _UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+
+#: Hard cap on a feed download. A feed is metadata, not a document; a
+#: multi-hundred-megabyte "feed" is an attack, not a subscription.
+_MAX_FEED_BYTES = 8 * 1024 * 1024
 
 
 class RSSSource(Source):
@@ -51,16 +61,44 @@ class RSSSource(Source):
 
     def read_url(self, url: str, context: "Context", mode: str = "auto", limit: int = 20) -> Artifact:
         import feedparser
-        import requests
 
         safe_url = normalize_public_http_url(url)
+        status_code: Optional[int] = None
+        final_url = safe_url
+        content_type = ""
+        retry_after: Optional[float] = None
         try:
-            resp = requests.get(safe_url, headers={"User-Agent": _UA}, timeout=30)
-            resp.raise_for_status()
+            # The SSRF-safe transport is used here too: a plain HTTP client
+            # re-resolves the host at connect time and follows redirects
+            # without re-validating them, which is a private-network
+            # reachability hole this source must not have.
+            with safe_urlopen(safe_url, timeout=30,
+                              headers={"User-Agent": _UA}) as resp:
+                status_code = int(getattr(resp, "status", None)
+                                  or (resp.getcode() if hasattr(resp, "getcode") else 200) or 200)
+                final_url = str(getattr(resp, "url", None) or safe_url)
+                headers = getattr(resp, "headers", {}) or {}
+                content_type = str(headers.get("Content-Type") or "")
+                raw_retry = headers.get("Retry-After")
+                if raw_retry:
+                    try:
+                        retry_after = float(str(raw_retry).strip())
+                    except (TypeError, ValueError):
+                        retry_after = None
+                body = resp.read(_MAX_FEED_BYTES)
+        except urllib.error.HTTPError as exc:
+            # A 429 is rate limiting, not "the feed is missing": the status
+            # is preserved, typed, and the origin's Retry-After travels with it.
+            raise classify_http_status(exc.code, layer="origin") from exc
+        except (OperationTimeoutError, ExtractionError):
+            raise
         except Exception as exc:
             raise PageUnavailableError("could not download the feed", detail=str(exc)) from exc
+        if status_code is not None and status_code >= 400:
+            raise classify_http_status(status_code, layer="origin",
+                                       retry_after=retry_after)
 
-        parsed = feedparser.parse(resp.content)
+        parsed = feedparser.parse(body)
         if parsed.bozo and not parsed.entries and not parsed.feed.get("title"):
             raise ExtractionError(
                 "feed could not be parsed",
@@ -101,11 +139,15 @@ class RSSSource(Source):
         }
         return Artifact(
             title=title,
-            url=safe_url,
+            url=final_url,
             source="rss",
             kind="feed",
             content="\n".join(lines),
             content_format="markdown",
             metadata=metadata,
             retrieval_method="local:feedparser",
+            requested_url=safe_url,
+            final_url=final_url,
+            status_code=status_code,
+            content_type=content_type or None,
         )

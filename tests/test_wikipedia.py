@@ -31,9 +31,33 @@ def test_wikipedia_parser_normalizes_search_api_payload():
     assert hits[0].title == "Solar energy"
     assert hits[0].url == "https://en.wikipedia.org/wiki/Solar_energy"
     assert hits[0].snippet == "Use solar power."
-    assert hits[0].published_at == "2025-04-03"
+    # The API timestamp is the page's *last revision*, not its publication
+    # date. It must not be reported as `published_at`: an article edited
+    # today would otherwise look newly published.
+    assert hits[0].published_at is None
+    assert hits[0].modified_at == "2025-04-03"
+    assert hits[0].date_kind == "revision"
     assert parse_wikipedia_payload({"query": {"search": "wrong"}}, "q", 5) == []
     assert parse_wikipedia_payload(None, "q", 5) == []
+
+
+def test_wikipedia_backend_requests_snippets(monkeypatch):
+    """`srprop` must include `snippet`: the API omits it otherwise.
+
+    A parser-only test cannot catch this — the parser already handled a
+    snippet when one was supplied. The defect was in the *request*.
+    """
+    seen = {}
+
+    def fake_fetch(url, **kwargs):
+        seen["url"] = url
+        return json.dumps(PAYLOAD)
+
+    monkeypatch.setattr(wikipedia_mod, "fetch_url_text", fake_fetch)
+    monkeypatch.setattr(wikipedia_mod, "_pace_api_calls", lambda: None)
+    WikipediaBackend().search("solar energy", SearchFilters(), 5, Context())
+    assert "srprop=snippet" in seen["url"]
+    assert "timestamp" in seen["url"]
 
 
 def test_wikipedia_parser_uses_requested_language_edition():

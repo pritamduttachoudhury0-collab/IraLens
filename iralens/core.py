@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-from . import errors
+from . import content_guard, errors
 from .config import Config
 from .engine.native import BrowserEngine
 from .model import Artifact
@@ -24,6 +24,34 @@ from .security import normalize_public_http_url, public_message
 from .session import Session
 from .sources import ALL_SOURCES, get_source, route_url
 from .sources.web import WebSource
+
+
+def scan_artifact(artifact: Artifact) -> Artifact:
+    """Apply the content guard to an artifact, centrally.
+
+    The guard used to run only inside the web source, so artifacts produced
+    by the Reddit, RSS and other source adapters carried **no** injection
+    flags at all — a guarantee that is not central is not a guarantee.
+    Every artifact now leaves this module scanned, and says so.
+
+    Flagged content is never dropped: the flag travels with the artifact so
+    the consumer can decide.
+    """
+    if not isinstance(artifact, Artifact):
+        return artifact
+    text = f"{artifact.title}\n{artifact.content}"
+    flags = set(content_guard.scan(text))
+    existing = artifact.provenance.get("security_flags")
+    if isinstance(existing, (list, tuple)):
+        flags.update(str(f) for f in existing)
+    merged = sorted(flags)
+    artifact.provenance["security_flags"] = merged
+    artifact.provenance["scanned"] = True
+    for flag in merged:
+        warning = f"security:{flag}"
+        if warning not in artifact.warnings:
+            artifact.warnings.append(warning)
+    return artifact
 
 
 class Context:
@@ -76,6 +104,7 @@ class IraLens:
                 artifact.url, title=artifact.title, source=artifact.source,
                 found_via=f"search:{query}",
             )
+            scan_artifact(artifact)
         return results
 
     def search_api(
@@ -217,7 +246,8 @@ class IraLens:
             artifact.url, title=artifact.title, source=artifact.source,
             method=artifact.retrieval_method,
         )
-        return artifact
+        # Central guard: every artifact that leaves the facade is scanned.
+        return scan_artifact(artifact)
 
     def read(self, url: str, mode: str = "auto", **kwargs: Any) -> Artifact:
         """Read a page (static-reader-first shorthand for `open`)."""
@@ -256,6 +286,7 @@ class IraLens:
                     item.url, title=item.title, source=item.source,
                     found_via=f"source:{source}:{op}",
                 )
+                scan_artifact(item)
         return result
 
     def sources(self) -> List[Dict[str, Any]]:

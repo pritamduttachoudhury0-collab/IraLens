@@ -166,7 +166,10 @@ class _NodeVmFallbackIsolate:
                     f"JavaScript execution timed out after {timeout_sec}s",
                     detail="script_timeout",
                 )
-            raise RuntimeError(f"JS error: {resp.get('error', 'unknown error')}")
+            raise ExtractionError(
+                "the page's JavaScript failed while the browser was rendering it",
+                detail=str(resp.get("error", "unknown error")).splitlines()[0][:300],
+            )
         return resp.get("value")
 
     def close(self) -> None:
@@ -232,8 +235,14 @@ class V8PageIsolate:
                             detail="script_timeout",
                         ) from exc
                     if "Memory" in cls_name or "out of memory" in msg.lower():
-                        raise RuntimeError("JS error: V8 heap memory limit exceeded") from exc
-                    raise RuntimeError(f"JS error: {msg}") from exc
+                        raise ExtractionError(
+                            "the browser ran out of memory while rendering the page",
+                            detail="v8_heap_limit",
+                        ) from exc
+                    raise ExtractionError(
+                        "the page's JavaScript failed while the browser was rendering it",
+                        detail=str(msg).splitlines()[0][:300],
+                    ) from exc
             assert self._node_fallback is not None
             return self._node_fallback.eval(code, timeout_sec=timeout_sec)
 

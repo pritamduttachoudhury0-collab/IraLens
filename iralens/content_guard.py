@@ -29,6 +29,16 @@ INJECTION_PATTERNS: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple(
          r"(?:call|invoke|execute|run) (?:the )?(?:tool|function|shell command|bash)\b"),
         ("credential_exfiltration",
          r"(?:send|post|upload|exfiltrate|forward) .{0,80}(?:password|api key|cookies?|credentials?|session token)"),
+        # A page whose entire "content" is a base64 image is a block page or
+        # a shell, not an article. It is also the shape Reddit's bot wall
+        # takes, so it must never be stored as if it were a post.
+        ("embedded_data_image",
+         r"data:image/(?:png|jpe?g|gif|webp|svg\+xml);base64,[A-Za-z0-9+/]{256,}"),
+        # An <iframe> in retrieved content is a common exfiltration vector.
+        ("embedded_iframe", r"<\s*iframe\b"),
+        # Private key material pasted into a page.
+        ("secret_material",
+         r"-----BEGIN (?:RSA |OPENSSH |EC |DSA |PGP )?PRIVATE KEY-----"),
     )
 )
 
@@ -69,11 +79,37 @@ def strip_control_chars(text: str) -> str:
 def truncate_text(text: str, max_chars: int) -> Tuple[str, bool]:
     """Enforce a hard character budget on retrieved content.
 
-    Returns ``(text, truncated)``. Truncation is explicit: the tail is cut at
-    the budget and a marker says how many characters were omitted, so the
-    consumer knows the content is partial instead of assuming it is complete.
+    Returns ``(text, truncated)``. The result is **never longer than
+    ``max_chars``**: the truncation notice is reserved *inside* the budget
+    rather than appended to it. (It used to be appended, so the returned
+    string was 24-26 characters longer than the documented cap — a budget
+    the caller could not rely on.)
+
+    Truncation is explicit: a marker says how many characters were omitted,
+    so the consumer knows the content is partial instead of assuming it is
+    complete.
     """
     text = str(text or "")
     if not max_chars or len(text) <= max_chars:
         return text, False
-    return text[:max_chars].rstrip() + f"\n\n…[truncated {len(text) - max_chars} chars]", True
+    if max_chars <= 0:
+        return "", True
+    # Reserve room for the notice, then re-state the omitted count (its width
+    # can change the reservation by a digit) until the arithmetic is stable.
+    keep = max(0, max_chars - 32)
+    notice = ""
+    for _ in range(4):
+        notice = f"\n\n…[truncated {len(text) - keep} chars]"
+        if len(notice) > max_chars:
+            # The budget is too small for a notice; cut hard and stay honest.
+            return text[:max_chars], True
+        new_keep = max(0, max_chars - len(notice))
+        if new_keep == keep:
+            break
+        keep = new_keep
+    body = text[:keep].rstrip()
+    result = body + notice
+    # Hard guarantee: the budget is the budget.
+    if len(result) > max_chars:
+        result = result[:max_chars]
+    return result, True

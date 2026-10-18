@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Mapping
 
-from .querytext import quoted_phrases, tokenize
+from .querytext import parse_site_operator, quoted_phrases, tokenize
 
 STOPWORDS = frozenset("""
 a an and are as at be been but by can could did do does for from had has have
@@ -37,13 +37,17 @@ def _keywords(text: str) -> List[str]:
     Technology tokens keep their symbols (`c++`, `c#`, `.net`, `f#`), quoted
     phrases stay quoted so engines treat them as exact phrases, and stopword
     pruning only applies to plain words. Unicode terms pass through.
+
+    A `site:` scope survives: it is carried through verbatim instead of
+    being flattened into the words "site" and the bare host.
     """
     kept: List[str] = []
-    for phrase in quoted_phrases(text):
+    scope_domains, cleaned = parse_site_operator(text)
+    for phrase in quoted_phrases(cleaned):
         quoted = f'"{phrase}"'
         if quoted not in kept:
             kept.append(quoted)
-    for token in tokenize(text):
+    for token in tokenize(cleaned):
         is_symbol_token = any(ch in "+#." for ch in token)
         if not is_symbol_token:
             if token in STOPWORDS:
@@ -52,6 +56,10 @@ def _keywords(text: str) -> List[str]:
                 continue
         if token not in kept:
             kept.append(token)
+    for domain in scope_domains:
+        scoped = f"site:{domain}"
+        if scoped not in kept:
+            kept.append(scoped)
     return kept
 
 
@@ -86,8 +94,13 @@ def reformulate(
     parts = [p.strip(" ?.;:") for p in re.split(r"\?|;| and | vs\.? | versus ", question)]
     subs = [p for p in parts if len(p.split()) >= 3]
     if len(subs) > 1:
+        # A `site:` scope is a constraint on the whole question: every
+        # sub-question inherits it, or a split quietly widens the search.
+        scope_domains, _ = parse_site_operator(question)
+        scope = " ".join(f"site:{domain}" for domain in scope_domains)
         for part in subs:
-            candidates.append({"text": part, "strategy": "sub_question"})
+            text = f"{part} {scope}".strip() if scope else part
+            candidates.append({"text": text, "strategy": "sub_question"})
 
     swapped = question
     for term, alts in synonyms.items():

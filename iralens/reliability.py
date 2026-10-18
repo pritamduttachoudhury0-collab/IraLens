@@ -9,6 +9,7 @@ passed in from `settings.Settings`; nothing here reads global state.
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -35,20 +36,49 @@ KIND_UNAVAILABLE = "unavailable"
 _CAPTCHA_MARKERS = (
     "captcha", "unusual traffic", "are you a robot", "verify you are human",
     "anomaly-modal", "challenge-platform", "confirm you're not a robot",
+    "unusual activity from your computer network",
 )
-_RATE_LIMIT_MARKERS = ("too many requests", "rate limit", "rate-limit", "429")
+#: Phrases that appear on a *rate-limit page*. A bare status code is not
+#: evidence: the body of a page that merely *mentions* "429" (a reference
+#: page, a changelog, a search result) is not itself rate-limited, and
+#: treating it as such made a perfectly good one-hit SERP trigger a
+#: needless browser navigation. Real status codes are handled structurally
+#: by `classify_block(status=...)`.
+_RATE_LIMIT_MARKERS = (
+    "too many requests",
+    "rate limit",
+    "rate-limit",
+    "ratelimited",
+    "request limit exceeded",
+    "quota exceeded",
+    "access denied due to",
+)
 _TRANSIENT_MARKERS = (
     "timed out", "timeout", "temporar", "try again", "502", "503", "504",
     "connection reset", "lost connection",
 )
 
+#: Machine-generated detail markers: our own typed errors record the HTTP
+#: status they were classified from, so this is a structural signal.
+_HTTP_STATUS_RE = re.compile(r"\bhttp_(\d{3})\b")
 
-def classify_block(text: str) -> Optional[str]:
-    """Classify a page or error text as a block signal, or None."""
+
+def classify_block(text: str, *, status: Optional[int] = None) -> Optional[str]:
+    """Classify a page or error text as a block signal, or None.
+
+    `status` is the real HTTP status when the caller has one; it is
+    authoritative and is never inferred from the body text.
+    """
+    if status == 429:
+        return KIND_RATE_LIMITED
     low = (text or "").lower()
     if any(marker in low for marker in _CAPTCHA_MARKERS):
         return KIND_CAPTCHA
     if any(marker in low for marker in _RATE_LIMIT_MARKERS):
+        return KIND_RATE_LIMITED
+    # A typed error we produced ourselves records the status it came from.
+    match = _HTTP_STATUS_RE.search(low)
+    if match and match.group(1) == "429":
         return KIND_RATE_LIMITED
     return None
 

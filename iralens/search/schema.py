@@ -114,6 +114,12 @@ class SearchHit:
     query: str = ""                     # the expanded query that produced it
     security_flags: List[str] = field(default_factory=list)
     raw: Dict[str, Any] = field(default_factory=dict)  # engine-specific, kept in provenance only
+    #: A *different* kind of date: "the page was last changed then". Kept
+    #: apart from `published_at` because a page edited today is not a page
+    #: published today (see the Wikipedia revision timestamp).
+    modified_at: Optional[str] = None
+    #: What the date means: "publication" | "revision" | "" (unknown).
+    date_kind: str = ""
 
 
 @dataclass
@@ -132,6 +138,11 @@ class RankedResult:
     security_flags: List[str]
     merged_from: List[str] = field(default_factory=list)
     date_evidence: str = ""             # D7: which pattern produced published_at
+    #: Last-modified time, when the source reports one and it is not a
+    #: publication date. Never conflated with `published_at`.
+    modified_at: Optional[str] = None
+    #: "publication" | "revision" | "" — what `published_at` means.
+    date_kind: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

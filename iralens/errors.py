@@ -9,6 +9,32 @@ never mentioned. Developer-facing detail is kept in `detail`.
 
 from __future__ import annotations
 
+from typing import Any, Dict, Optional
+
+#: Longest developer-facing `detail` preserved in structured output. Detail is
+#: diagnostic, not a data channel; an unbounded string would make the JSON
+#: envelope unusable for a programmatic caller.
+MAX_DETAIL_CHARS = 500
+
+
+def _scrub_detail(detail: str) -> str:
+    """Redact credentials from a developer-facing detail string.
+
+    The scrubber lives in `security` to keep every redaction rule in one
+    place; the import is local so `errors` stays dependency-free.
+    """
+    if not detail:
+        return ""
+    try:
+        from .security import scrub_url_credentials
+
+        text = scrub_url_credentials(detail)
+    except Exception:  # pragma: no cover - defensive; never mask the error
+        text = str(detail)
+    text = " ".join(str(text).split())
+    if len(text) > MAX_DETAIL_CHARS:
+        text = text[: MAX_DETAIL_CHARS - 1].rstrip() + "…"
+    return text
 
 
 class IraLensError(Exception):
@@ -24,9 +50,23 @@ class IraLensError(Exception):
         self.detail = detail
 
     def to_dict(self) -> dict:
-        data = {"error": self.error_type, "message": self.message}
+        """Structured form. `detail` is preserved (scrubbed) on purpose.
+
+        Dropping `detail` (the historical behaviour) made every structured
+        error envelope lossy: a programmatic caller could not tell a 403 from
+        a 404, could not read a `Retry-After`, and could not decide whether a
+        retry was worth attempting. The message stays safe to display; the
+        detail carries the machine-readable cause.
+        """
+        data: Dict[str, Any] = {"error": self.error_type, "message": self.message}
         if self.hint:
             data["hint"] = self.hint
+        detail = _scrub_detail(self.detail)
+        if detail:
+            data["detail"] = detail
+        retry_after = getattr(self, "retry_after", None)
+        if retry_after is not None:
+            data["retry_after"] = retry_after
         return data
 
     def __str__(self) -> str:  # pragma: no cover - trivial
@@ -71,6 +111,27 @@ class SearchEnginesFailedError(SourceUnavailableError):
     error_type = "search_engines_failed"
 
 
+class RateLimitedError(PageUnavailableError):
+    """The origin (or an upstream service) refused the request for rate.
+
+    Distinct from a generic failure because the correct response is *wait*,
+    not *retry elsewhere*: switching transport does not help a 429, and the
+    `Retry-After` value (when the origin supplies one) is preserved so the
+    caller can pace itself.
+
+    It stays a subclass of `PageUnavailableError` so every existing
+    `except PageUnavailableError` path keeps working; the machine-readable
+    `error` field is the specific `rate_limited`.
+    """
+
+    error_type = "rate_limited"
+
+    def __init__(self, message: str, *, hint: str = "", detail: str = "",
+                 retry_after: Optional[float] = None) -> None:
+        super().__init__(message, hint=hint, detail=detail)
+        self.retry_after = retry_after
+
+
 class AuthRequiredError(IraLensError):
     """The operation needs credentials/login the user has not provided."""
 
@@ -113,6 +174,79 @@ class SessionStateError(IraLensError):
     error_type = "session_state_error"
 
 
+def classify_http_status(
+    status: int,
+    *,
+    layer: str = "origin",
+    mode: str = "",
+    retry_after: Optional[float] = None,
+) -> IraLensError:
+    """Map an HTTP status onto a specific, honest, mode-aware error.
+
+    `layer` names *who answered*: ``"origin"`` (the site itself) or
+    ``"reader"`` (a third-party reader service standing in for the origin).
+    Naming the right layer matters: a 429 returned by the origin used to be
+    reported as "the reader service is rate-limited", which blames the wrong
+    component and points the caller at the wrong fix.
+
+    `mode` is the retrieval mode already in use (``auto``, ``static``,
+    ``browser``). A hint must never tell the caller to switch to the mode
+    they are already using.
+
+    The returned error is always typed: a 429 is a `RateLimitedError`, not a
+    generic page failure, and the origin's `Retry-After` is preserved.
+    """
+    if status in (301, 302, 303, 307, 308):
+        return PageUnavailableError(
+            "too many redirects (redirect loop suspected)",
+            hint="the page keeps redirecting; try a different URL",
+            detail="redirect_loop",
+        )
+    if status == 404:
+        return PageUnavailableError(
+            "page not found (404)", hint="check the URL for typos", detail="http_404"
+        )
+    if status in (401, 403):
+        if layer == "reader":
+            hint = ("the remote reader was denied; retry with mode=browser"
+                    if mode != "browser"
+                    else "the remote reader was denied too; try a public API")
+        elif mode == "browser":
+            hint = ("the site denied the rendered session as well; a logged-in "
+                    "backend or a public API is required")
+        elif mode == "static":
+            hint = "the direct fetch was denied; retry with mode=browser"
+        else:
+            hint = "retry with mode=browser"
+        return PageUnavailableError(
+            f"the site denied anonymous access (HTTP {status}); likely a bot "
+            "check or login wall",
+            hint=hint,
+            detail=f"http_{status}",
+        )
+    if status == 429:
+        where = "the remote reader service" if layer == "reader" else "the site"
+        hint = ("wait for the cooldown and retry"
+                if retry_after
+                else "wait a moment and retry; switching transport does not lift an origin rate limit")
+        return RateLimitedError(
+            f"{where} is rate-limiting the request (429)",
+            hint=hint,
+            detail="http_429",
+            retry_after=retry_after,
+        )
+    if 500 <= status <= 599:
+        where = "the reader service" if layer == "reader" else "the site"
+        return PageUnavailableError(
+            f"{where} failed (HTTP {status})",
+            hint="temporary; retry shortly",
+            detail=f"http_{status}",
+        )
+    where = "the reader" if layer == "reader" else "the site"
+    return PageUnavailableError(f"{where} returned HTTP {status}",
+                                detail=f"http_{status}")
+
+
 def classify_error(
     error_type: str,
     message: str,
@@ -127,6 +261,7 @@ def classify_error(
         "source_unavailable": SourceUnavailableError,
         "search_engines_failed": SearchEnginesFailedError,
         "authentication_required": AuthRequiredError,
+        "rate_limited": RateLimitedError,
         "operation_unsupported": OperationUnsupportedError,
         "invalid_input": InvalidInputError,
         "timeout": OperationTimeoutError,

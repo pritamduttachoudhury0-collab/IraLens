@@ -13,6 +13,7 @@ requests. It is shared through `IraLens`. Concurrency is capped by
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from typing import Any, Dict, List, Optional, Sequence
 
 from .. import content_guard
@@ -26,7 +27,7 @@ from .engines import LEGACY_ALIASES, build_backends
 from .engines.base import SearchBackend
 from .fallback import run_chain
 from .intent import classify_query, intent_multiplier
-from .querytext import sanitize_query
+from .querytext import parse_site_operator, sanitize_query
 from .ranking import authority, combine, freshness, relevance, today_utc
 from ..model import Artifact
 from .reformulate import DEFAULT_SYNONYMS
@@ -133,6 +134,13 @@ class SearchEngine:
     # ----------------------------------------------------------- pipeline
     def _run(self, question: str, filters: SearchFilters, options: SearchOptions,
              chain: List[str], context: Any) -> SearchResponse:
+        # A `site:` operator in the query is an explicit scope. It becomes a
+        # structured filter (so engines that can scope natively do) *and* it
+        # is enforced on the results (so engines that cannot, like Wikipedia,
+        # do not leak off-scope hits).
+        scope_domains, _cleaned = parse_site_operator(question)
+        if scope_domains and not filters.include_domains:
+            filters = replace(filters, include_domains=tuple(scope_domains))
         if options.reformulate:
             queries = _reformulate(question, self.settings.reformulate_max_queries,
                                    self.synonyms if self.synonyms is not None else _default_synonyms())
@@ -178,7 +186,7 @@ class SearchEngine:
             fallbacks.extend(chain_result.fallbacks)
 
         public_hits, rejected = self._public_only(all_hits)
-        filtered, filter_report = self._post_filter(public_hits, filters)
+        filtered, filter_report = self._post_filter(public_hits, filters, scope_domains)
         filter_report["non_public_dropped"] = rejected
         for hit in filtered:
             # Scan the raw text first: sanitizing strips invisible characters,
@@ -191,6 +199,10 @@ class SearchEngine:
                 if found:
                     hit.published_at = found
                     hit.raw["date_evidence"] = source
+                    # A date recovered from the page content is a date *about
+                    # the content*; it is a publication-ish date, not the
+                    # source's revision timestamp.
+                    hit.date_kind = "publication"
             hit.title = content_guard.sanitize(hit.title, 200)
             hit.snippet = content_guard.sanitize(hit.snippet, 400)
 
@@ -261,10 +273,13 @@ class SearchEngine:
         return kept, rejected
 
     @staticmethod
-    def _post_filter(hits: List[SearchHit], f: SearchFilters):
+    def _post_filter(hits: List[SearchHit], f: SearchFilters,
+                     scope_domains: Sequence[str] = ()):
         report: Dict[str, Any] = {"applied_post": [], "date_unknown_kept": 0, "dropped": 0}
         if f.include_domains:
             report["applied_post"].append("include_domains")
+        if scope_domains:
+            report["applied_post"].append("site_operator")
         if f.exclude_domains:
             report["applied_post"].append("exclude_domains")
         if f.file_type:
@@ -275,6 +290,11 @@ class SearchEngine:
         for hit in hits:
             host = domain_of(hit.url)
             if f.include_domains and not any(domain_matches(host, d) for d in f.include_domains):
+                report["dropped"] += 1
+                continue
+            # The `site:` operator is an explicit scope: a result outside it
+            # is not a result for this query, however well it ranked.
+            if scope_domains and not any(domain_matches(host, d) for d in scope_domains):
                 report["dropped"] += 1
                 continue
             if f.exclude_domains and any(domain_matches(host, d) for d in f.exclude_domains):
@@ -315,6 +335,13 @@ class SearchEngine:
             snippet = max((h.snippet for h in hits), key=len)
             dates = sorted(h.published_at for h in hits if h.published_at)
             published = dates[0] if dates else None
+            # A revision time is reported separately: it must never be
+            # promoted to a publication date, but it is still useful
+            # provenance ("this article was last edited then").
+            modified = next((h.modified_at for h in hits if h.modified_at), None)
+            # A real publication date always wins over a revision stamp.
+            date_kind = ("publication" if any(h.date_kind == "publication" for h in hits)
+                         else next((h.date_kind for h in hits if h.date_kind), ""))
             flags = sorted({f for h in hits for f in h.security_flags})
             rel = relevance(best_rank, title, snippet, question, url=group.hits[0].url,
                             answer_type=intent.answer_type)
@@ -348,6 +375,8 @@ class SearchEngine:
                 merged_from=list(group.merged_urls),
                 date_evidence=next((str(h.raw.get("date_evidence")) for h in hits
                                     if h.raw.get("date_evidence")), ""),
+                modified_at=modified,
+                date_kind=date_kind,
             ))
         ranked.sort(key=lambda r: (-r.score, r.url))
         # D5: Wikipedia is an entity/definition source. For procedure,

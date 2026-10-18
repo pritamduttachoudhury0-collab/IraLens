@@ -29,7 +29,13 @@ _LAST_CALL = 0.0
 
 
 def parse_wikipedia_payload(payload: Any, query: str, limit: int, lang: str = "en") -> List[SearchHit]:
-    """Pure parser for the MediaWiki `list=search` response."""
+    """Pure parser for the MediaWiki `list=search` response.
+
+    `timestamp` is the page's *last revision* time. It is **not** evidence of
+    when the article was first published, so it is reported as `modified_at`
+    with `date_kind="revision"`. `published_at` stays empty: an unknown
+    publication time must remain unknown.
+    """
     if not isinstance(payload, dict):
         return []
     query_data = payload.get("query")
@@ -44,6 +50,8 @@ def parse_wikipedia_payload(payload: Any, query: str, limit: int, lang: str = "e
         if not title:
             continue
         snippet_html = str(item.get("snippet") or "")
+        # The API wraps matched terms in <span class="searchmatch">; the
+        # markup is stripped so the snippet is readable prose.
         snippet = " ".join(html.unescape(re.sub(r"<[^>]*>", " ", snippet_html)).split())
         page_title = title.replace(" ", "_")
         url = f"https://{lang}.wikipedia.org/wiki/" + urllib.parse.quote(page_title, safe="()!$&'*,;=:@-._~")
@@ -54,7 +62,9 @@ def parse_wikipedia_payload(payload: Any, query: str, limit: int, lang: str = "e
             snippet=snippet[:400],
             engine="wikipedia",
             position=len(hits) + 1,
-            published_at=timestamp,
+            published_at=None,
+            modified_at=timestamp,
+            date_kind="revision" if timestamp else "",
             query=query,
         ))
     return hits
@@ -105,7 +115,9 @@ class WikipediaBackend(SearchBackend):
             params = urllib.parse.urlencode({
                 "action": "query", "list": "search", "srsearch": query,
                 "srnamespace": "0", "srlimit": min(max(1, limit), 50),
-                "srprop": "timestamp", "format": "json", "formatversion": "2",
+                # `snippet` must be requested explicitly: the API omits it
+                # otherwise, and a title with no context is not a result.
+                "srprop": "snippet|timestamp", "format": "json", "formatversion": "2",
             })
             _pace_api_calls()
             try:
