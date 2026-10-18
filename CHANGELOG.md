@@ -6,7 +6,7 @@ All notable changes to this project are documented here, newest first.
 
 Remediation of the independent audit of 2026-10-17, in three phases, plus a
 fourth pass over the audit's own corpus. The complete error register
-(E-01…E-44, the cross-audit ID map and the phase plan) is in
+(E-01…E-45, the cross-audit ID map and the phase plan) is in
 `docs/audit/ERROR_REGISTER.md`.
 
 ### Phase A — Integrity & Truthfulness (E-01…E-13)
@@ -161,7 +161,7 @@ under the strictest reading. It is a projection, not a measurement.
 
 ### Measured
 
-- `pytest -q` — **639 passed, 14 skipped, 0 failed**.
+- `pytest -q` — **644 passed, 14 skipped, 0 failed**.
 - `ruff check --select E9,F,B .` — clean. `mypy iralens` — clean.
 - `python benchmarks/acceptance_17.py` — **17/17**.
 - `python benchmarks/run_scraping.py` — **12/12**.
@@ -211,6 +211,20 @@ under the strictest reading. It is a projection, not a measurement.
   (1 failed, 650 passed). The test now uses `monkeypatch.setattr`, and an
   autouse fixture snapshots the whole source registry around every test so
   that no test can leave a shared object changed.
+
+### Part 1e, continued — a second defect the release's CI found (E-45)
+
+- **E-45 — a rate-limited GitHub API was reported as an authentication
+  problem.** The adapter mapped every 401 and 403 to `AuthRequiredError`.
+  GitHub answers an exhausted anonymous quota with 403 and a body that says
+  "rate limit exceeded", and answers a forbidden resource with 403 and a
+  different body; the two need different answers (*wait* versus
+  *authenticate*). The release's own CI hit exactly this: the runner's
+  shared address exhausted the anonymous quota and the live GitHub tests
+  failed with an error pointing at the wrong thing. The adapter now raises
+  the typed `RateLimitedError` for a rate limit, and the live tests follow
+  the project's own rule — a check the provider refuses is *unverified*,
+  not failed and not passed.
 
 ### Release engineering
 

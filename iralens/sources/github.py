@@ -18,6 +18,7 @@ import urllib.request
 from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
 from ..errors import (AuthRequiredError, ExtractionError, OperationUnsupportedError,
+                      RateLimitedError,
                       PageUnavailableError, SourceUnavailableError)
 from ..model import Artifact
 from ..proc import probe_command, run_cli
@@ -57,15 +58,56 @@ _GH_ENV = {
 }
 
 
+def _is_rate_limited(exc: urllib.error.HTTPError) -> bool:
+    """True when GitHub refused for *rate*, not for *permission*.
+
+    GitHub answers an exhausted anonymous quota with 403 and a body that
+    says so; a private or forbidden resource answers 403 with a different
+    body. The header is the stronger signal: `X-RateLimit-Remaining: 0`.
+    """
+    headers = getattr(exc, "headers", None) or {}
+    try:
+        remaining = headers.get("X-RateLimit-Remaining")
+    except AttributeError:  # pragma: no cover - a header mapping without get
+        remaining = None
+    if remaining is not None and str(remaining).strip() == "0":
+        return True
+    try:
+        body = exc.read().decode("utf-8", errors="replace").lower()
+    except Exception:  # pragma: no cover - the body may already be read
+        return False
+    return "rate limit" in body or "abuse detection" in body
+
+
+def _rate_limit_detail(exc: urllib.error.HTTPError) -> str:
+    """The origin's own words about when the quota comes back."""
+    headers = getattr(exc, "headers", None) or {}
+    reset = headers.get("X-RateLimit-Reset") if hasattr(headers, "get") else None
+    if reset:
+        return f"X-RateLimit-Reset: {reset}"
+    return "the anonymous GitHub API quota (60 requests an hour per address) is used up"
+
+
 def _api_get(path: str, accept: str = "application/vnd.github+json") -> Any:
     req = urllib.request.Request(_API + path, headers={"User-Agent": _UA, "Accept": accept})
     try:
         with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
             body = resp.read(_MAX_BYTES + 1)
     except urllib.error.HTTPError as exc:
+        if _is_rate_limited(exc):
+            # A rate limit is not an authentication problem. The two need
+            # different answers -- "wait" versus "authenticate" -- and
+            # reporting one as the other sends the caller to fix something
+            # that is not broken. GitHub says which it is: the body says
+            # "rate limit exceeded" and/or the rate-limit header is empty.
+            raise RateLimitedError(
+                "GitHub API rate limit reached",
+                detail=_rate_limit_detail(exc),
+                hint="wait for the rate limit to reset, or set IRALENS_GITHUB_TOKEN",
+            ) from exc
         if exc.code in (401, 403):
             raise AuthRequiredError(
-                "GitHub rejected the request (rate limit or private resource)",
+                "GitHub rejected the request (private resource or forbidden)",
                 hint="install/auth the GitHub CLI, or set IRALENS_GITHUB_TOKEN",
             ) from exc
         if exc.code == 404:

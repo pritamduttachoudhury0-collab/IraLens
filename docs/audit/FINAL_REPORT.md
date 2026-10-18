@@ -18,7 +18,7 @@ Five documents were read and checked against the actual source:
 | 2 | `weaknesses_part1…4.md` (84 MB) | the frozen 3,000-query dataset, the harness, the captured runs, the evidence and the final report | **authoritative and fully trustworthy.** The embedded baseline tarball is byte-identical to this tree (sha256 `aa8b590d…`), all 7,553 failure records match the index exactly, and §5–§13 consolidation changed nothing but two links. |
 | 3–5 | the remaining three uploads | the source bundle, the frozen dataset and the render/validate scripts | consistent with #2; the scripts run and reproduce the report. |
 
-The three-phase remediation plan, the full error register (E-01…E-44, the
+The three-phase remediation plan, the full error register (E-01…E-45, the
 audit-ID cross-map and the eleven de-duplications D-01…D-11) is in
 [`ERROR_REGISTER.md`](ERROR_REGISTER.md). Nothing found is omitted: every
 defect that survived verification is in the register with a file/line
@@ -411,6 +411,14 @@ whole source registry around every test, so no test can leave a shared
 object changed. This is worth recording for what it is: not a defect in
 IraLens, but a defect in the evidence about IraLens — the local suite was
 reporting "all green" over a test session that was quietly contaminated.
+
+**And a second one, in the same CI run (E-45).** The GitHub adapter mapped
+every 401 and 403 to "authentication required", so an exhausted anonymous
+quota — which GitHub answers with 403 and a body that says "rate limit
+exceeded" — was reported as a credential problem. The adapter now tells
+the two apart and raises the typed `RateLimitedError` for a rate limit, and
+the live tests follow the rule the project already states elsewhere: a
+check the provider refuses is *unverified*, not failed and not passed.
 
 ### The correction this projection forced
 
