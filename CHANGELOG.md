@@ -223,6 +223,10 @@ under the strictest reading. It is a projection, not a measurement.
   `twine check` (both **PASSED**), checksummed (`dist/SHA256SUMS`) and
   attached to the GitHub release. Both were installed into a clean virtual
   environment and reported `iralens 0.3.0`.
+- `.github/workflows/release.yml` builds the sdist and the wheel from the
+  tagged commit, checks them with `twine`, and attaches them (with their
+  `SHA256SUMS`) to the release — the artifacts are built where they are
+  uploaded, not copied from a workstation.
 - `.github/workflows/publish.yml` publishes to PyPI with **trusted
   publishing** (a GitHub OIDC token exchanged for a short-lived PyPI upload
   token). No API token is stored in the repository; the one owner-side step
