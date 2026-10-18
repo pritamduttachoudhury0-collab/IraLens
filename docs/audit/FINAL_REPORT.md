@@ -345,12 +345,19 @@ the kind of a page can never outrank a page that simply answers the
 question; a bare homepage is never boosted, because a homepage is the entry
 point to the right kind rather than the source itself. The bonus was
 calibrated against the captured set (`benchmarks/measure_shape_ranking.py
---sweep`): at 0.20 the top result changes in 38 of the 1,159 questions that
-ask for a kind of source, and improves about twice as often as it regresses.
+--sweep`): at 0.20 the top result changes in 31 of the 1,159 questions that
+ask for a kind of source — 5 of those changes improve the answer and 3
+make it worse.
 
 Note what this does **not** do: the coverage metric looks at the *best*
 result of a set, not the first, so this preference moves which answer is
 presented, not the coverage figure. It is not a number that moved in §5.
+And against the ten hand-labelled provider captures the top result does not
+change at all: the gaps there are large, and in Bing's case for the asyncio
+question none of the ten results was on target, so no kind of source could
+have been better. The preference is measured where it can be measured — on
+the captured 3,000-query set — and reported as the modest improvement it
+is.
 
 **Two smaller defects came out of the same pass.** The backward scan for a
 request word fell through when it found none, inventing a request shape out

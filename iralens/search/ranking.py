@@ -85,56 +85,71 @@ def _specificity_multiplier(url: str, title: str, question: str,
 _SOURCE_KINDS: Dict[str, Dict[str, Tuple[str, ...]]] = {
     "documentation": {
         "hosts": (".readthedocs.io", ".readthedocs.org", ".readthedocs.com"),
-        "url": ("/docs/", "/doc/", "/documentation", "/reference/", "/manual/",
-                "/developer/", "/api/", "/tutorial", "/guide", "/how-to",
-                "/cookbook", "docs.", "developer."),
+        # Path segments, matched whole: "/act" must not match "/active".
+        "path": ("docs", "doc", "documentation", "reference", "manual",
+                 "developer", "api", "tutorial", "tutorials", "guide",
+                 "how-to", "cookbook"),
+        # Host prefixes, e.g. "docs.python.org".
+        "host_prefix": ("docs.", "developer."),
         "title": ("documentation", "docs", "reference", "manual", "guide",
                   "tutorial", "cookbook", "getting started"),
     },
     "official": {
         "hosts": (".gov", ".gov.in", ".gov.uk", ".mil", ".nic.in", ".state.gov",
                   ".europa.eu", ".un.org", ".who.int", ".int"),
-        "url": ("/guideline", "/circular", "/notification", "/act", "/rules",
-                "/official"),
-        "title": ("official", "government", "ministry", "department", "guideline",
-                  "circular", "notification", "statute", "policy", "act"),
+        "path": ("guideline", "guidelines", "circular", "notification",
+                 "act", "rules", "official", "policy", "statute"),
+        "host_prefix": (),
+        "title": ("official", "government", "ministry", "department",
+                  "guideline", "guidelines", "circular", "notification",
+                  "statute", "policy"),
     },
     "primary": {
         "hosts": (".edu", ".ac.uk", ".ac.in", ".edu.in", "doi.org", "arxiv.org",
                   "jstor.org", "pubmed.ncbi.nlm.nih.gov", "springer.com",
                   "sciencedirect.com", "ieee.org", "acm.org", "nature.com",
                   "science.org", "plos.org", "biomedcentral.com"),
-        "url": ("/doi/", "/abs/", "/pdf", "doi.org"),
+        "path": ("doi", "abs", "pdf", "paper", "preprint", "record"),
+        "host_prefix": (),
         "title": ("original paper", "primary source", "primary study", "research",
                   "study", "journal", "preprint", "doi", "peer reviewed",
-                  "systematic review"),
+                  "peer-reviewed", "systematic review", "arxiv"),
     },
     "latest": {
         "hosts": (),
-        "url": ("/releases", "/release", "/changelog", "/news", "/blog",
-                "/whatsnew", "/what-s-new", "/versions", "/downloads", "/news/"),
-        "title": ("release", "changelog", "what's new", "whats new", "new in",
-                  "version", "latest"),
+        # Deliberately narrow: a news index is not "the latest X", and
+        # promoting one over the page that actually answers is worse than
+        # not preferring anything.
+        "path": ("changelog", "releases", "release-notes", "whatsnew",
+                 "what-s-new", "versions", "latest"),
+        "host_prefix": (),
+        "title": ("changelog", "release notes", "what's new", "whats new",
+                  "new in", "latest release"),
     },
     "dataset": {
         "hosts": ("data.gov", "data.gov.in", "worldbank.org", "un.org",
                   "europa.eu", "oecd.org", "kaggle.com", "datahub.io",
                   "data.gov.uk", "nseindia.com"),
-        "url": (".csv", ".json", "/api/", "dataset", "/data/", "indicator/"),
-        "title": ("dataset", "data", "statistics", "download", "dashboard",
-                  "indicator", "metadata"),
+        "path": ("dataset", "datasets", "data", "api", "indicator",
+                 "statistics", "download", "downloads", "metadata"),
+        "host_prefix": ("data.", "datasets."),
+        "title": ("dataset", "datasets", "statistics", "download",
+                  "dashboard", "indicator", "metadata"),
     },
     "reference": {
         "hosts": (".edu", ".ac.uk", ".ac.in", ".edu.in",
                   "scholar.google.com", "semanticscholar.org",
                   "researchgate.net", "arxiv.org", "jstor.org"),
-        "url": ("/lecture", "/notes", "/course", "/syllabus", "/pdf", "/paper"),
+        "path": ("lecture", "notes", "course", "syllabus", "pdf", "paper",
+                 "bibliography", "references"),
+        "host_prefix": (),
         "title": ("lecture notes", "notes", "course", "syllabus", "references",
                   "bibliography", "textbook", "academic"),
     },
     "encyclopedia": {
         "hosts": ("wikipedia.org", "britannica.com", "encyclopedia.com"),
-        "url": (),
+        "path": (),
+        "host_prefix": (),
         "title": ("wikipedia", "encyclopedia", "britannica"),
     },
 }
@@ -172,17 +187,19 @@ _KIND_WORDS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
 #:     bonus   top-1 changed   better   worse
 #:     0.05             3            0       0
 #:     0.10            18            3       2
-#:     0.15            27            6       3
-#:     0.20            38            7       3
-#:     0.30            76           18       3
-#:     0.50           179           65      12
+#:     0.15            26            5       3
+#:     0.20            31            5       3
+#:     0.30            63           15       3
+#:     0.50           128           44      12
+#:     1.00           186           53      23
 #:
 #: 0.20 is a fifth of the relevance scale: enough to settle a near-tie in
 #: favour of the kind of source the question asked for, and not enough to
 #: let the kind of a page outrank a page that simply answers the question.
 #: Note that the coverage metric looks at the *best* result of a set, not
 #: the first, so this preference moves which answer is presented rather
-#: than the coverage figure.
+#: than the coverage figure — and that the metric is a lexical proxy, so
+#: the "better" column is an upper bound on the real improvement.
 _REQUEST_KIND_BONUS = 0.20
 
 
@@ -245,8 +262,8 @@ def _request_kind_bonus(url: str, title: str, question: str) -> float:
         host = (parts.hostname or "").lower().removeprefix("www.")
         path = (parts.path or "").lower()
     title_low = (title or "").lower()
-    url_low = f"{host}{path}".lower()
-    if not [segment for segment in path.split("/") if segment]:
+    segments = [segment for segment in path.split("/") if segment]
+    if not segments:
         # A bare homepage is the entry point to the right kind of source,
         # not the source itself. The specificity penalty already says so;
         # the shape preference must not undo it.
@@ -257,7 +274,9 @@ def _request_kind_bonus(url: str, title: str, question: str) -> float:
             continue
         if any(host.endswith(suffix) for suffix in spec["hosts"]):
             return _REQUEST_KIND_BONUS
-        if any(marker in url_low for marker in spec["url"]):
+        if any(host.startswith(prefix) for prefix in spec["host_prefix"]):
+            return _REQUEST_KIND_BONUS
+        if any(segment in segments for segment in spec["path"]):
             return _REQUEST_KIND_BONUS
         if any(_has_word(title_low, marker) for marker in spec["title"]):
             return _REQUEST_KIND_BONUS

@@ -44,6 +44,89 @@ def load() -> List[Dict[str, Any]]:
     return rows
 
 
+def _captures() -> int:
+    """The shape preference against the ten hand-labelled provider captures.
+
+    These are the only results in the repository that carry a *human*
+    judgement, so they are the only place where "is the top result the right
+    one?" can be answered without a proxy.
+    """
+    import json
+    from iralens.search.intent import classify_query
+    from iralens.search.ranking import combine, relevance
+    from iralens.settings import Settings
+
+    path = REPO / "benchmarks" / "fixtures" / "provider_capture.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    settings = Settings()
+    weights = {"relevance": settings.weight_relevance,
+               "authority": settings.weight_authority,
+               "freshness": settings.weight_freshness,
+               "agreement": settings.weight_agreement}
+    real_bonus = ranking_mod._request_kind_bonus
+
+    def rerank(query, results, with_shape):
+        ranking_mod._request_kind_bonus = (real_bonus if with_shape
+                                           else (lambda u, ti, q: 0.0))
+        intent = classify_query(query)
+        best = None
+        for position, result in enumerate(results, start=1):
+            rel = relevance(position, str(result.get("title") or ""),
+                            str(result.get("snippet") or ""), query,
+                            url=str(result.get("url") or ""),
+                            answer_type=intent.answer_type)
+            factors = {
+                "relevance": rel,
+                "authority": ranking_mod.authority(str(result.get("url") or ""),
+                                                   settings.authority_weights,
+                                                   settings.default_authority),
+                "freshness": settings.neutral_freshness,
+                "agreement": 1.0,
+            }
+            score = combine(factors, weights)
+            if best is None or score > best[0]:
+                best = (score, result)
+        ranking_mod._request_kind_bonus = real_bonus
+        return best[1] if best else None
+
+    print("=" * 78)
+    print("REQUEST-SHAPE PREFERENCE — against the hand-labelled captures")
+    print("=" * 78)
+    asked = 0
+    changed = 0
+    better = 0
+    worse = 0
+    for capture in data.get("captures", []):
+        query = capture.get("query") or capture.get("text") or ""
+        results = capture.get("results") or []
+        if not results:
+            continue
+        kinds = ranking_mod.request_kinds(query)
+        if not kinds:
+            continue
+        asked += 1
+        without = rerank(query, results, with_shape=False)
+        with_shape = rerank(query, results, with_shape=True)
+        same = str(without.get("url")) == str(with_shape.get("url"))
+        if not same:
+            changed += 1
+        before = bool(without.get("on_target"))
+        after = bool(with_shape.get("on_target"))
+        if after and not before:
+            better += 1
+        elif before and not after:
+            worse += 1
+        print(f"  {capture.get('engine'):<6} {query[:56]}")
+        print(f"      kinds {sorted(kinds)}  top-1 {'unchanged' if same else 'CHANGED'}")
+        print(f"      before {without.get('title')[:44]!r} on_target={before}")
+        print(f"      after  {with_shape.get('title')[:44]!r} on_target={after}")
+    print()
+    print(f"captures that ask for a kind of source : {asked}")
+    print(f"  top-1 changed                        : {changed}")
+    print(f"  the new top-1 is on-target           : {better} more, {worse} fewer")
+    return 0
+
+
 def main() -> int:
     records = load()
     if not records:
@@ -129,6 +212,9 @@ def main() -> int:
             examples.append((question, str(without.get("title"))[:42],
                              str(with_shape.get("title"))[:42],
                              before["status"], after["status"]))
+
+    if "--captures" in sys.argv:
+        return _captures()
 
     if "--sweep" in sys.argv:
         print("=" * 78)

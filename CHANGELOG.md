@@ -112,7 +112,9 @@ every corpus query was re-examined against the result it actually received.
   bonus of 0.20 of the relevance scale — additive, so the kind of a page
   can never outrank a page that simply answers the question, and a bare
   homepage is never boosted. Calibrated against the captured set
-  (`benchmarks/measure_shape_ranking.py --sweep`).
+  (`benchmarks/measure_shape_ranking.py --sweep`): at the shipped 0.20 the
+  top result changes in 31 of the 1,159 questions that ask for a kind of
+  source, 5 of them for the better and 3 for the worse.
 - **E-41 — the backward scan for a request word fell through when it found
   none**, inventing a request shape out of whatever trailed ("… arXiv
   1706.03762" became the shape "1706.03762"). The corpus's topics are now
@@ -165,9 +167,8 @@ under the strictest reading. It is a projection, not a measurement.
   egress policy.
 - `python benchmarks/measure_shape_ranking.py --sweep` — the request-shape
   preference, swept against the captured 3,000-query set: at the shipped
-  bonus of 0.20 the top result changes in 38 of the 1,159 questions that
-  ask for a kind of source, and improves about twice as often as it
-  regresses.
+  bonus of 0.20 the top result changes in 31 of the 1,159 questions that
+  ask for a kind of source, 5 of them for the better and 3 for the worse.
 - `python benchmarks/ab_query_forms.py` — over ten hand-labelled real
   provider captures: the `focus` form is **7/7** on-target where the loose
   engine returns **0/10** for the full question; the coverage metric agrees
