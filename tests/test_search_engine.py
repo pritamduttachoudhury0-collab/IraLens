@@ -4,6 +4,8 @@ Backends are fakes, so these run offline and deterministically. `sleep` is a
 no-op so retry backoff does not slow the suite.
 """
 
+import shutil
+
 import pytest
 
 from iralens.errors import ExtractionError, OperationTimeoutError, SourceUnavailableError
@@ -226,16 +228,34 @@ def test_gate_releases_on_exception():
 def test_default_chain_uses_no_public_searx_and_includes_official_api_and_paid_opt_in():
     from iralens.search.engines import build_backends
 
+    # The *configured* chain still names the official API and the paid
+    # opt-in. Whether they can actually serve is a separate question —
+    # an engine whose optional prerequisite is missing is "not configured",
+    # not "failing".
+    assert Settings().search_engines == ("duckduckgo", "bing", "wikipedia", "semantic-search")
+
     engine = SearchEngine(Settings(), backends=build_backends())
-    assert engine.resolve_chain() == ["duckduckgo", "bing", "wikipedia", "semantic-search"]
+    chain, readiness = engine.resolve_chain_with_readiness()
+    assert chain[:3] == ["duckduckgo", "bing", "wikipedia"]
+    assert "semantic-search" in readiness
+    if shutil.which("mcporter"):
+        assert "semantic-search" in chain
+    else:
+        # Not installed -> dropped from the effective chain, reported as
+        # not configured, and never counted as a degraded engine.
+        assert "semantic-search" not in chain
+        assert readiness["semantic-search"]["available"] is False
+        assert "mcporter" in readiness["semantic-search"]["reason"]
 
     private = SearchEngine(Settings(searxng_instances=("http://searxng:8080",)),
                            backends=build_backends())
-    assert private.resolve_chain() == ["duckduckgo", "searxng", "bing", "wikipedia", "semantic-search"]
+    pchain, _ = private.resolve_chain_with_readiness()
+    assert pchain[:2] == ["duckduckgo", "searxng"]
 
     paid = SearchEngine(Settings(backup_search_provider="serper", backup_search_api_key="secret"),
                         backends=build_backends())
-    assert paid.resolve_chain()[-1] == "paid-backup"
+    paid_chain, _ = paid.resolve_chain_with_readiness()
+    assert paid_chain[-1] == "paid-backup"
 
 
 def test_facade_search_api_returns_structured_response(tmp_path, monkeypatch):

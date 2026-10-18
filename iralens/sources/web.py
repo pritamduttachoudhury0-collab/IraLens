@@ -35,8 +35,10 @@ from ..errors import (
     IraLensError,
     OperationTimeoutError,
     PageUnavailableError,
+    classify_http_status,
 )
 from ..model import Artifact
+from ..reliability import HOST_RATE_LIMITER, TRANSPORT_HEALTH
 from ..security import normalize_public_http_url, public_message, safe_urlopen
 from ..settings import Settings
 from .base import Source, SourceHealth
@@ -87,12 +89,67 @@ def _is_antibot_page(body: bytes) -> bool:
     return (captcha_warning and challenge_structure) or cloudflare_block
 
 
+#: Link-label characters (markdown `[label](url)`) as a share of the text.
+#: A page that is mostly link labels is a navigation shell, not content.
+_JS_SHELL_LINK_RATIO = 0.55
+#: Sentences (runs of text ending in a terminator) per 1,000 characters.
+#: Prose has many; a menu of buttons has almost none.
+_JS_SHELL_MIN_SENTENCES_PER_K = 1.2
+#: A page shorter than this cannot be judged by its sentence density.
+_JS_SHELL_DENSITY_MIN_CHARS = 400
+
+_MARKDOWN_LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_SENTENCE_END_RE = re.compile(r"[.!?](?:\s|$)")
+#: A line that is nothing but markdown links (a menu item).
+_LINK_ONLY_LINE_RE = re.compile(r"^(?:[-*]\s+|#{1,6}\s+)?(?:\[[^\]]*\]\([^)]*\)\s*)+$")
+#: How many link-only lines in a row make a navigation block.
+_JS_SHELL_LINK_RUN = 4
+
+
+def _link_label_chars(text: str) -> int:
+    """How much of *text* sits inside markdown link labels."""
+    return sum(len(m.group(1)) for m in _MARKDOWN_LINK_RE.finditer(text or ""))
+
+
+def _sentence_count(text: str) -> int:
+    """How many sentences the text has (a run of text with a terminator)."""
+    return len(_SENTENCE_END_RE.findall(text or ""))
+
+
+def _max_link_run(text: str) -> int:
+    """The longest run of consecutive lines that are nothing but links.
+
+    A page that renders a menu — the World Bank's ``Data | HOME |
+    ECONOMIES | THEMES | ...`` — has a long run of them. Real prose does
+    not: its links sit inside sentences.
+    """
+    best = 0
+    current = 0
+    for line in (text or "").splitlines():
+        if _LINK_ONLY_LINE_RE.match(line.strip()):
+            current += 1
+            if current > best:
+                best = current
+        else:
+            current = 0
+    return best
+
+
 def looks_like_js_shell(text: str) -> bool:
     """Heuristic: the static text looks like an app shell, not the page content.
 
-    Two signals: an explicit "enable JavaScript" notice, or so little text that
-    no real page could be this thin. False positives are cheap (one extra
-    rendered read, and the static text is kept when rendering is not better).
+    Four signals, because a shell is not always short:
+
+    1. an explicit "enable JavaScript" notice;
+    2. so little text that no real page could be this thin;
+    3. **link density** — most of the text is link labels, i.e. a menu;
+    4. **sentence density** — a long stretch of text with no sentence in it.
+
+    A 2,000-character application shell used to pass as a complete page
+    because only signals 1 and 2 were checked. Signals 3 and 4 catch it.
+
+    False positives are cheap (one extra rendered read, and the static text is
+    kept when rendering is not better).
     """
     compact = _WHITESPACE_RE.sub(" ", text or "").strip()
     if not compact:
@@ -100,7 +157,27 @@ def looks_like_js_shell(text: str) -> bool:
     low = compact.casefold()
     if any(marker in low for marker in _JS_SHELL_MARKERS):
         return True
-    return len(compact) < _JS_SHELL_MIN_CHARS
+    if len(compact) < _JS_SHELL_MIN_CHARS:
+        return True
+
+    # Signal 3: the text is mostly link labels.
+    total = len(compact)
+    if total and _link_label_chars(compact) / total >= _JS_SHELL_LINK_RATIO:
+        return True
+
+    # Signal 4: the text is long but has almost no sentence structure.
+    if total >= _JS_SHELL_DENSITY_MIN_CHARS:
+        per_k = _sentence_count(compact) * 1000.0 / total
+        if per_k < _JS_SHELL_MIN_SENTENCES_PER_K:
+            return True
+
+    # Signal 5: a block of link-only lines — a rendered menu with no
+    # content behind it. This is what a 2,119-character data shell looks
+    # like: navigation, a title, table headings and a footer, and none of
+    # the rows the page promised.
+    if total >= _JS_SHELL_DENSITY_MIN_CHARS and _max_link_run(text) >= _JS_SHELL_LINK_RUN:
+        return True
+    return False
 
 
 def _is_soft_404(text: str) -> bool:
@@ -161,7 +238,7 @@ def read_with_static_reader(
                           headers={"User-Agent": _UA, "Accept": "text/plain"}) as resp:
             body = _read_body_with_deadline(resp, limit, deadline)
     except urllib.error.HTTPError as exc:
-        raise _classify_http_error(exc) from exc
+        raise _classify_http_error(exc, mode="static", layer="reader") from exc
     except (OperationTimeoutError, ExtractionError):
         raise
     except Exception as exc:
@@ -228,6 +305,9 @@ def read_direct(
     limit = max_bytes or _DEFAULT_MAX_BYTES
     deadline = time.monotonic() + (deadline_seconds if deadline_seconds else _DEFAULT_DEADLINE_SECONDS)
     _DIRECT_META_LOCAL.last = None
+    host = urllib.parse.urlsplit(safe_url).netloc.lower()
+    # Pacing, not just concurrency: never hammer the same host.
+    HOST_RATE_LIMITER.wait(host)
     try:
         with safe_urlopen(safe_url, timeout=timeout,
                           headers={"User-Agent": _UA, "Accept": "text/html,application/pdf,*/*"}) as resp:
@@ -238,6 +318,8 @@ def read_direct(
             _DIRECT_META_LOCAL.last = {
                 "requested_url": safe_url,
                 "final_url": resp_url,
+                "effective_url": str(getattr(resp, "effective_url", None) or resp_url),
+                "redirect_chain": list(getattr(resp, "redirect_chain", None) or [safe_url]),
                 "status_code": resp_status,
                 "content_type": raw_ct or "text/html",
             }
@@ -250,7 +332,8 @@ def read_direct(
                 resp, max(limit, pdf_max_bytes or limit) if is_pdf_target else limit, deadline
             )
     except urllib.error.HTTPError as exc:
-        raise _classify_http_error(exc) from exc
+        _note_retry_after(exc, host)
+        raise _classify_http_error(exc, mode="static", layer="origin") from exc
     except (OperationTimeoutError, ExtractionError):
         raise
     except Exception as exc:
@@ -293,44 +376,49 @@ def read_direct(
     return text
 
 
-def _classify_http_status(status: int) -> PageUnavailableError:
-    """Map an HTTP status code onto a specific, honest error."""
-    if status in (301, 302, 303, 307, 308):
-        return PageUnavailableError(
-            "too many redirects (redirect loop suspected)",
-            hint="the page keeps redirecting; try a different URL",
-            detail="redirect_loop",
-        )
-    if status == 404:
-        return PageUnavailableError(
-            "page not found (404)", hint="check the URL for typos", detail="http_404"
-        )
-    if status in (401, 403):
-        return PageUnavailableError(
-            f"the site denied anonymous access (HTTP {status}); likely a bot check "
-            "or login wall",
-            hint="retry with mode=browser",
-            detail=f"http_{status}",
-        )
-    if status == 429:
-        return PageUnavailableError(
-            "the reader service is rate-limited (429)",
-            hint="wait a moment and retry, or use mode=browser",
-            detail="http_429",
-        )
-    if 500 <= status <= 599:
-        return PageUnavailableError(
-            f"the reader service failed (HTTP {status})",
-            hint="temporary; retry shortly",
-            detail=f"http_{status}",
-        )
-    return PageUnavailableError(f"the reader returned HTTP {status}",
-                                detail=f"http_{status}")
+def _note_retry_after(exc: urllib.error.HTTPError, host: str) -> None:
+    """Record an origin's `Retry-After` so the next hit on that host waits."""
+    headers = getattr(exc, "headers", None) or {}
+    raw = headers.get("Retry-After") if hasattr(headers, "get") else None
+    if not raw:
+        return
+    try:
+        seconds = float(str(raw).strip())
+    except (TypeError, ValueError):
+        # HTTP-date form: not parsed here, the default interval still applies.
+        return
+    HOST_RATE_LIMITER.note_retry_after(host, seconds)
 
 
-def _classify_http_error(exc: urllib.error.HTTPError) -> PageUnavailableError:
+def _classify_http_status(status: int, *, mode: str = "", layer: str = "origin",
+                          retry_after: Optional[float] = None) -> IraLensError:
+    """Map an HTTP status code onto a specific, honest error.
+
+    Thin wrapper over `errors.classify_http_status` so the web path and the
+    other fetch paths (RSS, Reddit, source adapters) agree on one taxonomy.
+    `layer` says who answered; `mode` says which retrieval mode is in use, so
+    the hint never tells the caller to switch to the mode they already use.
+    """
+    return classify_http_status(status, layer=layer, mode=mode, retry_after=retry_after)
+
+
+def _classify_http_error(exc: urllib.error.HTTPError, *, mode: str = "",
+                         layer: str = "origin") -> IraLensError:
     """Map an HTTP status from the reader onto a specific, honest error."""
-    return _classify_http_status(exc.code)
+    retry_after = None
+    headers = getattr(exc, "headers", None)
+    if headers is not None:
+        try:
+            raw = headers.get("Retry-After")
+        except Exception:
+            raw = None
+        if raw:
+            try:
+                retry_after = float(str(raw).strip())
+            except (TypeError, ValueError):
+                retry_after = None
+    return _classify_http_status(exc.code, mode=mode, layer=layer,
+                                 retry_after=retry_after)
 
 
 class WebSource(Source):
@@ -401,22 +489,37 @@ class WebSource(Source):
         cache = ResponseCache(enabled=settings.cache_enabled)
         static_failure: Optional[IraLensError] = None
         static_artifact: Optional[Artifact] = None
+        # Clear any transport metadata left by an earlier read on this thread.
+        # The artifact builder no longer reads it, but nothing else should
+        # inherit it either.
+        _DIRECT_META_LOCAL.last = None
 
         if mode in ("auto", "static"):
             try:
+                # The transport metadata of *this* read is captured explicitly.
+                # It used to be read back from a thread-local that only the
+                # uncached path populated, so a cache hit inherited the
+                # previous page's final_url/status/content_type and reported
+                # one page's content under another page's identity.
+                retrieval: Dict[str, Any] = {}
                 cached = cache.get(_PAGE_NS, {"url": safe_url}, settings.cache_page_ttl_seconds)
                 if cached is not None:
                     value, age = cached
                     markdown = value["markdown"]
                     method = value.get("method", "direct")
+                    retrieval = dict(value.get("retrieval") or {})
                     cache_info = {"status": "hit", "age_seconds": round(age, 1)}
                 else:
                     markdown, method = self._fetch_static(safe_url, settings)
+                    retrieval = dict(getattr(_DIRECT_META_LOCAL, "last", None) or {})
                     cache_info = {"status": "miss"}
                     # Only successful reads are cached; a flagged page is still
                     # cacheable because it is public, and the flags travel with it.
+                    # The retrieval metadata is cached *with* the body so a hit
+                    # can describe itself truthfully.
                     cache.put(_PAGE_NS, {"url": safe_url},
-                              {"markdown": markdown, "method": method},
+                              {"markdown": markdown, "method": method,
+                               "retrieval": retrieval},
                               cacheable=bool(markdown.strip()))
                 flags = content_guard.scan(markdown)
                 # The cache keeps the full text; the budget is enforced when
@@ -424,9 +527,12 @@ class WebSource(Source):
                 content, truncated = content_guard.truncate_text(markdown, max_chars)
                 static_artifact = _static_artifact(
                     safe_url, content, cache=cache_info, flags=flags, truncated=truncated,
-                    total_chars=len(markdown), max_chars=max_chars, method=method)
+                    total_chars=len(markdown), max_chars=max_chars, method=method,
+                    retrieval=retrieval)
             except (PageUnavailableError, ExtractionError, OperationTimeoutError) as exc:
                 static_failure = exc
+                TRANSPORT_HEALTH.record(
+                    urllib.parse.urlsplit(safe_url).netloc.lower(), "static", ok=False)
                 if mode == "static":
                     raise
 
@@ -434,7 +540,27 @@ class WebSource(Source):
         # text) has not read the page: the useful text is rendered client-side.
         # In auto mode the browser gets its turn automatically.
         shell_detected = static_artifact is not None and looks_like_js_shell(static_artifact.content)
+        host = urllib.parse.urlsplit(safe_url).netloc.lower()
+
+        if static_artifact is not None and mode == "auto" and shell_detected:
+            # The renderer has failed for this host before. Trying it again
+            # costs a full render and returns the same static text, so the
+            # read says so instead of pretending the page was rendered.
+            if TRANSPORT_HEALTH.is_dead(host, "browser"):
+                static_artifact.metadata["static_fallback"] = "js_shell_renderer_unavailable"
+                static_artifact.metadata["fallback_result"] = "renderer_known_dead_for_host"
+                static_artifact.provenance["fallback"] = {
+                    "reason": "js_shell",
+                    "result": "renderer_known_dead_for_host",
+                }
+                static_artifact.warnings.append(
+                    "the page needs JavaScript and the renderer is known not to "
+                    "work for this host; the static text is returned as-is")
+                return static_artifact
+
         if static_artifact is not None and (mode == "static" or not shell_detected):
+            if static_artifact is not None and mode != "static":
+                TRANSPORT_HEALTH.record(host, "static", ok=True)
             return static_artifact
 
         if mode == "browser" or (mode == "auto" and (static_artifact is None or shell_detected)):
@@ -449,7 +575,7 @@ class WebSource(Source):
                     else None
                 )
                 if status_code is not None and status_code >= 400:
-                    raise _classify_http_status(status_code)
+                    raise _classify_http_status(status_code, mode="browser")
 
                 markdown = engine.markdown(max_chars=max_chars)
                 current = engine.current_url_title()
@@ -518,6 +644,7 @@ class WebSource(Source):
                 if content_type is not None:
                     provenance["content_type"] = content_type
 
+                TRANSPORT_HEALTH.record(host, "browser", ok=True)
                 if static_artifact is not None:
                     # Keep the (possibly richer) static text when rendering did
                     # not actually improve it, but say what happened.
@@ -535,6 +662,7 @@ class WebSource(Source):
                     url=final_url,
                     requested_url=safe_url,
                     final_url=final_url,
+                    effective_url=final_url,
                     status_code=status_code,
                     content_type=content_type,
                     warnings=warnings,
@@ -547,6 +675,7 @@ class WebSource(Source):
                     provenance=provenance,
                 )
             except Exception as browser_exc:
+                TRANSPORT_HEALTH.record(host, "browser", ok=False)
                 if static_artifact is not None:
                     # The static read produced text; never turn a usable read into
                     # a failure because the optional renderer is unavailable.
@@ -577,16 +706,28 @@ _PAGE_NS = "page.v1"
 
 def _static_artifact(url: str, markdown: str, *, cache: dict, flags=None,
                      truncated: bool = False, total_chars: int = 0,
-                     max_chars: int = 0, method: str = "direct") -> Artifact:
-    direct_meta = getattr(_DIRECT_META_LOCAL, "last", None) or {}
+                     max_chars: int = 0, method: str = "direct",
+                     retrieval: Optional[Dict[str, Any]] = None) -> Artifact:
+    """Build the artifact for a static read.
+
+    `retrieval` carries the transport metadata of *this* read (final URL,
+    status, content type). It is passed explicitly rather than read from a
+    thread-local, because a cache hit never performs a fetch and would
+    otherwise inherit the previous page's identity.
+    """
+    direct_meta = dict(retrieval or {})
     final_url = str(direct_meta.get("final_url") or url)
+    effective_url = str(direct_meta.get("effective_url") or final_url)
+    redirect_chain = list(direct_meta.get("redirect_chain") or [url, final_url])
     status_code = direct_meta.get("status_code") if isinstance(direct_meta.get("status_code"), int) else None
     content_type = direct_meta.get("content_type") if isinstance(direct_meta.get("content_type"), str) else None
     redirected = final_url != url
     metadata: Dict[str, Any] = {
         "requested_url": url,
         "final_url": final_url,
+        "effective_url": effective_url,
         "redirected": redirected,
+        "redirect_chain": redirect_chain,
         "truncated": truncated,
     }
     if status_code is not None:
@@ -607,6 +748,9 @@ def _static_artifact(url: str, markdown: str, *, cache: dict, flags=None,
         "requested_url": url,
         "final_url": final_url,
         "redirected": redirected,
+        # A cache hit is a distinct provenance fact: the bytes were not
+        # fetched during this call, and the consumer should know that.
+        "cache_hit": bool((cache or {}).get("status") == "hit"),
     }
     if status_code is not None:
         prov["status_code"] = status_code
@@ -617,6 +761,7 @@ def _static_artifact(url: str, markdown: str, *, cache: dict, flags=None,
         url=final_url,
         requested_url=url,
         final_url=final_url,
+        effective_url=effective_url,
         status_code=status_code,
         content_type=content_type,
         warnings=warnings,

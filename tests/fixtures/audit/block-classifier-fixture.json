@@ -1,0 +1,20 @@
+{
+  "kind": "controlled offline fixture; zero network requests; no benchmark query ID",
+  "plain_html": "<html><title>Archive catalogue</title><body>Reference item 1429. No request restriction.</body></html>",
+  "plain_classification": "rate_limited",
+  "plain_bing_block": "rate_limited",
+  "valid_serp_html": "<html><title>HTTP 429 official reference</title><ul id=\"b_results\"><li class=\"b_algo\"><h2><a href=\"https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429\">HTTP 429 reference</a></h2><p>Explains the status code, not an access denial.</p></li></ul></html>",
+  "valid_hit_count": 1,
+  "valid_html_block_classifier": "rate_limited",
+  "browser_calls_caused_by_valid_serp": [
+    {
+      "operation": "navigate",
+      "url": "https://www.bing.com/search?q=HTTP+429"
+    },
+    {
+      "operation": "evaluate_js"
+    }
+  ],
+  "returned_same_html": true,
+  "live_failure_attribution": "Unknown \u2014 further investigation required. This does not establish that any specific live Bing rate_limited event was false; the live block HTML/headers were not retained."
+}

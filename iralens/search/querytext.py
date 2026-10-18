@@ -25,7 +25,7 @@ make a query look different from what is sent) and enforces a length limit.
 from __future__ import annotations
 
 import re
-from typing import List
+from typing import List, Tuple
 
 #: Runs of word characters plus the technology symbols ``+ # . _ -``, and any
 #: non-ASCII character (Unicode queries must not fall on the floor).
@@ -56,9 +56,65 @@ _INVISIBLE_RE = re.compile(
 #: Characters that make a token a "technology symbol" token.
 _SYMBOL_CHARS = "+#."
 
+#: A `site:` operator: ``site:host.tld`` optionally followed by a path.
+_SITE_RE = re.compile(r"\bsite:([A-Za-z0-9][A-Za-z0-9._-]*(?:/[^\s]*)?)", re.IGNORECASE)
+
 #: Default cap on query length (settings can override). Long pasted blobs are
 #: almost always a mistake and some engines reject or misparse them.
 DEFAULT_MAX_QUERY_CHARS = 400
+
+
+def parse_site_scopes(text: str) -> Tuple[List[str], str]:
+    """Split the `site:` operators out of a query, keeping their paths.
+
+    Returns ``(scopes, query_without_the_operators)`` where a scope is
+    ``host`` or ``host/path``.
+
+    The tokenizer splits on ``:`` and ``/``, so ``site:reddit.com/r/SaaS``
+    used to become the keyword string ``"site reddit.com saas"`` — the
+    user's scope was destroyed before any engine ever saw it, and a
+    subreddit-targeted search returned nothing in target.
+
+    The *path* matters as much as the host: ``site:github.com/scipy/scipy``
+    is a repository, not a website. Dropping the path turns a precise scope
+    into a whole-site search, which is what used to happen.
+    """
+    scopes: List[str] = []
+
+    def _take(match: "re.Match[str]") -> str:
+        scope = match.group(1).split("?", 1)[0].strip().lower().rstrip(".")
+        host = scope.split("/", 1)[0]
+        if host and scope not in scopes:
+            scopes.append(scope)
+        return " "
+
+    cleaned = _SITE_RE.sub(_take, text or "")
+    return scopes, " ".join(cleaned.split())
+
+
+def parse_site_operator(text: str) -> Tuple[List[str], str]:
+    """Split the `site:` operators out of a query.
+
+    Returns ``(hosts, query_without_the_operators)``. The hosts are the
+    domain part of each scope; use :func:`parse_site_scopes` when the path
+    matters.
+    """
+    scopes, cleaned = parse_site_scopes(text)
+    hosts: List[str] = []
+    for scope in scopes:
+        host = scope.split("/", 1)[0]
+        if host and host not in hosts:
+            hosts.append(host)
+    return hosts, cleaned
+
+
+def site_scoped_query(text: str) -> str:
+    """Canonicalise a query so its `site:` scope is preserved verbatim."""
+    scopes, cleaned = parse_site_scopes(text)
+    if not scopes:
+        return " ".join((text or "").split())
+    scope = " ".join(f"site:{s}" for s in scopes)
+    return f"{scope} {cleaned}".strip()
 
 
 def _normalize_run(run: str) -> str:
@@ -82,6 +138,9 @@ def tokenize(text: str) -> List[str]:
     CJK runs have no word boundaries, so they are kept whole *and* split into
     overlapping character bigrams — the standard n-gram trick that lets a
     query term like 爬虫 match a page containing 爬虫教程.
+
+    A `site:` operator contributes its host as one token (the scope is a
+    signal, not two words); the literal word "site" is not a query term.
     """
     out: List[str] = []
     # NFC first (D3): the same word in decomposed form (e.g. Yoruba tone marks
@@ -89,7 +148,8 @@ def tokenize(text: str) -> List[str]:
     # or relevance silently becomes 0 for that script.
     import unicodedata
     text = unicodedata.normalize("NFC", text or "")
-    for run in _RUN_RE.findall(text):
+    domains, rest = parse_site_operator(text)
+    for run in _RUN_RE.findall(rest):
         if len(run) >= 2 and all(_is_cjk(ch) for ch in run):
             candidates = [run] + [run[i:i + 2] for i in range(len(run) - 1)]
         else:
@@ -97,6 +157,9 @@ def tokenize(text: str) -> List[str]:
         for token in candidates:
             if token and token not in out:
                 out.append(token)
+    for domain in domains:
+        if domain not in out:
+            out.append(domain)
     return out
 
 

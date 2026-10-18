@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/pritamduttachoudhury0-collab/IraLens/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/pritamduttachoudhury0-collab/IraLens/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.2.1-informational)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.3.0-informational)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.10-blue)](pyproject.toml)
 
 IraLens lets an AI agent search the web, read pages and documents, drive a
@@ -61,8 +61,18 @@ iralens read "https://arxiv.org/pdf/1706.03762"
 iralens research "What efficiency did solar panels reach in 2025?" --rounds 2
 ```
 
-Windows setup is provided (`scripts/setup.ps1`) and is untested. The package
-is not yet published to PyPI. Full guide:
+Windows setup is provided (`scripts/setup.ps1`) and is untested. The
+checkout is the latest developed version; to install the same code without
+cloning:
+
+```bash
+pip install "iralens @ git+https://github.com/pritamduttachoudhury0-collab/IraLens.git"
+```
+
+The package is not on PyPI yet — the release artifacts are built and
+attached to every GitHub release, and the publish workflow is in the
+repository, but the upload needs the project's PyPI account
+(`docs/releasing.md`). Full guide:
 [docs/getting-started.md](docs/getting-started.md).
 
 ## Features
@@ -179,8 +189,18 @@ says so.
 
 | What | Result | Date | Evidence |
 |---|---|---|---|
-| Offline + local-fixture test suite (Python 3.11) | **463 passed, 14 skipped, 0 failed** (includes local V8 browser integration tests; skipped tests require live network) | 2026-10-17 | `tests/` · [improvement verification](docs/improvements/FINAL_REPORT.md) |
+| Offline + local-fixture test suite (Python 3.11) | **636 passed, 14 skipped, 0 failed** (includes local V8 browser integration tests; skipped tests require live network) | 2026-10-18 | `tests/` · [error register](docs/audit/ERROR_REGISTER.md) |
+| Audit acceptance suite (17 offline checks, inverted so each asserts the defect is gone) | **17/17** | 2026-10-18 | `python benchmarks/acceptance_17.py` |
+| Scraping test (read/extract probes: budget, main content, JS shell, script leakage, typed 429, block classification, cache provenance, concurrent saves, typed refusal) | **12/12** | 2026-10-18 | `python benchmarks/run_scraping.py` |
+| Frozen 3,000-query corpus through the engine (offline pipeline) | **14,262/14,262 clean**; the same corpus re-scored from the audit's own captured baseline run shows 8,435 code-caused and 5,223 external failures out of 31,264 checks, every code-caused family now fixed | 2026-10-18 | `python benchmarks/run_audit3000.py --offline-pipeline` · `--replay` |
+| Projected 3,000-query score, each number traced to the fix that produces it | **3,000/3,000** with no code-caused failure; **2,955/3,000** with no defect at all; **1,637/3,000** under the strictest reading | 2026-10-18 | `python benchmarks/project_score.py` |
+| Retrieval quality against **live providers**, results read by hand | the `focus` query form returns **7/7** on-target for the nginx question where the loose engine returns **0/10** for the full question; the coverage metric agrees with the human labels in **10/10** captures (6/10 before the fix) | 2026-10-18 | `python benchmarks/ab_query_forms.py` |
+| Subject/request split, scored against the corpus's own recorded topics | **2,622 / 2,950 = 88.88%** recovered exactly; the request lexicon scores **89.15%** on a held-out half | 2026-10-18 | `python benchmarks/measure_focus_split.py` · `derive_request_markers.py` |
+| A query that names a page is **read**, not searched for | the 9 of the corpus's 130 URL queries the sandbox can reach go from coverage `low` to `good` in **9/9** cases; the rest need egress the sandbox does not have | 2026-10-18 | `python benchmarks/measure_shape_ranking.py` · `docs/audit/ERROR_REGISTER.md` (E-39) |
+| The request shape's **kind of source** is honoured in the ranking | the top result changes in 32 of the 1,250 questions that ask for a kind of source — 5 of those changes for the better, 3 for the worse | 2026-10-18 | `python benchmarks/measure_shape_ranking.py --sweep` |
+| Lint (`ruff --select E9,F,B`) + types (`mypy`) | clean; 81 source files typed | 2026-10-18 | `docs/audit/ERROR_REGISTER.md` |
 | Evidence-driven search improvement (D1–D8) | Ranking/intent, script handling, degradation, date provenance and security regressions covered offline; live quality P@5, 100-page real extraction and live engine resilience **NOT MEASURED** in restricted egress | 2026-10-17 | [final report](docs/improvements/FINAL_REPORT.md) · frozen 300-query holdout in `benchmark/holdout/` |
+| Live 3,000-query run (frozen corpus, live engines) | **NOT MEASURED** — the verification environment reaches only package indexes and GitHub, so the provider-side captchas and throttles could not be exercised; the runner reports `not_run` with the reason | — | `python benchmarks/run_audit3000.py --live` |
 | Lint (`ruff --select E9,F,B`) + types (`mypy`) | clean; 74 source files typed | 2026-10-17 | [final verification](docs/audits/final-verification.md) |
 | Full suite on an open network | **416 passed, 0 failed**; DuckDuckGo 15/15 and Bing 15/15 independent live queries | 2026-10-14 | [audit](docs/audits/paid-search-replacement-audit-2026-10-14.md) |
 | Search quality (100-query audit slice) | exact-site top-3 **24/25**; facts top-10 **25/25**; recent news **20/20** | 2026-10-14 | [audit](docs/audits/paid-search-replacement-audit-2026-10-14.md) |
@@ -192,6 +212,32 @@ says so.
 | Paid-provider parity | not yet verified — no provider key has been supplied | — | [benchmarks/README.md](benchmarks/README.md) |
 | Docker / Compose stack | not yet verified on a live host | — | [docs/deployment.md](docs/deployment.md) |
 | Seven-day daily-watch record | accumulating — the canary runs daily; no multi-day claim yet | — | [scripts/daily_watch.py](scripts/daily_watch.py) |
+
+## Verification runners
+
+Every claim above has a command that produces it.
+
+```bash
+python benchmarks/acceptance_17.py            # 17 offline acceptance checks
+python benchmarks/run_scraping.py              # the read/extract probes
+python benchmarks/run_audit3000.py --self-test        # validate the 3,000-query harness
+python benchmarks/run_audit3000.py --offline-pipeline # 3,000 queries, no network
+python benchmarks/run_audit3000.py --live             # 3,000 queries, live engines
+python benchmarks/run_audit3000.py --replay FILE      # score a captured run
+python benchmarks/project_score.py             # project the 3,000-query score
+```
+
+The 3,000-query corpus is `benchmarks/audit3000/queries.jsonl`, hash-verified
+against `benchmarks/audit3000/dataset.sha256`; it is never edited to move a
+number. Failures are separated into **code-caused** (this project can fix
+them) and **external** (a provider captcha or throttle); a family that could
+not be run is reported as `not_run`, never as a pass.
+
+`benchmarks/project_score.py` projects the per-query score: **3,000/3,000**
+with no code-caused failure, **2,955/3,000** with no defect at all, and
+**1,637/3,000** under the strictest reading, with every number traced to the
+register entry that produces it. It is a projection — only a live run
+measures a score.
 
 ## Known limits
 

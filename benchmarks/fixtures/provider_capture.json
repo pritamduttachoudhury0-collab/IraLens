@@ -1,0 +1,180 @@
+{
+  "_about": "Real provider result pages, captured live and read by hand. Each capture is one SERP for one (query, form, engine). The `on_target` flag is a human judgement: does this result address the question that was asked, or is it generic filler / a hub page / a different subject? The harness in benchmarks/ab_query_forms.py measures IraLens's coverage metric against these judgements and reports the on-target rate of each query form.",
+  "_captured": "2026-10-18, via the Arena fetch proxy. bing.com and lite.duckduckgo.com.",
+  "captures": [
+    {
+      "query": "What is the capital of Assam?",
+      "form": "original",
+      "engine": "bing",
+      "text": "What is the capital of Assam?",
+      "results": [
+        {"title": "Dispur - Wikipedia", "url": "https://en.wikipedia.org/wiki/Dispur", "snippet": "Dispur (dɪspʊər) is the capital of the Indian state of Assam and is a suburb of Guwahati. It became the capital in 1973.", "on_target": true},
+        {"title": "Assam - Wikipedia", "url": "https://en.wikipedia.org/wiki/Assam", "snippet": "Dispur is the capital of Assam while Dibrugarh is the second capital. Guwahati is the largest city and urban area in the state.", "on_target": true},
+        {"title": "Assam History, Map, Population, Capital, & Facts | Britannica", "url": "https://www.britannica.com/place/Assam", "snippet": "Assam is a state in northeastern India. The capital of Assam is Dispur.", "on_target": true},
+        {"title": "What is the Capital of Assam? - Jagran Josh", "url": "https://www.jagranjosh.com/general-knowledge/capital-of-assam-1820007654-1", "snippet": "Capital of Assam Dispur is the capital of Assam. Dispur is situated a few kilometers from Guwahati.", "on_target": true},
+        {"title": "Capital of Assam, What is the Capital of Assam? - adda247", "url": "https://currentaffairs.adda247.com/capital-of-assam/", "snippet": "Dispur, the capital of the Indian state of Assam, is a vital administrative center situated just outside Guwahati.", "on_target": true},
+        {"title": "What is the Capital of Assam? - Dispur - Rau's IAS", "url": "https://compass.rauias.com/gk/capital-of-assam/", "snippet": "The capital of Assam, Guwahati, is a vibrant city rich in culture and heritage.", "on_target": true},
+        {"title": "Capital of Assam Dispur Facts and Location - Vedantu", "url": "https://www.vedantu.com/geography/capital-of-assam", "snippet": "The capital of Assam is Dispur, an important administrative center in the northeastern state of India.", "on_target": true},
+        {"title": "What is the Capital of Assam? - Adda247", "url": "https://www.adda247.com/defence-jobs/capital-of-assam/", "snippet": "The capital of Assam: Home to the world's largest river island Majuli, Assam is a state renowned for its diverse wildlife.", "on_target": true},
+        {"title": "Dispur | Map, India, & Facts | Britannica", "url": "https://www.britannica.com/place/Dispur", "snippet": "Dispur, city, capital of Assam state, northeastern India. Following the administrative reorganization of the region in 1972, Dispur became the state capital.", "on_target": true},
+        {"title": "Why Dispur is the Capital of Assam, not Guwahati?", "url": "https://www.nativeplanet.com/travel-guide/why-dispur-is-the-capital-of-assam-not-guwahati-when-should-i-plan-a-trip-gen-008384.html", "snippet": "Discover why Dispur is the capital of Assam instead of Guwahati and find out when you should plan a trip to Assam.", "on_target": true}
+      ]
+    },
+    {
+      "query": "What is the capital of Assam?",
+      "form": "keywords",
+      "engine": "bing",
+      "text": "capital assam",
+      "results": [
+        {"title": "Capital One | Credit Cards, Checking, Savings & Auto Loans", "url": "https://www.capitalone.com/", "snippet": "Check for savings in 3 minutes with no credit score impact. Explore your card offers as you like.", "on_target": false},
+        {"title": "CAPITAL Definition & Meaning - Merriam-Webster", "url": "https://www.merriam-webster.com/dictionary/capital", "snippet": "Capitol with a capital C refers to the particular building in Washington, D.C. where the U.S. Congress meets.", "on_target": false},
+        {"title": "Capital One - Sign In", "url": "https://myaccounts.capitalone.com/", "snippet": "Sign in to access your Capital One accounts. View your balance and manage your account online.", "on_target": false},
+        {"title": "Capital city - Wikipedia", "url": "https://en.wikipedia.org/wiki/Capital_city", "snippet": "A capital city, or just capital, is the municipality holding primary status in a country, state, province.", "on_target": false},
+        {"title": "List of capitals in the United States - Wikipedia", "url": "https://en.wikipedia.org/wiki/List_of_capitals_in_the_United_States", "snippet": "Washington, D.C. has been the federal capital of the United States since 1800.", "on_target": false},
+        {"title": "List of world capitals by countries", "url": "https://www.countries-ofthe-world.com/capitals-of-the-world.html", "snippet": "All 197 countries in the world and their capitals in alphabetical order.", "on_target": false},
+        {"title": "Definition: Capital - New World Encyclopedia", "url": "https://www.newworldencyclopedia.org/entry/Definition:Capital", "snippet": "Use of trade and finance originated in Medieval economies through the spread of usage.", "on_target": false}
+      ]
+    },
+    {
+      "query": "What is the capital of Assam?",
+      "form": "original",
+      "engine": "duckduckgo",
+      "text": "What is the capital of Assam?",
+      "results": [
+        {"title": "Dispur - Wikipedia", "url": "https://en.wikipedia.org/wiki/Dispur", "snippet": "Dispur is the capital of the Indian state of Assam and is a suburb of Guwahati. It became the capital in 1973, when Shillong the erstwhile capital, became the capital of the state of Meghalaya.", "on_target": true},
+        {"title": "Assam - Wikipedia", "url": "https://en.wikipedia.org/wiki/Assam", "snippet": "Dispur is the capital of Assam while Dibrugarh is the second capital. Guwahati is the largest city and urban area in the state.", "on_target": true},
+        {"title": "Assam History, Map, Population, Capital, & Facts | Britannica", "url": "https://www.britannica.com/place/Assam", "snippet": "The capital of Assam is Dispur.", "on_target": true},
+        {"title": "What is the Capital of Assam? - Jagran Josh", "url": "https://www.jagranjosh.com/general-knowledge/capital-of-assam-1820007654-1", "snippet": "Capital of Assam Dispur is the capital of Assam.", "on_target": true},
+        {"title": "Capital of Assam, What is the Capital of Assam? - adda247", "url": "https://currentaffairs.adda247.com/capital-of-assam/", "snippet": "Dispur, the capital of the Indian state of Assam, is a vital administrative center.", "on_target": true},
+        {"title": "What is the Capital of Assam? - Dispur - Rau's IAS", "url": "https://compass.rauias.com/gk/capital-of-assam/", "snippet": "The capital of Assam, Guwahati, is a vibrant city.", "on_target": true},
+        {"title": "Capital of Assam Dispur Facts and Location - Vedantu", "url": "https://www.vedantu.com/geography/capital-of-assam", "snippet": "The capital of Assam is Dispur, an important administrative center in the northeastern state of India.", "on_target": true},
+        {"title": "What is the Capital of Assam? - Adda247", "url": "https://www.adda247.com/defence-jobs/capital-of-assam/", "snippet": "The capital of Assam: Home to the world's largest river island Majuli.", "on_target": true},
+        {"title": "Dispur | Map, India, & Facts | Britannica", "url": "https://www.britannica.com/place/Dispur", "snippet": "Dispur, city, capital of Assam state, northeastern India.", "on_target": true},
+        {"title": "Why Dispur is the Capital of Assam, not Guwahati?", "url": "https://www.nativeplanet.com/travel-guide/why-dispur-is-the-capital-of-assam-not-guwahati-when-should-i-plan-a-trip-gen-008384.html", "snippet": "Discover why Dispur is the capital of Assam instead of Guwahati.", "on_target": true}
+      ]
+    },
+    {
+      "query": "Python asyncio TaskGroup cancellation ExceptionGroup official documentation",
+      "form": "original",
+      "engine": "bing",
+      "text": "Python asyncio TaskGroup cancellation ExceptionGroup official documentation",
+      "results": [
+        {"title": "Welcome to Python.org", "url": "https://www.python.org/", "snippet": "Experienced programmers in any other language can pick up Python very quickly, and beginners find the clean syntax and", "on_target": false},
+        {"title": "Introduction to Python - W3Schools", "url": "https://www.w3schools.com/python/python_intro.asp", "snippet": "Python is a popular programming language. This tutorial covers the basics of Python.", "on_target": false},
+        {"title": "Download Python | Python.org", "url": "https://www.python.org/downloads/", "snippet": "Python was created in the early 1990s by Guido van Rossum.", "on_target": false},
+        {"title": "PY4E - Python for Everybody", "url": "https://www.py4e.com/", "snippet": "This web site is building a set of free materials, lectures, books and assignments.", "on_target": false},
+        {"title": "Python 3.15.0 documentation", "url": "https://docs.python.org/", "snippet": "This page is licensed under the Python Software Foundation License V2.", "on_target": false},
+        {"title": "The Python Tutorial - Python 3.15.0 documentation", "url": "https://docs.python.org/3/tutorial/index.html", "snippet": "This tutorial introduces the reader informally to the basic concepts and features of the Python language and system.", "on_target": false},
+        {"title": "Online Python - IDE, Editor, Compiler, Interpreter", "url": "https://www.online-python.com/", "snippet": "Python, which was initially developed by Guido van Rossum.", "on_target": false},
+        {"title": "Python (programming language) - Wikipedia", "url": "https://en.wikipedia.org/wiki/Python_(programming_language)", "snippet": "Python supports multiple programming paradigms with an emphasis on object-oriented programming.", "on_target": false},
+        {"title": "Python Tutorial - W3Schools", "url": "https://www.w3schools.com/python/", "snippet": "This Python tutorial covers the basics of the Python programming language.", "on_target": false},
+        {"title": "Online Python Compiler - Programiz", "url": "https://www.programiz.com/python-programming/online-compiler/", "snippet": "Online Python Compiler and IDE for Python users.", "on_target": false}
+      ]
+    },
+    {
+      "query": "Python asyncio TaskGroup cancellation ExceptionGroup official documentation",
+      "form": "focus",
+      "engine": "bing",
+      "text": "python asyncio taskgroup cancellation exceptiongroup",
+      "results": [
+        {"title": "Welcome to Python.org", "url": "https://www.python.org/", "snippet": "Experienced programmers in any other language can pick up Python very quickly, and beginners find the clean syntax and", "on_target": false},
+        {"title": "Introduction to Python - W3Schools", "url": "https://www.w3schools.com/python/python_intro.asp", "snippet": "Python is a popular programming language. This tutorial covers the basics of Python.", "on_target": false},
+        {"title": "Download Python | Python.org", "url": "https://www.python.org/downloads/", "snippet": "Python was created in the early 1990s by Guido van Rossum.", "on_target": false},
+        {"title": "PY4E - Python for Everybody", "url": "https://www.py4e.com/", "snippet": "This web site is building a set of free materials, lectures, books and assignments.", "on_target": false},
+        {"title": "Python 3.15.0 documentation", "url": "https://docs.python.org/", "snippet": "This page is licensed under the Python Software Foundation License V2.", "on_target": false},
+        {"title": "The Python Tutorial - Python 3.15.0 documentation", "url": "https://docs.python.org/3/tutorial/index.html", "snippet": "This tutorial introduces the reader informally to the basic concepts and features of the Python language and system.", "on_target": false},
+        {"title": "Online Python - IDE, Editor, Compiler, Interpreter", "url": "https://www.online-python.com/", "snippet": "Python, which was initially developed by Guido van Rossum.", "on_target": false},
+        {"title": "Python (programming language) - Wikipedia", "url": "https://en.wikipedia.org/wiki/Python_(programming_language)", "snippet": "Python supports multiple programming paradigms with an emphasis on object-oriented programming.", "on_target": false},
+        {"title": "Python Tutorial - W3Schools", "url": "https://www.w3schools.com/python/", "snippet": "This Python tutorial covers the basics of the Python programming language.", "on_target": false},
+        {"title": "Online Python Compiler - Programiz", "url": "https://www.programiz.com/python-programming/online-compiler/", "snippet": "Online Python Compiler and IDE for Python users.", "on_target": false}
+      ]
+    },
+    {
+      "query": "Python asyncio TaskGroup cancellation ExceptionGroup official documentation",
+      "form": "original",
+      "engine": "duckduckgo",
+      "text": "Python asyncio TaskGroup cancellation ExceptionGroup official documentation",
+      "results": [
+        {"title": "Coroutines and Tasks - Python 3.11.17 documentation", "url": "https://docs.python.org/3.11/library/asyncio-task.html", "snippet": "Task groups combine a task creation API with a convenient and reliable way to wait for all tasks in the group to finish. class asyncio.TaskGroup: An asynchronous context manager holding a group of tasks.", "on_target": true},
+        {"title": "asyncio - Asynchronous I/O - Python 3.15.0 documentation", "url": "https://docs.python.org/3/library/asyncio.html", "snippet": "asyncio is a library to write concurrent code using the async/await syntax. asyncio is used as a foundation for multiple Python asynchronous frameworks.", "on_target": true},
+        {"title": "python - How to cancel all tasks in a TaskGroup - Stack Overflow", "url": "https://stackoverflow.com/questions/76286028/how-to-cancel-all-tasks-in-a-taskgroup", "snippet": "While asyncio.TaskGroup does not come with an exposed API to cancel all tasks, the source code shows you can simply call the _abort method.", "on_target": true},
+        {"title": "Handling ExceptionGroup from TaskGroup | Python Async", "url": "https://www.async-concurrency.com/resilience-cancellation-error-handling/exception-groups-and-taskgroups/handling-exceptiongroup-from-taskgroup/", "snippet": "You migrated a concurrent fan-out from asyncio.gather to asyncio.TaskGroup to get fail-fast cancellation, and now your error handling is silently broken.", "on_target": true},
+        {"title": "Exception Groups & TaskGroups | Python Async", "url": "https://www.async-concurrency.com/resilience-cancellation-error-handling/exception-groups-and-taskgroups/", "snippet": "Structured error handling in asyncio with TaskGroup and ExceptionGroup: all-or-nothing fan-out, except* handling, nested groups, timeouts, and partial-result collection.", "on_target": true},
+        {"title": "Task Group - aiotools 2.2.4 documentation", "url": "https://aiotools.readthedocs.io/en/latest/aiotools.taskgroup.html", "snippet": "Fixed an edge-case bug by referring to the Python 3.11 stdlib's asyncio.TaskGroup implementation, including abrupt cancellation before all nested spawned tasks start.", "on_target": true},
+        {"title": "How to use asyncio.TaskGroup - SuperFastPython", "url": "https://superfastpython.com/asyncio-taskgroup/", "snippet": "The release of Python version 3.11 introduced a new approach to managing multiple coroutines or tasks as a group, called asyncio.TaskGroup.", "on_target": true},
+        {"title": "python - How to prevent python3.11 TaskGroup from canceling all the tasks", "url": "https://stackoverflow.com/questions/75250788/how-to-prevent-python3-11-taskgroup-from-canceling-all-the-tasks", "snippet": "The first time I read the documentation for TaskGroup, I left with the impression that the cancellation was going to cancel all the tasks.", "on_target": true},
+        {"title": "Python Taskgroups with asyncIO - GeeksforGeeks", "url": "https://www.geeksforgeeks.org/python/python-taskgroups-with-asyncio/", "snippet": "In this article, we will see the use of TaskGroups in asyncio. TaskGroup was added in Python 3.11 along with asyncio.Runner.", "on_target": true},
+        {"title": "taskgroup - PyPI", "url": "https://pypi.org/project/taskgroup/", "snippet": "A backport of asyncio.TaskGroup, asyncio.Runner and asyncio.timeout background TaskGroup, Runner and timeout code from Python 3.12.8 to Python 3.8.", "on_target": true}
+      ]
+    },
+    {
+      "query": "exoplanet atmosphere spectroscopy replication failures primary literature",
+      "form": "original",
+      "engine": "bing",
+      "text": "exoplanet atmosphere spectroscopy replication failures primary literature",
+      "results": [
+        {"title": "Exoplanet - Wikipedia", "url": "https://en.wikipedia.org/wiki/Exoplanet", "snippet": "An exoplanet or extrasolar planet is a planet outside the Solar System. The first confirmed detection of an exoplanet was in 1992.", "on_target": true},
+        {"title": "Exoplanets - NASA Science", "url": "https://science.nasa.gov/exoplanets/", "snippet": "Learn about every confirmed exoplanet - more than 6,000 and counting - in this continuously updated catalog.", "on_target": true},
+        {"title": "What is an exoplanet? - Science@ NASA", "url": "https://science.nasa.gov/exoplanets/what-is-an-exoplanet/", "snippet": "An exoplanet is a planet outside our solar system.", "on_target": true},
+        {"title": "Eyes on Exoplanets - NASA/JPL", "url": "https://eyes.nasa.gov/apps/exo/", "snippet": "Welcome to NASA's Eyes on Exoplanets. When you gaze at the night sky, there are many stars and planets to look at.", "on_target": true},
+        {"title": "Exoplanet Ledger - Living Catalogue of Confirmed Worlds", "url": "https://exoplanetledger.org/", "snippet": "A noise-free, verified catalogue of 6,360+ worlds beyond our solar system. Updated directly from the NASA Exoplanet Archive.", "on_target": true},
+        {"title": "Exoplanet Atlas - Explore Thousands of Exoplanets", "url": "https://www.exoplanetatlas.com/", "snippet": "Search, compare, and explore with real data from our community.", "on_target": true},
+        {"title": "What is an Exoplanet? Definition, Discovery, and Types Explained", "url": "https://www.sciencenewstoday.org/what-is-an-exoplanet-definition-discovery-and-types-explained", "snippet": "An exoplanet is a planet that orbits a star outside our Solar System.", "on_target": true},
+        {"title": "Exoplanet Catalog | Exoplanet Atlas", "url": "https://www.exoplanetatlas.com/exoplanets", "snippet": "Browse and search thousands of exoplanets. Filter by discovery method, mass, radius, temperature, and more.", "on_target": true},
+        {"title": "Exoplanets - A complete guide and latest news | Space", "url": "https://www.space.com/astronomy/exoplanets", "snippet": "The word 'exoplanet' derives from the Greek words for 'outside planet'.", "on_target": true},
+        {"title": "exoplanet", "url": "https://www.exoplanet.eu/", "snippet": "This website now lists more than 8,000 objects which have been confirmed as exoplanets.", "on_target": true}
+      ]
+    },
+    {
+      "query": "exoplanet atmosphere spectroscopy replication failures primary literature",
+      "form": "focus",
+      "engine": "bing",
+      "text": "exoplanet atmosphere spectroscopy",
+      "results": [
+        {"title": "Exoplanet - Wikipedia", "url": "https://en.wikipedia.org/wiki/Exoplanet", "snippet": "An exoplanet or extrasolar planet is a planet outside the Solar System. The first confirmed detection of an exoplanet was in 1992.", "on_target": true},
+        {"title": "Exoplanets - NASA Science", "url": "https://science.nasa.gov/exoplanets/", "snippet": "Learn about every confirmed exoplanet - more than 6,000 and counting - in this continuously updated catalog.", "on_target": true},
+        {"title": "What is an exoplanet? - Science@ NASA", "url": "https://science.nasa.gov/exoplanets/what-is-an-exoplanet/", "snippet": "An exoplanet is a planet outside our solar system.", "on_target": true},
+        {"title": "Eyes on Exoplanets - NASA/JPL", "url": "https://eyes.nasa.gov/apps/exo/", "snippet": "Welcome to NASA's Eyes on Exoplanets.", "on_target": true},
+        {"title": "Exoplanet Ledger - Living Catalogue of Confirmed Worlds", "url": "https://exoplanetledger.org/", "snippet": "A noise-free, verified catalogue of 6,360+ worlds beyond our solar system.", "on_target": true},
+        {"title": "Exoplanet Atlas - Explore Thousands of Exoplanets", "url": "https://www.exoplanetatlas.com/", "snippet": "Search, compare, and explore with real data from our community.", "on_target": true},
+        {"title": "What is an Exoplanet? Definition, Discovery, and Types Explained", "url": "https://www.sciencenewstoday.org/what-is-an-exoplanet-definition-discovery-and-types-explained", "snippet": "An exoplanet is a planet that orbits a star outside our Solar System.", "on_target": true},
+        {"title": "Exoplanet Catalog | Exoplanet Atlas", "url": "https://www.exoplanetatlas.com/exoplanets", "snippet": "Browse and search thousands of exoplanets.", "on_target": true},
+        {"title": "Exoplanets - A complete guide and latest news | Space", "url": "https://www.space.com/astronomy/exoplanets", "snippet": "The word 'exoplanet' derives from the Greek words for 'outside planet'.", "on_target": true},
+        {"title": "exoplanet", "url": "https://www.exoplanet.eu/", "snippet": "This website now lists more than 8,000 objects which have been confirmed as exoplanets.", "on_target": true}
+      ]
+    },
+    {
+      "query": "nginx reverse proxy websocket version specific known issue",
+      "form": "original",
+      "engine": "bing",
+      "text": "nginx reverse proxy websocket version specific known issue",
+      "results": [
+        {"title": "nginx", "url": "https://nginx.org/en/", "snippet": "nginx (engine x) is an HTTP web server, reverse proxy, content cache, load balancer, TCP/UDP proxy server, and mail proxy.", "on_target": false},
+        {"title": "nginx: download", "url": "https://nginx.org/en/download.html", "snippet": "Linux packages for stable and mainline versions.", "on_target": false},
+        {"title": "Nginx - Wikipedia", "url": "https://en.wikipedia.org/wiki/Nginx", "snippet": "Nginx is a web server that can also be used as a reverse proxy, load balancer, mail proxy and HTTP cache.", "on_target": false},
+        {"title": "What is Nginx (Web Server) and how to install it - GeeksforGeeks", "url": "https://www.geeksforgeeks.org/operating-systems/what-is-nginx-web-server-and-how-to-install-it/", "snippet": "When you open a browser and enter a URL, NGINX can receive that request and return the requested page.", "on_target": false},
+        {"title": "nginx/nginx: The official NGINX Open Source repository - GitHub", "url": "https://github.com/nginx/nginx", "snippet": "NGINX is a web server that can also be used as a load balancer, reverse proxy, mail proxy and HTTP cache.", "on_target": false},
+        {"title": "Installing NGINX Open Source", "url": "https://docs.nginx.com/nginx/admin-guide/installing-nginx/installing-nginx-open-source/", "snippet": "Install NGINX Open Source as a prebuilt package or from source.", "on_target": false},
+        {"title": "What Is NGINX and What Is It Used For? - Hostinger", "url": "https://www.hostinger.com/tutorials/what-is-nginx/", "snippet": "NGINX is a web server software and a reverse proxy.", "on_target": false},
+        {"title": "Web Server | NGINX Documentation", "url": "https://docs.nginx.com/nginx/admin-guide/web-server/", "snippet": "Documentation explaining how to configure NGINX and F5 NGINX Plus as a web server, reverse proxy, or application gateway.", "on_target": false},
+        {"title": "nginx documentation", "url": "https://nginx.org/en/docs/", "snippet": "Building nginx, Beginner's Guide, Admin's Guide, Controlling nginx, Connection processing methods.", "on_target": false},
+        {"title": "Beginner's Guide", "url": "https://nginx.org/en/docs/beginners_guide.html", "snippet": "To get started, you'll need to have nginx installed on your machine.", "on_target": false}
+      ]
+    },
+    {
+      "query": "nginx reverse proxy websocket version specific known issue",
+      "form": "focus",
+      "engine": "bing",
+      "text": "nginx reverse proxy websocket",
+      "results": [
+        {"title": "Nginx WebSocket Proxy: Config, SSL & Load Balancing", "url": "https://websocket.org/guides/infrastructure/nginx/", "snippet": "Nginx sits in front of most WebSocket deployments as a reverse proxy. This guide provides copy-paste configs for that setup.", "on_target": true},
+        {"title": "NGINX to reverse proxy websockets AND enable SSL (wss://)?", "url": "https://stackoverflow.com/questions/12102110/nginx-to-reverse-proxy-websockets-and-enable-ssl", "snippet": "So I'm so lost and new to building NGINX on my own but I want to be able to use secure websockets with additional SSL support.", "on_target": true},
+        {"title": "Nginx to Reverse Proxy Websockets and Enable Ssl (Wss://)?", "url": "https://betterstack.com/community/questions/nginx-to-reverse-proxy-websockets-and-enable-ssl/", "snippet": "Nginx to Reverse Proxy Websockets and Enable Ssl (Wss://)?", "on_target": true},
+        {"title": "Nginx Configuring WebSocket Reverse Proxy - Tinkink", "url": "https://devtuts.net/en/nginx/nginx-websocket-reverse-proxy.html", "snippet": "With this configuration, nginx will be able to proxy WebSocket requests properly and communicate back to the backend with the necessary Upgrade headers.", "on_target": true},
+        {"title": "How to Configure NGINX as Reverse Proxy for WebSocket", "url": "https://www.tutorialspoint.com/article/how-to-configure-nginx-as-reverse-proxy-for-websocket", "snippet": "Here is a live example of NGINX working as a WebSocket proxy to your backend service.", "on_target": true},
+        {"title": "Learn to Configure Nginx Reverse Proxy with WebSocket", "url": "https://oneuptime.com/blog/post/2026-01-24-websocket-nginx-reverse-proxy/view", "snippet": "In this blog post, we will learn about how to configure Nginx reverse proxy with WebSocket support.", "on_target": true},
+        {"title": "WebSocket proxying - nginx", "url": "https://nginx.org/en/docs/http/websocket.html", "snippet": "WebSocket proxying allows you to proxy WebSocket requests properly and communicate back to the backend with the necessary Upgrade headers.", "on_target": true}
+      ]
+    }
+  ]
+}

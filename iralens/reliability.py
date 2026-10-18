@@ -9,13 +9,14 @@ passed in from `settings.Settings`; nothing here reads global state.
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 import threading
 from contextlib import contextmanager
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Iterator, Optional, Tuple, TypeVar
+from typing import Any, Callable, Dict, Iterator, Optional, Tuple, TypeVar
 
 from .config import state_dir
 
@@ -35,20 +36,49 @@ KIND_UNAVAILABLE = "unavailable"
 _CAPTCHA_MARKERS = (
     "captcha", "unusual traffic", "are you a robot", "verify you are human",
     "anomaly-modal", "challenge-platform", "confirm you're not a robot",
+    "unusual activity from your computer network",
 )
-_RATE_LIMIT_MARKERS = ("too many requests", "rate limit", "rate-limit", "429")
+#: Phrases that appear on a *rate-limit page*. A bare status code is not
+#: evidence: the body of a page that merely *mentions* "429" (a reference
+#: page, a changelog, a search result) is not itself rate-limited, and
+#: treating it as such made a perfectly good one-hit SERP trigger a
+#: needless browser navigation. Real status codes are handled structurally
+#: by `classify_block(status=...)`.
+_RATE_LIMIT_MARKERS = (
+    "too many requests",
+    "rate limit",
+    "rate-limit",
+    "ratelimited",
+    "request limit exceeded",
+    "quota exceeded",
+    "access denied due to",
+)
 _TRANSIENT_MARKERS = (
     "timed out", "timeout", "temporar", "try again", "502", "503", "504",
     "connection reset", "lost connection",
 )
 
+#: Machine-generated detail markers: our own typed errors record the HTTP
+#: status they were classified from, so this is a structural signal.
+_HTTP_STATUS_RE = re.compile(r"\bhttp_(\d{3})\b")
 
-def classify_block(text: str) -> Optional[str]:
-    """Classify a page or error text as a block signal, or None."""
+
+def classify_block(text: str, *, status: Optional[int] = None) -> Optional[str]:
+    """Classify a page or error text as a block signal, or None.
+
+    `status` is the real HTTP status when the caller has one; it is
+    authoritative and is never inferred from the body text.
+    """
+    if status == 429:
+        return KIND_RATE_LIMITED
     low = (text or "").lower()
     if any(marker in low for marker in _CAPTCHA_MARKERS):
         return KIND_CAPTCHA
     if any(marker in low for marker in _RATE_LIMIT_MARKERS):
+        return KIND_RATE_LIMITED
+    # A typed error we produced ourselves records the status it came from.
+    match = _HTTP_STATUS_RE.search(low)
+    if match and match.group(1) == "429":
         return KIND_RATE_LIMITED
     return None
 
@@ -393,6 +423,150 @@ class ConcurrencyGate:
 
     def __exit__(self, *exc_info) -> None:
         self._sem.release()
+
+
+class HostRateLimiter:
+    """A polite *rate* budget per host — pacing, not just concurrency.
+
+    `PerSiteConcurrencyGate` bounds how many requests are in flight at
+    once, but three simultaneous requests are still three requests in the
+    same instant, and that is what earns a 429 or a captcha. This limiter
+    additionally enforces a minimum interval *between* requests to the
+    same host, and it honours the origin's `Retry-After` when one is
+    given: after a 429 the next request to that host waits for the
+    interval the origin asked for.
+    """
+
+    def __init__(self, min_interval: float = 0.25, default_min_interval: float = 0.25,
+                 max_cooldown: float = 60.0) -> None:
+        self.min_interval = max(0.0, float(min_interval))
+        self.default_min_interval = max(0.0, float(default_min_interval))
+        self.max_cooldown = max(0.0, float(max_cooldown))
+        self._intervals: Dict[str, float] = {}        # per-host minimum gap
+        self._last_request: Dict[str, float] = {}    # per-host last request time
+        self._cooldown_until: Dict[str, float] = {}  # per-host Retry-After deadline
+        self._lock = threading.Lock()
+
+    def interval_for(self, host: str) -> float:
+        """The minimum gap this limiter will keep for *host*."""
+        with self._lock:
+            return max(self.min_interval,
+                       self._intervals.get(host, self.default_min_interval))
+
+    def set_interval(self, host: str, seconds: float) -> None:
+        """Set a per-host minimum gap."""
+        try:
+            value = max(0.0, float(seconds))
+        except (TypeError, ValueError):
+            return
+        with self._lock:
+            self._intervals[host] = value
+
+    def note_retry_after(self, host: str, seconds: float) -> None:
+        """Remember an origin's `Retry-After` so the next request waits."""
+        try:
+            value = float(seconds)
+        except (TypeError, ValueError):
+            return
+        if value <= 0:
+            return
+        value = min(value, self.max_cooldown)
+        with self._lock:
+            deadline = time.monotonic() + value
+            self._cooldown_until[host] = max(self._cooldown_until.get(host, 0.0), deadline)
+
+    def cooldown_remaining(self, host: str) -> float:
+        """Seconds until *host* may be contacted again (0 when free)."""
+        now = time.monotonic()
+        with self._lock:
+            return max(0.0, self._cooldown_until.get(host, 0.0) - now)
+
+    def wait(self, host: str, *, sleep: Optional[Callable[[float], None]] = None) -> float:
+        """Block until *host* may be contacted again. Returns the slept time."""
+        now = time.monotonic()
+        with self._lock:
+            gap = max(self.min_interval,
+                      self._intervals.get(host, self.default_min_interval))
+            cooldown = self._cooldown_until.get(host, 0.0)
+            last = self._last_request.get(host, 0.0)
+            delay = max(0.0, cooldown - now, last + gap - now)
+        if delay > 0:
+            (sleep or time.sleep)(delay)
+        with self._lock:
+            self._last_request[host] = time.monotonic()
+        return delay
+
+
+#: Process-wide polite rate budget. Shared so that a search burst and a
+#: page-read burst against the same host cannot add up.
+HOST_RATE_LIMITER = HostRateLimiter()
+
+
+class TransportHealthMemory:
+    """Which transport last worked for a host.
+
+    `mode=auto` has two paths: a static read and a rendered one. When the
+    rendered path is dead for a host — the browser engine is not installed,
+    or the page crashes the renderer — every read of that host pays for the
+    failed render and still gets the same static text. This memory lets the
+    reader converge: it remembers, per host, that the renderer does not
+    work there, and says so instead of trying again and again.
+
+    The memory is a *hint*, never a hard rule: a transport that starts
+    working again is picked up immediately.
+    """
+
+    def __init__(self, failure_threshold: int = 2, ttl_seconds: float = 900.0) -> None:
+        self.failure_threshold = max(1, int(failure_threshold))
+        self.ttl_seconds = max(0.0, float(ttl_seconds))
+        self._state: Dict[str, Dict[str, Any]] = {}
+        self._lock = threading.Lock()
+
+    def _entry(self, host: str) -> Dict[str, Any]:
+        return self._state.setdefault(
+            str(host or "").lower(),
+            {"ok": 0, "fail": 0, "last_ok": 0.0, "last_fail": 0.0},
+        )
+
+    def record(self, host: str, transport: str, *, ok: bool) -> None:
+        """Note that *transport* did (or did not) work for *host*."""
+        key = f"{str(host or '').lower()}|{transport}"
+        with self._lock:
+            entry = self._entry(key)
+            if ok:
+                entry["ok"] += 1
+                entry["fail"] = 0
+                entry["last_ok"] = time.monotonic()
+            else:
+                entry["fail"] += 1
+                entry["last_fail"] = time.monotonic()
+                entry["last_ok"] = 0.0
+
+    def is_dead(self, host: str, transport: str) -> bool:
+        """Whether *transport* has failed repeatedly for *host*."""
+        key = f"{str(host or '').lower()}|{transport}"
+        with self._lock:
+            entry = self._state.get(key)
+            if not entry:
+                return False
+            if self.ttl_seconds and (time.monotonic() - entry["last_fail"]) > self.ttl_seconds:
+                return False
+            return entry["fail"] >= self.failure_threshold
+
+    def known_good(self, host: str, transport: str) -> bool:
+        """Whether *transport* has worked for *host* at least once."""
+        key = f"{str(host or '').lower()}|{transport}"
+        with self._lock:
+            entry = self._state.get(key)
+            return bool(entry and entry["ok"] > 0)
+
+    def snapshot(self) -> Dict[str, Dict[str, Any]]:
+        with self._lock:
+            return {k: dict(v) for k, v in self._state.items()}
+
+
+#: Process-wide transport memory, shared by every read.
+TRANSPORT_HEALTH = TransportHealthMemory()
 
 
 class PerSiteConcurrencyGate:

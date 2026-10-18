@@ -37,6 +37,12 @@ _HANDSHAKE_TIMEOUT = 20
 # Error classification
 # ---------------------------------------------------------------------------
 
+def first_line_of(text: str) -> str:
+    """First line of a multi-line engine message (V8 stacks are long)."""
+    lines = str(text or "").splitlines()
+    return lines[0].strip() if lines else ""
+
+
 def classify_engine_error(text: str) -> errors.IraLensError:
     """Map engine failure text onto the unified error taxonomy."""
     text = str(text)
@@ -81,7 +87,26 @@ def classify_engine_error(text: str) -> errors.IraLensError:
         return errors.PageUnavailableError("could not reach the page", detail=msg)
     if re.search(r"navigat", low):
         return errors.NavigationError(msg)
-    return errors.IraLensError(msg)
+    # A JavaScript failure is an extraction failure with a cause, not an
+    # untyped error envelope: the caller needs to know the content could
+    # not be produced and that a different transport may still work.
+    if ("js error" in low
+            or re.search(r"is not a function|is not defined|referenceerror|"
+                         r"typeerror|syntaxerror|unhandled (?:promise )?exception",
+                         low)):
+        first_line = (text.splitlines() or [text])[0]
+        return errors.ExtractionError(
+            "the page's JavaScript failed while the browser was rendering it",
+            hint="the site's script is not supported by the engine; the static "
+                 "reader may still be able to read the page",
+            detail=first_line,
+        )
+    # Every failure that leaves the engine is typed. An untyped `error`
+    # envelope gave a programmatic caller nothing to branch on.
+    return errors.ExtractionError(
+        "the browser engine failed to produce the requested content",
+        detail=first_line_of(text) or msg,
+    )
 
 
 def _as_list(result: Any) -> Any:
@@ -183,7 +208,7 @@ class BrowserEngine:
             self._rpc("initialize", {
                 "protocolVersion": _PROTOCOL_VERSION,
                 "capabilities": {},
-                "clientInfo": {"name": "iralens", "version": "0.2.1"},
+                "clientInfo": {"name": "iralens", "version": "0.3.0"},
             }, timeout=self._handshake_timeout())
         except errors.EngineUnavailableError as exc:
             self._startup_failure = exc

@@ -15,7 +15,7 @@ import json
 import re
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, TYPE_CHECKING
+from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
 from ..errors import (AuthRequiredError, ExtractionError, OperationUnsupportedError,
                       PageUnavailableError, SourceUnavailableError)
@@ -32,6 +32,23 @@ _UA = "iralens/0.1"
 _TIMEOUT = 20
 _MAX_BYTES = 5 * 1024 * 1024
 _REPO_RE = re.compile(r"github\.com/([\w.\-]+)/([\w.\-]+)")
+
+
+def _repo_from_url(url: str) -> Optional[Tuple[str, str]]:
+    """The ``(owner, repo)`` a github.com URL names, if it names only a repo.
+
+    "https://github.com/<owner>/<repo>" is a repository. A URL with
+    anything after the repository — "/issues", "/blob/main/README.md" — is
+    a page *of* the repository, and the native reader must not answer it
+    with the repository's README: the caller asked for a different page.
+    """
+    match = _REPO_RE.search(url or "")
+    if not match:
+        return None
+    rest = (url or "")[match.end():].split("?")[0].split("#")[0]
+    if rest.strip("/"):
+        return None
+    return match.group(1), match.group(2).removesuffix(".git")
 _GH_ENV = {
     "GH_TELEMETRY": "false",
     "DO_NOT_TRACK": "true",
@@ -227,12 +244,12 @@ class GitHubSource(Source):
         return super().fetch(op, params, context)
 
     def read_url(self, url: str, context: "Context", mode: str = "auto") -> Artifact:
-        match = _REPO_RE.search(url)
-        if not match:
+        owner_and_repo = _repo_from_url(url)
+        if owner_and_repo is None:
             raise OperationUnsupportedError(
                 "only github.com/<owner>/<repo> URLs are read natively",
                 hint="other github.com URLs fall back to the generic web reader in auto mode")
-        repo = f"{match.group(1)}/{match.group(2).removesuffix('.git')}"
+        repo = f"{owner_and_repo[0]}/{owner_and_repo[1]}"
         artifact = self.fetch("repo", {"repo": repo}, context)
         try:
             readme = self.fetch("readme", {"repo": repo}, context)

@@ -58,6 +58,13 @@ def test_messages_are_sanitized():
 
 
 def test_unknown_text_still_yields_base_error():
+    """Even an unrecognised engine failure must be *typed*.
+
+    It used to fall through to the untyped base error, whose machine
+    readable `error` field was just "error" — a caller had nothing to
+    branch on and could not tell a content failure from a policy failure.
+    """
     err = classify_engine_error("something strange happened")
     assert isinstance(err, IraLensError)
-    assert err.error_type == "error"
+    assert err.error_type == "extraction_failed"
+    assert err.detail

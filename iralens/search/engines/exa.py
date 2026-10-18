@@ -44,10 +44,15 @@ def parse_exa_payload(stdout: str, query: str, limit: int) -> List[SearchHit]:
 
 class ExaBackend(SearchBackend):
     name = "semantic-search"
+    #: The bridge CLI this backend needs. When it is missing the backend is
+    #: *not configured* — a different thing from *failing*, and the engine
+    #: layer must not report it as a degraded engine.
+    requires_command = "mcporter"
     handled = {"date_from": POST, "date_to": POST, "include_domains": POST,
                "exclude_domains": POST, "file_type": POST, "language": UNSUPPORTED, "region": UNSUPPORTED}
 
-    def search(self, query: str, filters: SearchFilters, limit: int, context: Any) -> List[SearchHit]:
+    def search(self, query: str, filters: SearchFilters, limit: int, context: Any,
+               *, offset: int = 0) -> List[SearchHit]:
         if not shutil.which("mcporter"):
             raise SourceUnavailableError("semantic-search bridge CLI not installed")
         expr = f"exa.web_search_exa(query: {json.dumps(query)}, numResults: {int(limit)})"

@@ -126,3 +126,35 @@ def test_cli_ssrf_targets_are_blocked_by_security_policy():
     assert out.returncode == 2
     body = json.loads(out.stderr)
     assert body["error"] == "blocked_by_security_policy"
+
+
+def test_the_version_is_the_same_everywhere_it_is_written():
+    """One version, in packaging, at runtime, in the MCP handshake, in the badge.
+
+    A release whose badge, its `--version` output and its wheel metadata
+    disagree is a release nobody can trust, so the agreement is a test and
+    not a convention.
+    """
+    import re
+    from pathlib import Path
+
+    import iralens
+
+    repo = Path(__file__).resolve().parent.parent
+    version = iralens.__version__
+
+    packaging = (repo / "pyproject.toml").read_text(encoding="utf-8")
+    assert re.search(r'^version = "%s"' % re.escape(version), packaging, re.M), \
+        "pyproject.toml does not carry the runtime version"
+
+    native = (repo / "iralens" / "engine" / "native.py").read_text(encoding="utf-8")
+    assert '"version": "%s"' % version in native, \
+        "the MCP client handshake does not carry the runtime version"
+
+    readme = (repo / "README.md").read_text(encoding="utf-8")
+    assert "badge/version-%s-" % version in readme, \
+        "the README badge does not carry the runtime version"
+
+    changelog = (repo / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert "## %s —" % version in changelog, \
+        "the changelog has no section for the released version"

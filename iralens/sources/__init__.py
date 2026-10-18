@@ -14,6 +14,7 @@ from .base import Source, SourceHealth
 from .bilibili import BilibiliSource
 from .boss import BossSource
 from .github import GitHubSource
+from .indiehackers import IndieHackersSource
 from .linkedin import LinkedInSource
 from .reddit import RedditSource
 from .rss import RSSSource
@@ -32,6 +33,7 @@ ALL_SOURCES: List[Source] = [
     YouTubeSource(),
     TwitterSource(),
     RedditSource(),
+    IndieHackersSource(),
     BilibiliSource(),
     XiaoHongShuSource(),
     V2EXSource(),
@@ -74,6 +76,7 @@ def route_url(url: str) -> Optional[Source]:
 
 __all__ = [
     "Source",
+    "IndieHackersSource",
     "SourceHealth",
     "ALL_SOURCES",
     "get_source",

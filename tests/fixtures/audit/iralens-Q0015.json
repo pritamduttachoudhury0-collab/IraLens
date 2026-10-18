@@ -1,0 +1,207 @@
+{
+ "query_id": "Q0015",
+ "query": "site:docs.python.org/3/library/asyncio-task.html TaskGroup",
+ "system": "iralens",
+ "attempt": 1,
+ "started_at": "2026-10-17T13:12:22.667723+00:00",
+ "options": {
+  "max_results": 5,
+  "reformulate": false,
+  "cache": "bypass"
+ },
+ "status": "returned",
+ "response": {
+  "query": "site:docs.python.org/3/library/asyncio-task.html TaskGroup",
+  "results": [
+   {
+    "title": "Coroutines and tasks \u2014 Python 3.15.0 documentation",
+    "url": "https://docs.python.org/3/library/asyncio-task.html",
+    "canonical_url": "https://docs.python.org/3/library/asyncio-task.html",
+    "snippet": "2 days ago \u00b7 TaskGroup provides stronger safety guarantees than gather for scheduling a nesting of subtasks: if a task (or a subtask, \u2026",
+    "score": 0.644,
+    "score_breakdown": {
+     "relevance": 0.56,
+     "authority": 0.6,
+     "freshness": 0.5,
+     "agreement": 1.0
+    },
+    "engines": [
+     "bing"
+    ],
+    "engine_ranks": {
+     "bing": 1
+    },
+    "published_at": null,
+    "date_status": "unknown",
+    "queries": [
+     "site:docs.python.org/3/library/asyncio-task.html TaskGroup"
+    ],
+    "security_flags": [],
+    "merged_from": [],
+    "date_evidence": ""
+   },
+   {
+    "title": "Python Taskgroups with asyncIO - GeeksforGeeks",
+    "url": "https://www.geeksforgeeks.org/python/python-taskgroups-with-asyncio/",
+    "canonical_url": "https://geeksforgeeks.org/python/python-taskgroups-with-asyncio",
+    "snippet": "Jul 23, 2025 \u00b7 Task groups are introduced in Python 3.11 along with Exception Groups and as the name suggests it groups similar or \u2026",
+    "score": 0.4716,
+    "score_breakdown": {
+     "relevance": 0.1667,
+     "authority": 0.6,
+     "freshness": 0.4247,
+     "agreement": 1.0
+    },
+    "engines": [
+     "bing"
+    ],
+    "engine_ranks": {
+     "bing": 3
+    },
+    "published_at": "2025-07-23",
+    "date_status": "known",
+    "queries": [
+     "site:docs.python.org/3/library/asyncio-task.html TaskGroup"
+    ],
+    "security_flags": [],
+    "merged_from": [],
+    "date_evidence": "snippet_written"
+   },
+   {
+    "title": "How to use asyncio.TaskGroup \u2013 SuperFastPython",
+    "url": "https://superfastpython.com/asyncio-taskgroup/",
+    "canonical_url": "https://superfastpython.com/asyncio-taskgroup",
+    "snippet": "Jun 29, 2023 \u00b7 The asyncio.TaskGroup class is intended as a replacement for the asyncio.create_task () function for creating tasks \u2026",
+    "score": 0.4202,
+    "score_breakdown": {
+     "relevance": 0.25,
+     "authority": 0.5,
+     "freshness": 0.1012,
+     "agreement": 1.0
+    },
+    "engines": [
+     "bing"
+    ],
+    "engine_ranks": {
+     "bing": 2
+    },
+    "published_at": "2023-06-29",
+    "date_status": "known",
+    "queries": [
+     "site:docs.python.org/3/library/asyncio-task.html TaskGroup"
+    ],
+    "security_flags": [],
+    "merged_from": [],
+    "date_evidence": "snippet_written"
+   }
+  ],
+  "queries": [
+   {
+    "text": "site:docs.python.org/3/library/asyncio-task.html TaskGroup",
+    "strategy": "original"
+   }
+  ],
+  "outcomes": [
+   {
+    "engine": "duckduckgo",
+    "status": "skipped",
+    "kind": "circuit_open",
+    "count": 0,
+    "detail": "engine skipped after repeated failures; retrying after cooldown",
+    "attempts": 1,
+    "filter_modes": {}
+   },
+   {
+    "engine": "bing",
+    "status": "results",
+    "kind": "ok",
+    "count": 3,
+    "detail": "",
+    "attempts": 1,
+    "filter_modes": {}
+   },
+   {
+    "engine": "wikipedia",
+    "status": "empty",
+    "kind": "empty",
+    "count": 0,
+    "detail": "",
+    "attempts": 1,
+    "filter_modes": {}
+   },
+   {
+    "engine": "semantic-search",
+    "status": "skipped",
+    "kind": "circuit_open",
+    "count": 0,
+    "detail": "engine skipped after repeated failures; retrying after cooldown",
+    "attempts": 1,
+    "filter_modes": {}
+   }
+  ],
+  "fallbacks": [
+   {
+    "from": "duckduckgo",
+    "to": "bing",
+    "reason": "circuit_open"
+   },
+   {
+    "from": "wikipedia",
+    "to": "semantic-search",
+    "reason": "empty"
+   }
+  ],
+  "filters": {
+   "requested": {
+    "date_from": null,
+    "date_to": null,
+    "include_domains": [],
+    "exclude_domains": [],
+    "file_type": null,
+    "language": null,
+    "region": null
+   },
+   "report": {
+    "applied_post": [],
+    "date_unknown_kept": 0,
+    "dropped": 0,
+    "non_public_dropped": 0
+   }
+  },
+  "cache": {
+   "status": "bypass",
+   "stored": false,
+   "fresh": true
+  },
+  "dedup_log": [],
+  "no_results_reason": "none",
+  "security_flags": [],
+  "summary": "3 results from bing; degraded: duckduckgo, semantic-search failed or were skipped; shortfall: exhausted (3/5)",
+  "shortfall_reason": "exhausted",
+  "degraded": true,
+  "degradation": {
+   "degraded": true,
+   "answered": [
+    "bing",
+    "wikipedia"
+   ],
+   "failed": [],
+   "skipped": [
+    "duckduckgo",
+    "semantic-search"
+   ],
+   "skip_reasons": {
+    "duckduckgo": "circuit_open",
+    "semantic-search": "circuit_open"
+   },
+   "shortfall_reason": "exhausted"
+  }
+ },
+ "source_urls": [
+  "https://docs.python.org/3/library/asyncio-task.html",
+  "https://www.geeksforgeeks.org/python/python-taskgroups-with-asyncio/",
+  "https://superfastpython.com/asyncio-taskgroup/"
+ ],
+ "finished_at": "2026-10-17T13:12:26.080675+00:00",
+ "latency_seconds": 3.412960734999956
+}

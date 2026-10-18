@@ -1,0 +1,45 @@
+{
+  "query_id": "Q0009",
+  "navigation": {
+    "requested_url": "https://react.dev/learn",
+    "final_url": "https://react.dev/learn",
+    "url": "https://react.dev/learn",
+    "title": "Quick Start \u2013 React",
+    "status_code": 200,
+    "content_type": "text/html; charset=utf-8",
+    "redirected": false,
+    "redirect_chain": [
+      "https://react.dev/learn"
+    ],
+    "retrieved_at": "2026-10-17T13:31:58Z",
+    "encoding": "UTF-8",
+    "ok": true,
+    "message": "Navigated to https://react.dev/learn\nTitle: Quick Start \u2013 React"
+  },
+  "output": {
+    "innerTextPrefix": "(function () { try { let logShown = false; function setUwu(isUwu) { try { if (isUwu) { localStorage.setItem('uwu', true); document.documentElement.classList.add('uwu'); if (!logShown) { console.log('uwu mode! turn off with ?uwu=0'); console.log('logo credit to @sawaratsuki1004 via https://github.com/SAWARATSUKI/KawaiiLogos'); logShown = true; } } else { localStorage.removeItem('uwu'); document.documentElement.classList.remove('uwu'); console.log('uwu mode off. turn on with ?uwu'); } } catch (err",
+    "scriptCount": 15,
+    "scripts": [
+      {
+        "text": "",
+        "display": "block",
+        "visibility": "visible"
+      },
+      {
+        "text": "",
+        "display": "block",
+        "visibility": "visible"
+      },
+      {
+        "text": "",
+        "display": "block",
+        "visibility": "visible"
+      },
+      {
+        "text": "",
+        "display": "block",
+        "visibility": "visible"
+      }
+    ]
+  }
+}

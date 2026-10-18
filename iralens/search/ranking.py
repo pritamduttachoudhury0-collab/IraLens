@@ -22,6 +22,8 @@ silently dropped — but it ranks below clean content.
 from __future__ import annotations
 
 import math
+import re
+from functools import lru_cache
 from datetime import date, datetime, timezone
 from typing import Dict, Mapping, Optional, Tuple
 
@@ -72,6 +74,214 @@ def _specificity_multiplier(url: str, title: str, question: str,
     return mult
 
 
+
+#: What a request shape asks for, and what such a source looks like.
+#:
+#: A question's request shape says which *kind* of source would answer it:
+#: the official documentation, the primary source, the government record, the
+#: latest release. A page of the right kind is a better answer than a
+#: better-ranking page of the wrong kind, and the shape is the only place
+#: that distinction is available — the query text alone cannot say it.
+_SOURCE_KINDS: Dict[str, Dict[str, Tuple[str, ...]]] = {
+    "documentation": {
+        "hosts": (".readthedocs.io", ".readthedocs.org", ".readthedocs.com"),
+        # Path segments, matched whole: "/act" must not match "/active".
+        "path": ("docs", "doc", "documentation", "reference", "manual",
+                 "developer", "api", "tutorial", "tutorials", "guide",
+                 "how-to", "cookbook"),
+        # Host prefixes, e.g. "docs.python.org".
+        "host_prefix": ("docs.", "developer."),
+        "title": ("documentation", "docs", "reference", "manual", "guide",
+                  "tutorial", "cookbook", "getting started"),
+    },
+    "official": {
+        "hosts": (".gov", ".gov.in", ".gov.uk", ".mil", ".nic.in", ".state.gov",
+                  ".europa.eu", ".un.org", ".who.int", ".int"),
+        "path": ("guideline", "guidelines", "circular", "notification",
+                 "act", "rules", "official", "policy", "statute"),
+        "host_prefix": (),
+        "title": ("official", "government", "ministry", "department",
+                  "guideline", "guidelines", "circular", "notification",
+                  "statute", "policy"),
+    },
+    "primary": {
+        "hosts": (".edu", ".ac.uk", ".ac.in", ".edu.in", "doi.org", "arxiv.org",
+                  "jstor.org", "pubmed.ncbi.nlm.nih.gov", "springer.com",
+                  "sciencedirect.com", "ieee.org", "acm.org", "nature.com",
+                  "science.org", "plos.org", "biomedcentral.com"),
+        "path": ("doi", "abs", "pdf", "paper", "preprint", "record"),
+        "host_prefix": (),
+        "title": ("original paper", "primary source", "primary study", "research",
+                  "study", "journal", "preprint", "doi", "peer reviewed",
+                  "peer-reviewed", "systematic review", "arxiv"),
+    },
+    "latest": {
+        "hosts": (),
+        # Deliberately narrow: a news index is not "the latest X", and
+        # promoting one over the page that actually answers is worse than
+        # not preferring anything.
+        "path": ("changelog", "releases", "release-notes", "whatsnew",
+                 "what-s-new", "versions", "latest"),
+        "host_prefix": (),
+        "title": ("changelog", "release notes", "what's new", "whats new",
+                  "new in", "latest release"),
+    },
+    "dataset": {
+        "hosts": ("data.gov", "data.gov.in", "worldbank.org", "un.org",
+                  "europa.eu", "oecd.org", "kaggle.com", "datahub.io",
+                  "data.gov.uk", "nseindia.com"),
+        "path": ("dataset", "datasets", "data", "api", "indicator",
+                 "statistics", "download", "downloads", "metadata"),
+        "host_prefix": ("data.", "datasets."),
+        "title": ("dataset", "datasets", "statistics", "download",
+                  "dashboard", "indicator", "metadata"),
+    },
+    "reference": {
+        "hosts": (".edu", ".ac.uk", ".ac.in", ".edu.in",
+                  "scholar.google.com", "semanticscholar.org",
+                  "researchgate.net", "arxiv.org", "jstor.org"),
+        "path": ("lecture", "notes", "course", "syllabus", "pdf", "paper",
+                 "bibliography", "references"),
+        "host_prefix": (),
+        "title": ("lecture notes", "notes", "course", "syllabus", "references",
+                  "bibliography", "textbook", "academic"),
+    },
+    "encyclopedia": {
+        "hosts": ("wikipedia.org", "britannica.com", "encyclopedia.com"),
+        "path": (),
+        "host_prefix": (),
+        "title": ("wikipedia", "encyclopedia", "britannica"),
+    },
+}
+
+#: Which request words ask for which kind of source.
+_KIND_WORDS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    ("documentation", ("documentation", "docs", "manual", "reference page")),
+    ("primary", ("primary", "original", "doi", "arxiv", "peer reviewed",
+                 "peer-reviewed", "systematic review", "study", "studies",
+                 "literature", "paper")),
+    ("official", ("government", "official", "statute", "guideline", "legal",
+                  "legislation", "policy", "conservation", "archive",
+                  "announcement", "record", "procedure")),
+    ("latest", ("latest", "current", "release", "recent", "newest", "update",
+                "changes")),
+    ("dataset", ("dataset", "data", "csv", "api", "dashboard", "statistics",
+                 "download", "metadata")),
+    ("reference", ("lecture", "notes", "academic", "references", "bibliography",
+                   "textbook", "course", "university", "pdf")),
+    ("encyclopedia", ("encyclopedia", "fact check", "wikipedia")),
+)
+
+#: How much a page of the requested kind is preferred.
+#:
+#: The preference is *additive and bounded* rather than multiplicative, so
+#: that the kind of a page can never outweigh how well the page matches the
+#: question: a page of the right kind that barely mentions the subject
+#: cannot outrank a page of the wrong kind that answers it outright. The
+#: bonus is worth at most a fifth of the relevance scale.
+#:
+#: Calibrated against the audit's own captured 3,000-query result set by
+#: re-ranking it with and without the preference
+#: (`benchmarks/measure_shape_ranking.py --sweep`):
+#:
+#:     bonus   top-1 changed   better   worse
+#:     0.05             3            0       0
+#:     0.10            18            3       2
+#:     0.15            26            5       3
+#:     0.20            31            5       3
+#:     0.30            63           15       3
+#:     0.50           128           44      12
+#:     1.00           186           53      23
+#:
+#: 0.20 is a fifth of the relevance scale: enough to settle a near-tie in
+#: favour of the kind of source the question asked for, and not enough to
+#: let the kind of a page outrank a page that simply answers the question.
+#: Note that the coverage metric looks at the *best* result of a set, not
+#: the first, so this preference moves which answer is presented rather
+#: than the coverage figure — and that the metric is a lexical proxy, so
+#: the "better" column is an upper bound on the real improvement.
+_REQUEST_KIND_BONUS = 0.20
+
+
+@lru_cache(maxsize=4096)
+def request_kinds(question: str) -> frozenset:
+    """The kinds of source this question asks for.
+
+    Derived from the question's *request shape* — the part that says which
+    kind of source would answer it, as opposed to the part that says what
+    the question is about. An empty set means the question does not ask for
+    a particular kind of source, and no preference is applied.
+    """
+    from .queryfocus import split_subject
+
+    _subject, shape = split_subject(question or "")
+    if not shape:
+        # The whole question may itself be a request ("official dataset
+        # download" names no subject at all); then the shape is the query.
+        shape = question or ""
+        if not _starts_with_request_word(question or ""):
+            return frozenset()
+    words = set(shape.lower().replace(",", " ").replace("-", " ").split())
+    kinds = set()
+    for kind, triggers in _KIND_WORDS:
+        if words & set(triggers):
+            kinds.add(kind)
+    return frozenset(kinds)
+
+
+def _starts_with_request_word(question: str) -> bool:
+    """Does the question begin with a request word ("official dataset...")?"""
+    from .queryfocus import REQUEST_MARKERS, _first_content_word, _words_with_case
+
+    if not question:
+        return False
+    return _first_content_word(_words_with_case(question)) in REQUEST_MARKERS
+
+
+def _has_word(text: str, marker: str) -> bool:
+    """Is this marker present as a whole word in the text?
+
+    Plain substring matching would let "database" match the dataset marker
+    "data" and "policies" match the official marker "policy".
+    """
+    if " " in marker:
+        return marker in text
+    return re.search(rf"\b{re.escape(marker)}\b", text) is not None
+
+
+def _request_kind_bonus(url: str, title: str, question: str) -> float:
+    """The relevance bonus for a page of the kind the question asked for."""
+    kinds = request_kinds(question)
+    if not kinds:
+        return 0.0
+    import urllib.parse
+    host = ""
+    path = ""
+    if url:
+        parts = urllib.parse.urlsplit(url)
+        host = (parts.hostname or "").lower().removeprefix("www.")
+        path = (parts.path or "").lower()
+    title_low = (title or "").lower()
+    segments = [segment for segment in path.split("/") if segment]
+    if not segments:
+        # A bare homepage is the entry point to the right kind of source,
+        # not the source itself. The specificity penalty already says so;
+        # the shape preference must not undo it.
+        return 0.0
+    for kind in kinds:
+        spec = _SOURCE_KINDS.get(kind)
+        if not spec:
+            continue
+        if any(host.endswith(suffix) for suffix in spec["hosts"]):
+            return _REQUEST_KIND_BONUS
+        if any(host.startswith(prefix) for prefix in spec["host_prefix"]):
+            return _REQUEST_KIND_BONUS
+        if any(segment in segments for segment in spec["path"]):
+            return _REQUEST_KIND_BONUS
+        if any(_has_word(title_low, marker) for marker in spec["title"]):
+            return _REQUEST_KIND_BONUS
+    return 0.0
+
 def relevance(best_rank: int, title: str, snippet: str, question: str, *,
               url: str = "", answer_type: str = "") -> float:
     """Term/phrase coverage blended with the engine's own rank.
@@ -104,7 +314,12 @@ def relevance(best_rank: int, title: str, snippet: str, question: str, *,
         base = 0.5 * rank_part + 0.35 * overlap + 0.15 * phrase_part
     else:
         base = 0.5 * rank_part + 0.5 * overlap
-    return round(min(1.0, base * _specificity_multiplier(url, title, question, answer_type)), 4)
+    # The shape preference and the specificity penalty are independent: the
+    # kind of a page is worth a bounded bonus, and the homepage penalty is
+    # exactly what says "this is a hub, not the answer".
+    base = min(1.0, base + _request_kind_bonus(url, title, question))
+    return round(min(1.0, base
+                      * _specificity_multiplier(url, title, question, answer_type)), 4)
 
 
 def authority(url: str, weights: Mapping[str, float], default: float) -> float:

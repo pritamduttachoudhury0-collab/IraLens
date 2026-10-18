@@ -96,6 +96,7 @@ def parse_results_page(html: str) -> ParsedPage:
 
 class MojeekBackend(SearchBackend):
     name = "mojeek"
+    paginated = True
     handled = {"include_domains": EMULATED, "file_type": EMULATED,
                "date_from": POST, "date_to": POST, "exclude_domains": POST,
                "language": UNSUPPORTED, "region": UNSUPPORTED}
@@ -106,9 +107,12 @@ class MojeekBackend(SearchBackend):
             parts.insert(0, f"site:{filters.include_domains[0]}")
         return " ".join(parts)
 
-    def search(self, query: str, filters: SearchFilters, limit: int, context: Any) -> List[SearchHit]:
+    def search(self, query: str, filters: SearchFilters, limit: int, context: Any,
+               *, offset: int = 0) -> List[SearchHit]:
         timeout = int(context.config.get("search_timeout_seconds", 45)) if getattr(context, "config", None) else 45
         url = ENDPOINT.format(q=urllib.parse.quote_plus(query))
+        if offset:
+            url += f"&s={int(offset)}"
         html = fetch_serp_html(context, url, timeout)
         page = parse_results_page(html)
         if page.hits:

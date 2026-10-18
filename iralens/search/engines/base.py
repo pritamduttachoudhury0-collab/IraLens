@@ -73,8 +73,33 @@ class SearchBackend(ABC):
         return query
 
     @abstractmethod
-    def search(self, query: str, filters: SearchFilters, limit: int, context: Any) -> List[SearchHit]:
-        """Return normalized hits. Raise a IraLensError on failure."""
+    def search(self, query: str, filters: SearchFilters, limit: int, context: Any,
+               *, offset: int = 0) -> List[SearchHit]:
+        """Return normalized hits. Raise a IraLensError on failure.
+
+        `offset` is the pagination primitive: how many results to skip. A
+        backend that cannot paginate must say so (see `paginated`) rather
+        than silently returning the same first page again.
+        """
+
+    #: Whether this backend can actually skip `offset` results. A backend
+    #: that cannot must report False so the caller knows the page is a
+    #: repeat instead of mistaking it for new ground.
+    paginated: bool = False
+
+    #: An optional command-line prerequisite (e.g. a bridge CLI). When it
+    #: is missing the backend is *not configured* — which is different from
+    #: *failing*, and must not be reported as a degraded engine.
+    requires_command: str = ""
+
+    def availability(self) -> tuple:
+        """(available, reason). A not-configured backend reports False."""
+        if self.requires_command:
+            import shutil
+
+            if not shutil.which(self.requires_command):
+                return False, f"{self.requires_command} is not installed"
+        return True, ""
 
 
 def as_html(raw: Any) -> str:

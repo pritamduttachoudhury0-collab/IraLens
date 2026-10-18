@@ -114,6 +114,7 @@ def parse_results_page(html: str) -> ParsedPage:
 
 class DuckDuckGoBackend(SearchBackend):
     name = "duckduckgo"
+    paginated = True
     handled = {"region": NATIVE, "include_domains": EMULATED, "file_type": EMULATED,
                "date_from": POST, "date_to": POST, "exclude_domains": POST, "language": UNSUPPORTED}
 
@@ -125,16 +126,21 @@ class DuckDuckGoBackend(SearchBackend):
             parts.append(f"filetype:{filters.file_type}")
         return " ".join(parts)
 
-    def search(self, query: str, filters: SearchFilters, limit: int, context: Any) -> List[SearchHit]:
+    def search(self, query: str, filters: SearchFilters, limit: int, context: Any,
+               *, offset: int = 0) -> List[SearchHit]:
         timeout = int(context.config.get("search_timeout_seconds", 45)) if context.config else 45
         # `query` is the built query text (transport: direct HTTP first,
         # rendered engine only as fallback — see fetch_serp_html).
         encoded = urllib.parse.quote_plus(query)
         region = f"&kl={urllib.parse.quote_plus(filters.region)}" if filters.region else ""
+        # DuckDuckGo's `s` parameter is the result offset.
+        offset_param = f"&s={int(offset)}" if offset else ""
         last_error: Optional[Exception] = None
         for endpoint in ENDPOINTS:
             try:
-                html = fetch_serp_html(context, endpoint.format(q=encoded) + region, timeout)
+                html = fetch_serp_html(context,
+                                       endpoint.format(q=encoded) + region + offset_param,
+                                       timeout)
             except Exception as exc:  # engine errors are classified by the caller
                 last_error = exc
                 continue

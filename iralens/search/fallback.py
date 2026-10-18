@@ -12,10 +12,12 @@ not retried, because retrying them makes the block worse.
 
 from __future__ import annotations
 
+import inspect
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping
 
+from ..errors import SourceUnavailableError
 from ..reliability import (
     KIND_EMPTY,
     KIND_OK,
@@ -42,8 +44,31 @@ class ChainResult:
     succeeded: List[str] = field(default_factory=list)
 
 
-def _run_backend(backend: SearchBackend, query: str, filters: SearchFilters, limit: int, context: Any) -> Any:
+def _accepts_offset(backend: Any) -> bool:
+    """Whether `backend.search` accepts the `offset` keyword.
+
+    Third-party backends written against the older four-argument contract
+    must keep working; they simply cannot paginate.
+    """
+    try:
+        sig = inspect.signature(backend.search)
+    except (TypeError, ValueError):  # pragma: no cover - exotic callables
+        return False
+    params = sig.parameters
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return True
+    return "offset" in params
+
+
+def _run_backend(backend: SearchBackend, query: str, filters: SearchFilters, limit: int,
+                 context: Any, offset: int = 0) -> Any:
     """One backend call; a named function so retries can be partially applied."""
+    if offset and not _accepts_offset(backend):
+        raise SourceUnavailableError(
+            f"{getattr(backend, 'name', backend)}: cannot paginate (no offset support)")
+    if _accepts_offset(backend):
+        return backend.search(backend.build_query(query, filters), filters, limit, context,
+                              offset=offset)
     return backend.search(backend.build_query(query, filters), filters, limit, context)
 
 
@@ -60,6 +85,7 @@ def run_chain(
     breaker: Optional[CircuitBreaker] = None,
     site_gate: Optional[Any] = None,
     sleep=None,
+    offset: int = 0,
 ) -> ChainResult:
     result = ChainResult()
     pending = list(chain)
@@ -79,8 +105,8 @@ def run_chain(
             def _call_backend(b=backend, n=name):
                 if site_gate is not None:
                     with site_gate.guard(n):
-                        return _run_backend(b, query, filters, limit, context)
-                return _run_backend(b, query, filters, limit, context)
+                        return _run_backend(b, query, filters, limit, context, offset)
+                return _run_backend(b, query, filters, limit, context, offset)
 
             hits, attempts = call_with_retries(
                 _call_backend,

@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-from . import errors
+from . import content_guard, errors
 from .config import Config
 from .engine.native import BrowserEngine
 from .model import Artifact
@@ -24,6 +24,34 @@ from .security import normalize_public_http_url, public_message
 from .session import Session
 from .sources import ALL_SOURCES, get_source, route_url
 from .sources.web import WebSource
+
+
+def scan_artifact(artifact: Artifact) -> Artifact:
+    """Apply the content guard to an artifact, centrally.
+
+    The guard used to run only inside the web source, so artifacts produced
+    by the Reddit, RSS and other source adapters carried **no** injection
+    flags at all — a guarantee that is not central is not a guarantee.
+    Every artifact now leaves this module scanned, and says so.
+
+    Flagged content is never dropped: the flag travels with the artifact so
+    the consumer can decide.
+    """
+    if not isinstance(artifact, Artifact):
+        return artifact
+    text = f"{artifact.title}\n{artifact.content}"
+    flags = set(content_guard.scan(text))
+    existing = artifact.provenance.get("security_flags")
+    if isinstance(existing, (list, tuple)):
+        flags.update(str(f) for f in existing)
+    merged = sorted(flags)
+    artifact.provenance["security_flags"] = merged
+    artifact.provenance["scanned"] = True
+    for flag in merged:
+        warning = f"security:{flag}"
+        if warning not in artifact.warnings:
+            artifact.warnings.append(warning)
+    return artifact
 
 
 class Context:
@@ -63,12 +91,23 @@ class IraLens:
 
     # ------------------------------------------------------------- discovery
     def search(self, query: str, limit: int = 8, backend: str = "") -> List[Artifact]:
-        """Search the open web. Returns unified artifacts with provenance."""
+        """Search the open web. Returns unified artifacts with provenance.
+
+        The signature of this legacy form is deliberately unchanged. Use
+        `search_api` for pagination and cross-query de-duplication, or
+        `sweep` to run many queries with de-duplication applied.
+
+        A query that names a page ("https://react.dev/learn") is a *read*
+        request: the page is read and returned, because searching for the
+        text of a URL returns whatever happens to rank highest for it.
+        """
+        named = self._read_named_page(query)
+        if named is not None:
+            return [named]
         source = get_source("web-search")
         assert source is not None
-        results = source.fetch(
-            "query", {"query": query, "limit": limit, "backend": backend}, self._context
-        )
+        params: Dict[str, Any] = {"query": query, "limit": limit, "backend": backend}
+        results = source.fetch("query", params, self._context)
         results = results if isinstance(results, list) else [results]
         self.session.last_query = query
         for artifact in results:
@@ -76,6 +115,7 @@ class IraLens:
                 artifact.url, title=artifact.title, source=artifact.source,
                 found_via=f"search:{query}",
             )
+            scan_artifact(artifact)
         return results
 
     def search_api(
@@ -94,10 +134,19 @@ class IraLens:
         from .search.schema import SearchFilters as _Filters, SearchOptions as _Options
 
         f = filters if isinstance(filters, _Filters) else _Filters.build(**(filters or {}))
+        raw = dict(options) if isinstance(options, dict) else {}
         o = options if isinstance(options, _Options) else _Options(**{
-            "max_results": 8, **(options or {}),
-            "engines": tuple((options or {}).get("engines") or ()),
+            "max_results": 8, **raw,
+            "engines": tuple(raw.get("engines") or ()),
+            "exclude_urls": tuple(raw.get("exclude_urls") or ()),
         })
+        named = self._read_named_page(query)
+        if named is not None:
+            from .search.urlrequest import read_response
+            response = read_response(query, named.url, named,
+                                     max_chars=self._page_chars())
+            self.session.last_query = query
+            return response
         engine = self._search_engine()
         response = engine.search(query, filters=f, options=o, context=self._context)
         self.session.last_query = query
@@ -108,6 +157,33 @@ class IraLens:
                 found_via=f"search:{query}",
             )
         return response
+
+    def sweep(self, queries: List[str], *, limit: int = 8,
+              options: Optional[Dict[str, Any]] = None) -> List[Artifact]:
+        """Run several queries and return one de-duplicated corpus.
+
+        De-duplication inside a single response cannot stop a sweep from
+        returning the same pages over and over: the same URL comes back for
+        the second, third and fourth query, and the result budget is spent
+        on pages the caller already has. Here every URL seen in an earlier
+        query is excluded from the later ones.
+        """
+        seen: List[str] = []
+        seen_set = set()
+        out: List[Artifact] = []
+        for query in queries or []:
+            opts = dict(options or {})
+            opts["exclude_urls"] = tuple(seen)
+            response = self.search_api(query, options=opts)
+            from .search import to_artifacts as _to_artifacts
+            for artifact in _to_artifacts(response, query):
+                key = artifact.url
+                if key in seen_set:
+                    continue
+                seen_set.add(key)
+                seen.append(key)
+                out.append(artifact)
+        return out
 
     def research(self, question: str, options: Optional[Dict[str, Any]] = None) -> "ResearchReport":
         """Multi-round research with a cited report.
@@ -157,6 +233,32 @@ class IraLens:
         source = get_source("web-search")
         assert source is not None
         return source.search_engine(self._context)
+
+    def _page_chars(self) -> int:
+        """How much page text a read of a named page keeps."""
+        from .settings import Settings
+        return max(1000, int(Settings.from_config(self.config).research_page_chars))
+
+    def _read_named_page(self, query: str) -> Optional[Artifact]:
+        """Read the page a query names, if it names one.
+
+        Returns the artifact, or ``None`` when the query is not a read
+        request, or when the page could not be read — in which case the
+        search still runs and says what happened.
+        """
+        from .search.urlrequest import read_request
+
+        request = read_request(query)
+        if request is None:
+            return None
+        url, _shape = request
+        try:
+            return self.open(url, mode="auto", max_chars=self._page_chars())
+        except Exception:
+            # A page that cannot be read must not take the search down with
+            # it: the caller still gets whatever the engines can find for
+            # the query text, and the reason is reported to them.
+            return None
 
     def open(
         self,
@@ -208,16 +310,22 @@ class IraLens:
 
         if discovered_from:
             artifact.discovered_from = discovered_from
-        elif self.session.last_query and artifact.url in {
-            d["url"] for d in self.session.discovered
-        }:
-            artifact.discovered_from = f"search:{self.session.last_query}"
+        else:
+            # The provenance is whatever actually surfaced this URL. The
+            # session's `last_query` is only the most recent query, and
+            # using it here attributes a stale search to an unrelated page.
+            recorded = self.session.found_via_for(artifact.url)
+            if recorded:
+                artifact.discovered_from = recorded
+            else:
+                artifact.discovered_from = "open"
 
         self.session.record_open(
             artifact.url, title=artifact.title, source=artifact.source,
             method=artifact.retrieval_method,
         )
-        return artifact
+        # Central guard: every artifact that leaves the facade is scanned.
+        return scan_artifact(artifact)
 
     def read(self, url: str, mode: str = "auto", **kwargs: Any) -> Artifact:
         """Read a page (static-reader-first shorthand for `open`)."""
@@ -256,6 +364,7 @@ class IraLens:
                     item.url, title=item.title, source=item.source,
                     found_via=f"source:{source}:{op}",
                 )
+                scan_artifact(item)
         return result
 
     def sources(self) -> List[Dict[str, Any]]:

@@ -1,0 +1,46 @@
+{
+  "probe": "cache-A-first",
+  "started_at": "2026-10-17T13:16:54.556837+00:00",
+  "query_id": "Q0009",
+  "status": "returned",
+  "output": {
+    "title": "Quick Start",
+    "url": "https://react.dev/learn",
+    "requested_url": "https://react.dev/learn",
+    "final_url": "https://react.dev/learn",
+    "source": "web",
+    "kind": "page",
+    "content": "[Learn React](/learn)\n# Quick Start\nWelcome to the React documentation! This page will give you an introduction to 80% of the React concepts that you will use on a daily basis.\n### You will learn\n- How to create and nest components\n- How to add markup and styles\n- How to display data\n- How to render conditions and lists\n- How to respond to events and update the screen\n- How to share data between components\n## Creating and nesting components\nReact apps are made out of *components*. A component is\n\n…[truncated 13547 chars]",
+    "content_format": "markdown",
+    "metadata": {
+      "requested_url": "https://react.dev/learn",
+      "final_url": "https://react.dev/learn",
+      "redirected": false,
+      "truncated": true,
+      "status_code": 200,
+      "content_type": "text/html; charset=utf-8",
+      "max_chars": 500,
+      "total_chars": 14047
+    },
+    "retrieval_method": "direct",
+    "retrieved_at": "2026-10-17T13:16:54Z",
+    "untrusted": true,
+    "status_code": 200,
+    "content_type": "text/html; charset=utf-8",
+    "warnings": [
+      "content_truncated"
+    ],
+    "provenance": {
+      "security_flags": [],
+      "cache": {
+        "status": "miss"
+      },
+      "requested_url": "https://react.dev/learn",
+      "final_url": "https://react.dev/learn",
+      "redirected": false,
+      "status_code": 200,
+      "content_type": "text/html; charset=utf-8"
+    }
+  },
+  "latency_seconds": 0.19752275700000155
+}

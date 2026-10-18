@@ -71,7 +71,8 @@ class PaidSearchBackupBackend(SearchBackend):
                "exclude_domains": POST, "file_type": POST,
                "language": UNSUPPORTED, "region": UNSUPPORTED}
 
-    def search(self, query: str, filters: SearchFilters, limit: int, context: Any) -> List[SearchHit]:
+    def search(self, query: str, filters: SearchFilters, limit: int, context: Any,
+               *, offset: int = 0) -> List[SearchHit]:
         settings = Settings.from_config(getattr(context, "config", None))
         provider = settings.backup_search_provider.strip().lower()
         key = settings.backup_search_api_key.strip()

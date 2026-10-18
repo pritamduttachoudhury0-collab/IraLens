@@ -24,7 +24,13 @@ import time
 import urllib.error
 from typing import Dict, Optional
 
-from .errors import ExtractionError, OperationTimeoutError, PageUnavailableError
+from .errors import (
+    ExtractionError,
+    IraLensError,
+    OperationTimeoutError,
+    PageUnavailableError,
+    classify_http_status,
+)
 from .security import safe_urlopen
 
 #: Browser-like UA: some SERPs answer the default urllib UA with a bot wall.
@@ -65,25 +71,25 @@ def read_body_with_deadline(resp, max_bytes: int, deadline: float) -> bytes:
     return b"".join(chunks)
 
 
-def _classify_http_error(exc: urllib.error.HTTPError) -> PageUnavailableError:
-    """Map an HTTP status onto a specific, honest error (message kept short)."""
-    status = exc.code
-    if status == 404:
-        return PageUnavailableError("fetch failed (HTTP 404)", hint="check the URL",
-                                    detail="http_404")
-    if status in (401, 403):
-        return PageUnavailableError(
-            f"fetch denied (HTTP {status}); likely a bot check or login wall",
-            hint="wait before retrying, or use another engine",
-            detail=f"http_{status}",
-        )
-    if status == 429:
-        return PageUnavailableError("fetch rate-limited (HTTP 429)",
-                                    hint="wait a moment and retry", detail="http_429")
-    if 500 <= status <= 599:
-        return PageUnavailableError(f"fetch failed (HTTP {status})",
-                                    hint="temporary; retry shortly", detail=f"http_{status}")
-    return PageUnavailableError(f"fetch returned HTTP {status}", detail=f"http_{status}")
+def _classify_http_error(exc: urllib.error.HTTPError) -> IraLensError:
+    """Map an HTTP status onto a specific, honest error (message kept short).
+
+    Shares the taxonomy with the page-read path so a 429 is a typed
+    `RateLimitedError` everywhere and the origin's `Retry-After` survives.
+    """
+    retry_after = None
+    headers = getattr(exc, "headers", None)
+    if headers is not None:
+        try:
+            raw = headers.get("Retry-After")
+        except Exception:
+            raw = None
+        if raw:
+            try:
+                retry_after = float(str(raw).strip())
+            except (TypeError, ValueError):
+                retry_after = None
+    return classify_http_status(exc.code, layer="origin", retry_after=retry_after)
 
 
 def fetch_url_text(

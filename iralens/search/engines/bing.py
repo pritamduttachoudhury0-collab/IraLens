@@ -125,6 +125,7 @@ def parse_results_page(html: str) -> ParsedPage:
 
 class BingBackend(SearchBackend):
     name = "bing"
+    paginated = True
     handled = {"language": NATIVE, "include_domains": EMULATED, "file_type": EMULATED,
                "date_from": POST, "date_to": POST, "exclude_domains": POST, "region": UNSUPPORTED}
 
@@ -136,11 +137,15 @@ class BingBackend(SearchBackend):
             parts.append(f"filetype:{filters.file_type}")
         return " ".join(parts)
 
-    def search(self, query: str, filters: SearchFilters, limit: int, context: Any) -> List[SearchHit]:
+    def search(self, query: str, filters: SearchFilters, limit: int, context: Any,
+               *, offset: int = 0) -> List[SearchHit]:
         timeout = int(context.config.get("search_timeout_seconds", 45)) if context.config else 45
         # `query` is the built query text (transport: direct HTTP first,
         # rendered engine only as fallback — see fetch_serp_html).
         url = ENDPOINT.format(q=urllib.parse.quote_plus(query))
+        if offset:
+            # Bing's pagination parameter: the result index of the first hit.
+            url += f"&first={int(offset) + 1}"
         lang = filters.language
         if not lang:
             from ..language import detect_language
