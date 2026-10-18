@@ -45,6 +45,50 @@ reads report the effective URL and the redirect chain, and preserve the
 query string; the three acceptance harnesses are in the repository; and the
 documentation matches the measured behaviour.
 
+### Post-phase — retrieval quality: the `site:` path, the coverage metric, and the query form (E-36…E-38)
+
+Three defects found by going back to the live providers rather than to the
+captured baseline.
+
+- **E-36 — the `site:` operator lost its path.** `site:github.com/scipy/scipy`
+  was parsed as `site:github.com`, so a repository query became a whole-site
+  search and the scope gate accepted any page on the host. The path is now
+  parsed, enforced against the result URL, and survives tokenizing and
+  reformulation. 324 of the 3,000 corpus queries (10.8%) carry a path scope.
+- **E-37 — the answer-coverage metric judged the whole question.** A result
+  was scored as failing to cover a question about a primary source when it
+  did not contain the word "primary", and a page titled "GLOBLE" "covered" a
+  question about global temperature on one long word. The metric now judges
+  the question's *subject* — the request shape removed — and its
+  *distinguishing* terms. Against ten hand-labelled real provider captures
+  the old metric agreed with the human judgement in 6 of 10 and the new one
+  in 10 of 10.
+- **E-38 — only one query form was ever sent.** A long research question
+  with a request shape is answered by a loose engine with its head term:
+  "Welcome to Python.org" for a question about `asyncio.TaskGroup`, the
+  nginx home page for a websocket question. A new `focus` reformulation
+  strategy sends the question's subject on its own, **in addition to** the
+  full question — the audit's "keep the full query; do not silently
+  simplify it" is honoured literally. Measured on the loose engine, the
+  on-target rate for "nginx reverse proxy websocket version specific known
+  issue" goes from 0/10 to 7/7.
+
+Two consequences followed from the same investigation. A *short* keyword
+form is a liability — the two-word form of "What is the capital of Assam?" is
+"capital assam", which returns 0 on-target results where the question
+returns 10 — so keyword forms are only sent when they still carry at least
+three content terms. And the audit's 45 manual relevance labels cannot be
+used as ground truth: 17 of them are Wikipedia results whose title matches
+the question's subject but whose snippet was empty before E-03, so the
+reviewer was judging a page they could not see.
+
+The subject split that `focus` depends on is measured, not asserted: the
+corpus records the topic of every templated query, and the splitter
+recovers **2,619 of 2,950 = 88.78%** of them exactly
+(`benchmarks/measure_focus_split.py`). The request lexicon is derived from a
+training half of the corpus and scored on a held-out half: **89.02%**
+(`benchmarks/derive_request_markers.py`).
+
 ### Post-phase — a defect in our own measurement (M-01)
 
 Projecting the score exposed a fault in the harness this project wrote to
@@ -62,21 +106,29 @@ code-caused count of zero instead of sticking at 2,098. Pinned by
 audit's captured baseline, applies the documented fix semantics of each
 register entry, and reports the per-query outcome with every number traced
 to the entry that produces it. It reports **3,000/3,000** with no
-code-caused failure, **2,955/3,000** with no defect at all, and **902/3,000**
+code-caused failure, **2,955/3,000** with no defect at all, and **1,637/3,000**
 under the strictest reading. It is a projection, not a measurement.
 
 ### Measured
 
-- `pytest -q` — **584 passed, 14 skipped, 0 failed**.
+- `pytest -q` — **608 passed, 14 skipped, 0 failed**.
 - `ruff check --select E9,F,B .` — clean. `mypy iralens` — clean.
 - `python benchmarks/acceptance_17.py` — **17/17**.
 - `python benchmarks/run_scraping.py` — **12/12**.
-- `python benchmarks/run_audit3000.py --offline-pipeline` — **15,156/15,156
+- `python benchmarks/run_audit3000.py --offline-pipeline` — **14,262/14,262
   clean** over the frozen 3,000-query corpus.
 - `python benchmarks/run_audit3000.py --replay <audit baseline>` — 31,264
-  checks: **9,170 code-caused**, **5,223 external**, 16,871 clean.
+  checks: **8,435 code-caused**, **5,223 external**, 17,606 clean.
 - `python benchmarks/project_score.py` — **3,000/3,000** with no code-caused
-  failure; **2,955/3,000** with no defect at all; **902/3,000** strict.
+  failure; **2,955/3,000** with no defect at all; **1,637/3,000** strict.
+- `python benchmarks/measure_focus_split.py` — the subject split recovers
+  **2,619 / 2,950 = 88.78%** of the corpus topics exactly.
+- `python benchmarks/derive_request_markers.py` — the request lexicon, learned
+  on a training half of the corpus, scores **89.02%** on the held-out half.
+- `python benchmarks/ab_query_forms.py` — over ten hand-labelled real
+  provider captures: the `focus` form is **7/7** on-target where the loose
+  engine returns **0/10** for the full question; the coverage metric agrees
+  with the human labels in **10/10** captures (6/10 before E-37).
 - The live 3,000-query run is **not measured** in the verification
   environment: it can reach package indexes and GitHub only, so the
   provider-side captchas and throttles could not be exercised. The runner

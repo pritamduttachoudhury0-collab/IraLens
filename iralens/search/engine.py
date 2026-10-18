@@ -28,14 +28,15 @@ from .engines import LEGACY_ALIASES, build_backends
 from .engines.base import SearchBackend
 from .fallback import run_chain
 from .intent import classify_query, intent_multiplier
-from .querytext import parse_site_operator, sanitize_query
+from .querytext import parse_site_scopes, sanitize_query
 from .ranking import authority, combine, freshness, relevance, today_utc
 from ..model import Artifact
 from .reformulate import DEFAULT_SYNONYMS
 from .reformulate import reformulate as _reformulate
 from .schema import FilterError, RankedResult, SearchFilters, SearchHit, SearchOptions, SearchResponse
 from .freshness_extract import extract_date
-from .urls import canonical_url, domain_matches, domain_of, is_test_host, unwrap_wrapper
+from .urls import (canonical_url, domain_matches, domain_of, is_test_host,
+                    scope_matches, unwrap_wrapper)
 
 #: Demotion applied to the relevance factor of groups whose hits carry a
 #: prompt-injection security flag. Flagged results are still returned —
@@ -171,7 +172,11 @@ class SearchEngine:
         # structured filter (so engines that can scope natively do) *and* it
         # is enforced on the results (so engines that cannot, like Wikipedia,
         # do not leak off-scope hits).
-        scope_domains, _cleaned = parse_site_operator(question)
+        scope_scopes, _cleaned = parse_site_scopes(question)
+        # The scope keeps its path: "site:github.com/scipy/scipy" is a
+        # repository, not a website. The domain filter stays host-level,
+        # because that is what a domain filter means.
+        scope_domains = [scope.split("/", 1)[0] for scope in scope_scopes]
         if scope_domains and not filters.include_domains:
             filters = replace(filters, include_domains=tuple(scope_domains))
         if options.reformulate:
@@ -220,7 +225,7 @@ class SearchEngine:
             fallbacks.extend(chain_result.fallbacks)
 
         public_hits, rejected = self._public_only(all_hits)
-        filtered, filter_report = self._post_filter(public_hits, filters, scope_domains)
+        filtered, filter_report = self._post_filter(public_hits, filters, scope_scopes)
 
         # Cross-query de-duplication: the caller supplies the URLs it has
         # already collected, and they are dropped here. Dedup inside one
@@ -359,7 +364,8 @@ class SearchEngine:
                 continue
             # The `site:` operator is an explicit scope: a result outside it
             # is not a result for this query, however well it ranked.
-            if scope_domains and not any(domain_matches(host, d) for d in scope_domains):
+            if scope_domains and not any(scope_matches(hit.url, d)
+                                         for d in scope_domains):
                 report["dropped"] += 1
                 continue
             if f.exclude_domains and any(domain_matches(host, d) for d in f.exclude_domains):

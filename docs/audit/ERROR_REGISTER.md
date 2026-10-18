@@ -144,8 +144,67 @@ this one was in the harness this project wrote to measure the audit.
 
 The projection tool that found it — `benchmarks/project_score.py` — reports
 **3,000/3,000** with no code-caused failure, **2,955/3,000** with no defect
-at all, and **902/3,000** under the strictest reading, with each number
+at all, and **1,637/3,000** under the strictest reading, with each number
 traced to the register entry that produces it.
+
+---
+
+# Part 1c — Retrieval quality: three defects found by going back to the providers
+
+The phases above made the system *honest* and *complete*. They did not make
+it *good at finding answers*. The 3,000-query corpus is a research corpus,
+and the audit's own S-RL entry said the relevance misses had an unknown
+upstream cause. This part records what was found when that cause was
+investigated against **live providers**, what was fixed, and what was
+measured.
+
+The evidence is in `benchmarks/fixtures/provider_capture.json`: real result
+pages from Bing and DuckDuckGo, captured on 2026-10-18 and read by hand. Each
+result carries an `on_target` judgement — does it address the question, or is
+it generic filler? `benchmarks/ab_query_forms.py` measures the system against
+those labels.
+
+## What the investigation found
+
+**The baseline's junk was a degraded-network artefact, not a query-form
+problem.** The audit's environment had DuckDuckGo behind a captcha, which left
+the loose engine (Bing) as the only one standing. Fetched live, DuckDuckGo
+answers the audit's own Q0003 — *"Python asyncio TaskGroup cancellation
+ExceptionGroup official documentation"* — with `docs.python.org/3.11/library/
+asyncio-task.html` at rank 1 and ten on-target results out of ten. Bing
+answers the same question with "Welcome to Python.org" at rank 1 and **zero**
+on-target results out of ten. The baseline's records reproduce the Bing
+answer exactly. So the system was not being asked a question it could not
+answer; it was being asked it by the one engine that could not answer it.
+
+That makes two things true at once, and both had to be fixed:
+
+| ID | Error | Impact |
+|----|-------|--------|
+| **E-36** | **The `site:` operator lost its path.** `parse_site_operator()` took `match.group(1).split("/", 1)[0]`, so `site:github.com/scipy/scipy` became `site:github.com`. The scope sent to every engine was a whole-site search, and the scope gate accepted any page on the host — a repository query was answered with the home page of the forge. 324 of the 3,000 corpus queries carry a path scope (**10.8%**). | The path is now parsed (`parse_site_scopes`), enforced (`scope_matches` checks host *and* path), and survives tokenizing, reformulation and the engines. Off-scope results inside the right host are dropped. |
+| **E-37** | **The answer-coverage metric judged the whole question, including its request shape.** A result was called "low coverage" for not containing the words "official", "primary" or "source" — words with no bearing on whether it answers the question. In the other direction, a flat fraction of *all* content terms let a page titled "GLOBLE" "cover" the question *"global temperature 2025 WMO Copernicus estimates comparison"* on one long word. | The metric now judges the question's **subject** (the request shape removed) and its **distinguishing** terms (proper nouns, digits, non-ASCII, long words). Measured against the ten hand-labelled real captures: the pre-fix metric agrees with the human judgement in **6 of 10**; the post-fix metric in **10 of 10**. |
+| **E-38** | **Only one query form was ever sent to a provider.** A long research question with a request shape ("… *replication failures primary literature*") is answered by a loose engine with its *head term*: "Welcome to Python.org" for a question about `asyncio.TaskGroup`, "Capital One" for "capital assam", the nginx home page for a websocket question. The subject of the question — the part that names what the answer is about — was never sent on its own. | A new `focus` reformulation strategy sends the question's subject separately, **in addition to** the full question (the audit's fix clause is explicit: *"Keep the full query; do not silently simplify it"*). Measured on the loose engine, the on-target rate for *"nginx reverse proxy websocket version specific known issue"* goes from **0/10 to 7/7**. |
+
+## What else the investigation changed
+
+* **The keyword form is a liability at small sizes.** The two-word keyword
+  form of *"What is the capital of Assam?"* is "capital assam", and a search
+  for that returns Capital One and a dictionary entry — **0 of 7** on-target,
+  where the question itself returns **10 of 10**. A keyword form is now only
+  sent when it still has at least three content terms.
+* **The subject split is measured, not asserted.** Every templated query in
+  the corpus is a `<topic> + <template suffix>` pair and records its topic, so
+  the split that `focus` depends on can be scored against ground truth:
+  **2,619 / 2,950 = 88.78%** of the corpus topics are recovered exactly
+  (`benchmarks/measure_focus_split.py`). The request lexicon is *derived*
+  from a training half of the corpus and scored on a held-out half:
+  **89.02%** held-out (`benchmarks/derive_request_markers.py`).
+* **The audit's 45 manual relevance labels cannot be used as ground truth.**
+  17 of the 45 are Wikipedia results whose *title* matches the question's
+  subject but whose snippet was empty before E-03 — a live Wikipedia API
+  fetch shows the real snippet for "What is the capital of Assam?" is
+  *"Dispur is the capital of Assam while Dibrugarh is the second capital"*.
+  The reviewer could not see it. Those labels are a judgement made blind.
 
 ---
 
@@ -191,7 +250,8 @@ they determine how much of each document can be trusted.
 | A — Integrity & Truthfulness | E-01 … E-13 | **complete** | `ba8a658` |
 | B — Completeness & Scale | E-14 … E-27 | **complete** | `14ad8be` |
 | C — Extraction, Resilience, Safety & Test-Readiness | E-28 … E-35 | **complete** | `f7f1059` |
-| Post-phase — our own measurement | M-01 | **complete** | this commit |
+| Post-phase — our own measurement | M-01 | **complete** | `7d216e4` |
+| Post-phase — retrieval quality | E-36, E-37, E-38 | **complete** | this commit |
 
 **Every entry in this register is implemented and regression-tested.** One
 test per defect lives in `tests/test_audit_phase_a.py` (E-01…E-13),

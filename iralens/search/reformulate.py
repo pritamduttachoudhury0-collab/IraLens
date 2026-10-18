@@ -12,7 +12,8 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Mapping
 
-from .querytext import parse_site_operator, quoted_phrases, tokenize
+from .queryfocus import match_request_phrase
+from .querytext import parse_site_scopes, quoted_phrases, tokenize
 
 STOPWORDS = frozenset("""
 a an and are as at be been but by can could did do does for from had has have
@@ -42,7 +43,7 @@ def _keywords(text: str) -> List[str]:
     being flattened into the words "site" and the bare host.
     """
     kept: List[str] = []
-    scope_domains, cleaned = parse_site_operator(text)
+    scope_domains, cleaned = parse_site_scopes(text)
     for phrase in quoted_phrases(cleaned):
         quoted = f'"{phrase}"'
         if quoted not in kept:
@@ -78,9 +79,37 @@ def reformulate(
         return []
     candidates: List[Dict[str, str]] = [{"text": question, "strategy": "original"}]
 
+    # The subject of the question, without the request shape. A provider
+    # given "Python asyncio TaskGroup cancellation ExceptionGroup official
+    # documentation" matches loosely; given the subject alone it answers
+    # the question. The full question is still sent — this is an *additional*
+    # variant, never a replacement for it.
+    split = match_request_phrase(question)
+    if split:
+        subject, _shape = split
+        subject_terms = _keywords(subject) if subject else []
+        # A two-word subject collapses onto whatever its head term is:
+        # "capital assam" is a search for Capital One. Only a subject with
+        # real substance is worth a variant of its own.
+        if len(subject_terms) >= 3:
+            subject_text = " ".join(subject_terms)
+            if subject_text.lower() != question.lower():
+                candidates.append({"text": subject_text, "strategy": "focus"})
+
+    # The plain keyword form of the whole question. It is a variant of its
+    # own, not a replacement: the full question is always sent as well.
+    #
+    # A *short* keyword form is a liability, not a variant. Measured over
+    # real provider results, the two-word form of "What is the capital of
+    # Assam?" is "capital assam", and a search for that returns Capital One
+    # and a dictionary entry — zero on-target results, where the question
+    # itself returns ten. A keyword form is only worth sending when it
+    # still carries enough of the question to stand on its own.
     keywords = _keywords(question)
-    if keywords:
-        candidates.append({"text": " ".join(keywords), "strategy": "keywords"})
+    if len(keywords) >= 3:
+        keyword_text = " ".join(keywords)
+        if keyword_text.lower() != question.lower():
+            candidates.append({"text": keyword_text, "strategy": "keywords"})
 
     # Jurisdiction-biased variant (D2): a procedure/statistic question naming
     # a place gets one site-biased query so the official page is *retrieved*,
@@ -96,7 +125,7 @@ def reformulate(
     if len(subs) > 1:
         # A `site:` scope is a constraint on the whole question: every
         # sub-question inherits it, or a split quietly widens the search.
-        scope_domains, _ = parse_site_operator(question)
+        scope_domains, _ = parse_site_scopes(question)
         scope = " ".join(f"site:{domain}" for domain in scope_domains)
         for part in subs:
             text = f"{part} {scope}".strip() if scope else part

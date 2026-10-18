@@ -118,6 +118,27 @@ def domain_of(url: str) -> str:
     return host[4:] if host.startswith("www.") else host
 
 
+def scope_matches(url: str, scope: str) -> bool:
+    """True if *url* is inside the *scope* (``host`` or ``host/path``)."""
+    import urllib.parse
+
+    try:
+        parts = urllib.parse.urlsplit(url or "")
+    except ValueError:
+        return False
+    host = (parts.hostname or "").lower().removeprefix("www.")
+    scope = (scope or "").lower().strip().removeprefix("www.")
+    if not host or not scope:
+        return False
+    scope_host, _, scope_path = scope.partition("/")
+    if not (host == scope_host or host.endswith("." + scope_host)):
+        return False
+    if not scope_path:
+        return True
+    path = (parts.path or "/").lower()
+    return path == "/" + scope_path or path.startswith("/" + scope_path.rstrip("/") + "/")
+
+
 def domain_matches(host: str, domain: str) -> bool:
     """True if host equals domain or is a subdomain of it."""
     return host == domain or host.endswith("." + domain)

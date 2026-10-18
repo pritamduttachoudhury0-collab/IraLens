@@ -132,13 +132,13 @@ verification environment, on 2026-10-18.
 
 | what | command | result |
 |---|---|---|
-| the test suite | `.venv/bin/python -m pytest -q` | **584 passed, 14 skipped, 0 failed** |
+| the test suite | `.venv/bin/python -m pytest -q` | **608 passed, 14 skipped, 0 failed** |
 | lint | `.venv/bin/ruff check --select E9,F,B .` | clean |
 | types | `.venv/bin/mypy iralens` | clean (81 source files) |
 | the audit's 17 acceptance checks, inverted | `python benchmarks/acceptance_17.py` | **17/17** |
 | the scraping test | `python benchmarks/run_scraping.py` | **12/12** |
-| the frozen 3,000-query corpus through the engine | `python benchmarks/run_audit3000.py --offline-pipeline` | **15,156/15,156 clean** |
-| the audit's own captured 3,000-row run, re-scored | `python benchmarks/run_audit3000.py --replay <baseline>` | 31,264 checks: **9,170 code-caused**, **5,223 external**, 16,871 clean |
+| the frozen 3,000-query corpus through the engine | `python benchmarks/run_audit3000.py --offline-pipeline` | **14,262/14,262 clean** |
+| the audit's own captured 3,000-row run, re-scored | `python benchmarks/run_audit3000.py --replay <baseline>` | 31,264 checks: **8,435 code-caused**, **5,223 external**, 17,606 clean |
 | the projected per-query score | `python benchmarks/project_score.py` | **3,000/3,000** with no code-caused failure — see §5 |
 | the live 3,000-query run | `python benchmarks/run_audit3000.py --live` | **not_run** — see §4 |
 
@@ -184,7 +184,7 @@ and this report does not claim it. What *is* claimed, and measured, is:
 - every **code-caused** failure the audit could identify is fixed, and each
   fix has a named regression test;
 - the **3,000-query pipeline** is clean on every check the code controls
-  (15,156/15,156);
+  (14,262/14,262);
 - the **scraping test** is 12/12 and the **acceptance suite** is 17/17;
 - what remains is named, classified and reproducible.
 
@@ -202,7 +202,7 @@ entry that produces it.
 |---|---|---|
 | no **code-caused** failure | **3,000/3,000** (100%) | every defect this project can fix is fixed; this is the number that should be 100% |
 | no defect at all | **2,955/3,000** (98.5%) | the audit's own manually confirmed relevance defects (45) are upstream and remain; the system now *discloses* them instead of hiding them |
-| no finding at all (strictest) | **902/3,000** (30.1%) | the lexical proxy still objects to 2,098 queries, 2,053 of which the audit never reviewed |
+| no finding at all (strictest) | **1,637/3,000** (54.6%) | the coverage proxy still objects to 1,363 queries, 1,318 of which the audit never reviewed |
 
 Two conditions move the middle and lower rows, and neither is in the code's
 control.
@@ -223,13 +223,85 @@ means changing Bing and DuckDuckGo, and the audit explicitly forbade the
 shortcut it would otherwise invite: "keep the full query; do not silently
 simplify it."
 
+That last clause is not a reason to do nothing, because sending the full
+query does not mean sending *only* the full query. The subject of a research
+question — the part that names what the answer is about — can be sent **in
+addition to** the full question, which is what the `focus` strategy does
+(E-38). The full query is still sent; the audit's clause is honoured
+literally.
+
+**Why the strictest row moved, and what did not cause it.** The strictest
+row rose from 902/3,000 to 1,637/3,000 because the *instrument* got better,
+not because the system suddenly retrieved 735 more answers. The pre-fix
+coverage metric judged a result against the whole question, request shape
+included: a page that did not contain the word "primary" was scored as
+failing to cover a question about a primary source. Rebuilt against the
+question's subject and its distinguishing terms, and checked against ten
+hand-labelled real provider captures, the metric agrees with the human
+judgement in **10 of 10** captures where the old one managed **6 of 10**
+(E-37). The number that moved is a measurement artefact that was corrected;
+the number that reflects the product is the A/B below.
+
+### What was measured against the providers
+
+The projection replays the audit's captured baseline. It cannot tell you
+whether the *product* finds better answers, because the baseline is a
+recording of the old system. So the product was measured directly, against
+live providers, with the results read by hand
+(`benchmarks/fixtures/provider_capture.json`,
+`benchmarks/ab_query_forms.py`).
+
+The first finding reframes the whole relevance family: **the baseline's junk
+was a degraded-network artefact.** The audit's environment had DuckDuckGo
+behind a captcha, which left the loose engine as the only one standing.
+Fetched live, DuckDuckGo answers the audit's own Q0003 — *"Python asyncio
+TaskGroup cancellation ExceptionGroup official documentation"* — with
+`docs.python.org/3.11/library/asyncio-task.html` at rank 1 and **10 of 10**
+on-target results. Bing answers the same question with "Welcome to
+Python.org" at rank 1 and **0 of 10**. The baseline's recorded results
+reproduce the Bing answer exactly. The system was being asked a question it
+could answer, by the one engine that could not answer it.
+
+That is why the `focus` strategy matters: it is the fallback for exactly the
+degraded-network case the audit measured.
+
+| query | engine | form | on-target | coverage verdict |
+|---|---|---|---|---|
+| What is the capital of Assam? | Bing | original | **10/10** | good |
+| What is the capital of Assam? | Bing | keyword form | **0/7** | low |
+| What is the capital of Assam? | DuckDuckGo | original | **10/10** | good |
+| Python asyncio TaskGroup … official documentation | Bing | original | **0/10** | low |
+| Python asyncio TaskGroup … official documentation | Bing | focus | **0/10** | low |
+| Python asyncio TaskGroup … official documentation | DuckDuckGo | original | **10/10** | good |
+| exoplanet atmosphere spectroscopy … primary literature | Bing | original | **10/10** | partial |
+| exoplanet atmosphere spectroscopy … primary literature | Bing | focus | **10/10** | partial |
+| nginx reverse proxy websocket … known issue | Bing | original | **0/10** | low |
+| nginx reverse proxy websocket … known issue | Bing | **focus** | **7/7** | good |
+
+Read honestly, this is a **demonstration, not a rate**: ten captures, four
+questions, one engine's behaviour per question. It shows three things.
+
+1. The `focus` form turns the loose engine's worst case from 0/10 to 7/7.
+2. The *keyword* form is worse than useless at small sizes — 0/7 where the
+   question is 10/10 — so short keyword forms are no longer sent.
+3. The coverage metric that judges these results agrees with the human
+   labels 10/10 after the fix and 6/10 before it.
+
+A fourth thing it shows is that **the audit's 45 manual relevance labels
+cannot be used as ground truth**: 17 of them are Wikipedia results whose
+title matches the question's subject but whose snippet was empty before
+E-03. A live Wikipedia API fetch shows the real snippet for *"What is the
+capital of Assam?"* is *"Dispur is the capital of Assam while Dibrugarh is
+the second capital"*. The reviewer could not see it, and called a correct
+answer filler.
+
 ### The correction this projection forced
 
 Scoring the baseline exposed a fault in *our own harness*, not in IraLens.
 The `RL` predicate used a lexical term-overlap proxy and charged every
 low-coverage query to the code. Against the audit's own 45 manual
-confirmations that proxy has precision **0.016** and recall **0.756** — it
-flags 2,098 queries the audit never examined, and misses 11 the audit did
+confirmations that proxy had precision **0.016** and recall **0.756** — it
+flagged 2,098 queries the audit never examined, and missed 11 the audit did
 confirm. The harness now scores two families:
 
 | family | what it means | cause | fixed by |
@@ -237,12 +309,23 @@ confirm. The harness now scores two families:
 | `RL` | the response **hid** low coverage (`no_results_reason: "none"` while the coverage verdict is `low`) | `code` | E-22 |
 | `RLR` | the results themselves are weak | `unresolved` | not attributable — the audit says so itself |
 
-The baseline replay totals are unchanged (the baseline genuinely did hide the
-coverage, so those findings were correctly code-caused). What changed is what
-a *post-fix* run reports: the 2,098 queries now disclose the gap and move
-from `RL` to `RLR`, so the code-caused count reaches zero instead of
-sticking at 2,098 forever. `tests/test_audit_attribution.py` pins the
-separation.
+The baseline replay totals fall only for the reason the baseline deserves:
+the queries whose coverage was hidden are now disclosed. The code-caused
+count in the replay drops from 2,098 to **1,363**, and the strict-clean rate
+rises from 53.96% to **56.31%** — the difference is the queries the system
+now reports as weak results instead of presenting as answers.
+`tests/test_audit_attribution.py` pins the separation.
+
+A second correction followed from the same investigation. The coverage
+metric itself was wrong (E-37): it judged a result against the whole
+question, request shape included, so a page that did not contain the word
+"primary" was scored as failing to cover a question about a primary source.
+Against the ten hand-labelled real provider captures the old metric agreed
+with the human judgement in 6 of 10 and the new one in 10 of 10. Rebuilt, it
+objects to 1,363 queries rather than 2,098 — and the ones it no longer
+objects to are the ones where the old metric was demanding a coincidence of
+phrasing. This is why the strictest score in §5 moved from 902/3,000 to
+1,637/3,000: the instrument was corrected, not the result inflated.
 
 ---
 

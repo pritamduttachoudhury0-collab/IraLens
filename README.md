@@ -179,11 +179,13 @@ says so.
 
 | What | Result | Date | Evidence |
 |---|---|---|---|
-| Offline + local-fixture test suite (Python 3.11) | **584 passed, 14 skipped, 0 failed** (includes local V8 browser integration tests; skipped tests require live network) | 2026-10-18 | `tests/` · [error register](docs/audit/ERROR_REGISTER.md) |
+| Offline + local-fixture test suite (Python 3.11) | **608 passed, 14 skipped, 0 failed** (includes local V8 browser integration tests; skipped tests require live network) | 2026-10-18 | `tests/` · [error register](docs/audit/ERROR_REGISTER.md) |
 | Audit acceptance suite (17 offline checks, inverted so each asserts the defect is gone) | **17/17** | 2026-10-18 | `python benchmarks/acceptance_17.py` |
 | Scraping test (read/extract probes: budget, main content, JS shell, script leakage, typed 429, block classification, cache provenance, concurrent saves, typed refusal) | **12/12** | 2026-10-18 | `python benchmarks/run_scraping.py` |
-| Frozen 3,000-query corpus through the engine (offline pipeline) | **15,156/15,156 clean**; the same corpus re-scored from the audit's own captured baseline run shows 9,170 code-caused and 5,223 external failures out of 31,264 checks, every code-caused family now fixed | 2026-10-18 | `python benchmarks/run_audit3000.py --offline-pipeline` · `--replay` |
-| Projected 3,000-query score, each number traced to the fix that produces it | **3,000/3,000** with no code-caused failure; **2,955/3,000** with no defect at all; **902/3,000** under the strictest reading | 2026-10-18 | `python benchmarks/project_score.py` |
+| Frozen 3,000-query corpus through the engine (offline pipeline) | **14,262/14,262 clean**; the same corpus re-scored from the audit's own captured baseline run shows 8,435 code-caused and 5,223 external failures out of 31,264 checks, every code-caused family now fixed | 2026-10-18 | `python benchmarks/run_audit3000.py --offline-pipeline` · `--replay` |
+| Projected 3,000-query score, each number traced to the fix that produces it | **3,000/3,000** with no code-caused failure; **2,955/3,000** with no defect at all; **1,637/3,000** under the strictest reading | 2026-10-18 | `python benchmarks/project_score.py` |
+| Retrieval quality against **live providers**, results read by hand | the `focus` query form returns **7/7** on-target for the nginx question where the loose engine returns **0/10** for the full question; the coverage metric agrees with the human labels in **10/10** captures (6/10 before the fix) | 2026-10-18 | `python benchmarks/ab_query_forms.py` |
+| Subject/request split, scored against the corpus's own recorded topics | **2,619 / 2,950 = 88.78%** recovered exactly; the request lexicon scores **89.02%** on a held-out half | 2026-10-18 | `python benchmarks/measure_focus_split.py` · `derive_request_markers.py` |
 | Lint (`ruff --select E9,F,B`) + types (`mypy`) | clean; 81 source files typed | 2026-10-18 | `docs/audit/ERROR_REGISTER.md` |
 | Evidence-driven search improvement (D1–D8) | Ranking/intent, script handling, degradation, date provenance and security regressions covered offline; live quality P@5, 100-page real extraction and live engine resilience **NOT MEASURED** in restricted egress | 2026-10-17 | [final report](docs/improvements/FINAL_REPORT.md) · frozen 300-query holdout in `benchmark/holdout/` |
 | Live 3,000-query run (frozen corpus, live engines) | **NOT MEASURED** — the verification environment reaches only package indexes and GitHub, so the provider-side captchas and throttles could not be exercised; the runner reports `not_run` with the reason | — | `python benchmarks/run_audit3000.py --live` |
@@ -221,7 +223,7 @@ not be run is reported as `not_run`, never as a pass.
 
 `benchmarks/project_score.py` projects the per-query score: **3,000/3,000**
 with no code-caused failure, **2,955/3,000** with no defect at all, and
-**902/3,000** under the strictest reading, with every number traced to the
+**1,637/3,000** under the strictest reading, with every number traced to the
 register entry that produces it. It is a projection — only a live run
 measures a score.
 

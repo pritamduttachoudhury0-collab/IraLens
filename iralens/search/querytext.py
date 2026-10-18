@@ -64,34 +64,56 @@ _SITE_RE = re.compile(r"\bsite:([A-Za-z0-9][A-Za-z0-9._-]*(?:/[^\s]*)?)", re.IGN
 DEFAULT_MAX_QUERY_CHARS = 400
 
 
-def parse_site_operator(text: str) -> Tuple[List[str], str]:
-    """Split the `site:` operators out of a query.
+def parse_site_scopes(text: str) -> Tuple[List[str], str]:
+    """Split the `site:` operators out of a query, keeping their paths.
 
-    Returns ``(domains, query_without_the_operators)``.
+    Returns ``(scopes, query_without_the_operators)`` where a scope is
+    ``host`` or ``host/path``.
 
     The tokenizer splits on ``:`` and ``/``, so ``site:reddit.com/r/SaaS``
     used to become the keyword string ``"site reddit.com saas"`` — the
     user's scope was destroyed before any engine ever saw it, and a
     subreddit-targeted search returned nothing in target.
+
+    The *path* matters as much as the host: ``site:github.com/scipy/scipy``
+    is a repository, not a website. Dropping the path turns a precise scope
+    into a whole-site search, which is what used to happen.
     """
-    domains: List[str] = []
+    scopes: List[str] = []
 
     def _take(match: "re.Match[str]") -> str:
-        host = match.group(1).split("/", 1)[0].split("?", 1)[0].lower().rstrip(".")
-        if host and host not in domains:
-            domains.append(host)
+        scope = match.group(1).split("?", 1)[0].strip().lower().rstrip(".")
+        host = scope.split("/", 1)[0]
+        if host and scope not in scopes:
+            scopes.append(scope)
         return " "
 
     cleaned = _SITE_RE.sub(_take, text or "")
-    return domains, " ".join(cleaned.split())
+    return scopes, " ".join(cleaned.split())
+
+
+def parse_site_operator(text: str) -> Tuple[List[str], str]:
+    """Split the `site:` operators out of a query.
+
+    Returns ``(hosts, query_without_the_operators)``. The hosts are the
+    domain part of each scope; use :func:`parse_site_scopes` when the path
+    matters.
+    """
+    scopes, cleaned = parse_site_scopes(text)
+    hosts: List[str] = []
+    for scope in scopes:
+        host = scope.split("/", 1)[0]
+        if host and host not in hosts:
+            hosts.append(host)
+    return hosts, cleaned
 
 
 def site_scoped_query(text: str) -> str:
     """Canonicalise a query so its `site:` scope is preserved verbatim."""
-    domains, cleaned = parse_site_operator(text)
-    if not domains:
+    scopes, cleaned = parse_site_scopes(text)
+    if not scopes:
         return " ".join((text or "").split())
-    scope = " ".join(f"site:{domain}" for domain in domains)
+    scope = " ".join(f"site:{s}" for s in scopes)
     return f"{scope} {cleaned}".strip()
 
 
