@@ -104,7 +104,9 @@ every corpus query was re-examined against the result it actually received.
   fetched through the normal reader and returned, with its own text as the
   answer. A URL followed by a question, and a query naming two pages, are
   still searches. On the 9 of the 130 URLs the sandbox can reach, the
-  coverage verdict went from `low` to `good` in 9 of 9 cases.
+  coverage verdict went from `low` to `good` in 9 of 9 cases. Of the
+  baseline's 1,620 low-coverage queries, 124 are URL queries, so the read
+  path addresses 7.7% of that set directly.
 - **E-40 — the request shape named a kind of source and the ranking ignored
   it.** "official documentation", "primary literature", "government
   guideline" say what kind of page would answer the question. The ranking

@@ -334,7 +334,10 @@ searches — one page cannot answer a comparison.
 The sandbox can reach 9 of those 130 URLs, and on those 9 the coverage
 verdict went from `low` to `good` in **9 of 9** cases. The other 121 are
 blocked by the sandbox's egress policy, not by the code; a run with provider
-egress would measure all 130.
+egress would measure all 130. Of the baseline's 1,620 low-coverage
+queries, **124** are URL queries — 7.7% of the set the audit's own
+relevance family objects to, answered by reading the page the query
+names.
 
 **The request shape names a kind of source, and the ranking now listens
 (E-40).** "official documentation", "primary literature", "government
