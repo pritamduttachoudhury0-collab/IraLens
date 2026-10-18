@@ -198,6 +198,12 @@ per-query outcome. It is a **projection, not a measurement** — a live run is
 the only measurement — but it is traceable: every number below names the
 entry that produces it.
 
+**Which of these answers "how many queries return real results"?** (b). It
+is the audit's own count: every query except the 45 whose results a human
+read and judged to be unrelated or generic filler. (a) is what this project
+controls; (c) is the strictest reading of the audit's index, in which an
+unresolved upstream finding is not a pass either.
+
 | reading | score | what it means |
 |---|---|---|
 | no **code-caused** failure | **3,000/3,000** (100%) | every defect this project can fix is fixed; this is the number that should be 100% |
@@ -206,6 +212,16 @@ entry that produces it.
 
 Two conditions move the middle and lower rows, and neither is in the code's
 control.
+
+**One caveat on (c), stated rather than buried.** The coverage verdict is
+computed on the baseline's *captured* results, and those were recorded while
+DuckDuckGo was behind a captcha, so the loose engine (Bing) was the only one
+standing. Live, the captcha'd engine returns 10 of 10 on-target results for
+the full question where the loose one returns 0 of 10
+(`benchmarks/ab_query_forms.py`). The 1,363 unresolved queries would
+therefore mostly clear with a healthy provider — but four questions are not
+enough to put a number on that, so no number is put on it. The projection
+does not claim it.
 
 **Providers healthy.** All 3,000 `S-AV` failures in the baseline were
 provider-side: a DuckDuckGo captcha, a rate-limited Bing, an unconfigured

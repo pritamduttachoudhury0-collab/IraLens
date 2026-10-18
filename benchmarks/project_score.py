@@ -275,8 +275,26 @@ def main() -> int:
           f"({len(b)} of {n})")
     print(f"   (c) no finding at all        {healthy.get('clean', 0):>5}/{n}  = "
           f"{healthy.get('clean', 0) / n * 100:5.1f}%")
-    print(f"       strictest reading: the lexical coverage proxy still objects to "
+    print(f"       strictest reading: the coverage proxy still objects to "
           f"{healthy.get('unresolved_only', 0)} queries")
+    print()
+    print("   Which of these answers 'how many queries return real results'?")
+    print("   (b). It is the audit's own count: every query except the 45 whose")
+    print("   results a human read and judged to be unrelated or generic filler.")
+    print("   (a) is what this project controls; (c) is the strictest reading of")
+    print("   the audit's index, in which an unresolved upstream finding is not")
+    print("   a pass either.")
+    print()
+    print("   ONE CAVEAT on (c), stated rather than buried: the coverage verdict")
+    print("   is computed on the baseline's CAPTURED results, and those were")
+    print("   recorded while DuckDuckGo was behind a captcha, so the loose")
+    print("   engine (Bing) was the only one standing. Live, the captcha'd")
+    print("   engine returns 10 of 10 on-target results for the full question")
+    print("   where the loose one returns 0 of 10 (benchmarks/ab_query_forms.py).")
+    print(f"   The {healthy.get('unresolved_only', 0)} unresolved queries would")
+    print("   therefore mostly clear with a healthy provider -- but four")
+    print("   questions are not enough to put a number on that, so no number is")
+    print("   put on it. The projection does not claim it.")
 
     # ---- 6. proxy calibration -------------------------------------------
     if confirmed_defective:
@@ -284,7 +302,7 @@ def main() -> int:
         tp = len(flagged & confirmed_defective)
         fp = len(flagged - confirmed_defective)
         fn = len(confirmed_defective - flagged)
-        print("\n6. CALIBRATION — the lexical proxy vs the audit's manual review")
+        print("\n6. CALIBRATION — the coverage proxy vs the audit's manual review")
         print("-" * 78)
         print(f"   proxy flags {len(flagged):>5} queries; the audit confirmed "
               f"{len(confirmed_defective):>4} by hand")

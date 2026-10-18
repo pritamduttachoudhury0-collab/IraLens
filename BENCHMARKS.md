@@ -93,6 +93,18 @@ entry that produces it.
 | no defect at all | **2,955/3,000** (98.5%) | the audit's own manually confirmed relevance defects (45) are upstream and remain; the system now *discloses* them instead of hiding them |
 | no finding at all (strictest) | **1,637/3,000** (54.6%) | the coverage proxy still objects to 1,363 queries, 1,318 of which the audit never reviewed |
 
+**Which number answers "how many queries return real results"?** (b) —
+2,955/3,000. It is the audit's own count: every query except the 45 whose
+results a human read and judged to be unrelated or generic filler.
+
+**One caveat on (c).** The coverage verdict behind (c) is computed on the
+baseline's *captured* results, which were recorded while DuckDuckGo was
+behind a captcha, so the loose engine was the only one standing. Live, the
+captcha'd engine returns 10 of 10 on-target results for the full question
+where the loose one returns 0 of 10. The 1,363 unresolved queries would
+therefore mostly clear with a healthy provider — but four questions are not
+enough to put a number on that, so none is put on it.
+
 Two conditions move the middle and lower rows, and they are outside the
 code's control:
 
