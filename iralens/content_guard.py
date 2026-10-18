@@ -5,6 +5,12 @@ Layer 2 of the security model (see docs/security.md). It never decides
 what the agent does. It removes invisible/control characters, bounds length,
 and attaches *flags* to the affected item so the consumer can see the risk.
 Flagged content is still data; the untrusted envelope always applies.
+
+Flags are advisory and deliberately narrow. A page that is *not* flagged is
+not thereby trusted: every retrieved page is untrusted data whether or not a
+pattern matched. The patterns target instruction-like phrasing aimed at an
+agent and require syntactic evidence of a directive, because ordinary API
+documentation uses the same bare verbs ("run function", "call the tool").
 """
 
 from __future__ import annotations
@@ -25,8 +31,37 @@ INJECTION_PATTERNS: Tuple[Tuple[str, "re.Pattern[str]"], ...] = tuple(
          r"\byou are now (?:a |an |the )?(?:system|developer|admin|unrestricted)|\bact as (?:the )?(?:system|developer)\b"),
         ("system_prompt_probe",
          r"(?:reveal|print|show|leak) (?:your|the) (?:system )?(?:prompt|instructions)"),
+        # A tool directive is only flagged when the text actually *names an
+        # invocation*. The previous single pattern matched the bare phrase
+        # "run function", which ordinary API documentation is full of — the
+        # Python asyncio page ("Asynchronously run function func in a separate
+        # thread") was flagged for that reason alone. Each rule below requires
+        # syntactic evidence of a directive: a command shell, a named target
+        # written as an invocation, or an imperative aimed at the reader.
+        #
+        # 1. Shell/command execution. The shell names themselves are specific;
+        #    "run the shell command" is not ordinary API prose.
         ("tool_directive",
-         r"(?:call|invoke|execute|run) (?:the )?(?:tool|function|shell command|bash)\b"),
+         r"(?:call|invoke|execute|run)\s+(?:the\s+)?(?:shell\s+command|bash|sh|zsh|fish|powershell|cmd\.exe)\b"),
+        # 2. A named tool/function written as an invocation: quoted,
+        #    backticked, called with arguments, or given as a dotted tool id.
+        ("tool_directive",
+         r"(?:call|invoke|execute|run)\s+(?:the\s+)?(?:tool|function|api|endpoint|command)\s+"
+         r"(?:[\"'`][^\"'`\n]{1,120}[\"'`]"
+         r"|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\s*\("
+         r"|[\w-]+(?:\.[\w-]+)+)"),
+        # 3. An obligation aimed at the agent/reader: "you must call the tool".
+        ("tool_directive",
+         r"\b(?:you|agent|assistant|model|llm|ai)\b[^.\n]{0,30}?\b(?:must|should|need\s+to|needs\s+to|have\s+to|shall)\s+"
+         r"(?:now\s+)?(?:call|invoke|execute|run)\s+(?:the\s+)?(?:tool|function|command|api)\b"),
+        # 4. A vocative instruction ("Assistant: call the tool") or a
+        #    sequenced step ("Now run the function", "Next, invoke the tool").
+        ("tool_directive",
+         r"\b(?:agent|assistant|ai|llm|model)\s*[:,]\s*(?:please\s+)?(?:call|invoke|execute|run)\s+"
+         r"(?:the\s+)?(?:tool|function|command|api)\b"),
+        ("tool_directive",
+         r"\b(?:now|then|next|finally|after\s+that)\s*[:,]?\s+(?:call|invoke|execute|run)\s+"
+         r"(?:the\s+)?(?:tool|function|command|api)\b"),
         ("credential_exfiltration",
          r"(?:send|post|upload|exfiltrate|forward) .{0,80}(?:password|api key|cookies?|credentials?|session token)"),
         # A page whose entire "content" is a base64 image is a block page or

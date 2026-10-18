@@ -8,10 +8,11 @@ video has none; a transcribe fallback exists (see the transcribe source).
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, TYPE_CHECKING
+from typing import Any, Dict, List, Tuple, TYPE_CHECKING
 
 from ..errors import ExtractionError, PageUnavailableError, SourceUnavailableError
 from ..model import Artifact
@@ -23,8 +24,28 @@ if TYPE_CHECKING:
     from ..core import Context
 
 
+def _ytdlp_status() -> Tuple[bool, str]:
+    """Whether yt-dlp is usable by *this* process, plus an honest reason.
+
+    The probe resolves the executable through `proc.command_argv`, so a
+    yt-dlp installed into the running interpreter's environment counts even
+    when that environment's `bin` directory is not on PATH (the usual case
+    when a venv entry point is invoked by absolute path).
+    """
+    probe = probe_command("yt-dlp", ["--version"], timeout=15, package="yt-dlp")
+    if probe.ok:
+        return True, "video downloader available"
+    if probe.status == "missing":
+        if importlib.util.find_spec("yt_dlp") is not None:
+            return False, ("yt-dlp is installed for this interpreter but its "
+                           "executable was not found; activate the environment "
+                           "or add its bin directory to PATH")
+        return False, "video downloader not installed"
+    return False, f"video downloader unusable: {probe.hint or probe.status}"
+
+
 def _ytdlp_ok() -> bool:
-    return probe_command("yt-dlp", ["--version"], timeout=15, package="yt-dlp").ok
+    return _ytdlp_status()[0]
 
 
 def _dump_json(target: str, extra: List[str] | None = None, timeout: int = 90) -> Any:
@@ -81,19 +102,20 @@ class YouTubeSource(Source):
         return host_matches(url, "youtube.com", "youtu.be")
 
     def health(self, context: "Context") -> SourceHealth:
-        if _ytdlp_ok():
+        ok, reason = _ytdlp_status()
+        if ok:
             self.active_backend = "yt-dlp"
-            return SourceHealth("ok", "video downloader available", self.active_backend)
+            return SourceHealth("ok", reason, self.active_backend)
         self.active_backend = None
         return SourceHealth(
-            "off", "video downloader not installed",
+            "off", reason,
             hint='pip install "yt-dlp[default]"',
         )
 
     def fetch(self, op: str, params: Dict[str, Any], context: "Context") -> Any:
         if not _ytdlp_ok():
             raise SourceUnavailableError(
-                "video downloader not installed", hint='pip install "yt-dlp[default]"'
+                _ytdlp_status()[1], hint='pip install "yt-dlp[default]"'
             )
 
         if op == "video":

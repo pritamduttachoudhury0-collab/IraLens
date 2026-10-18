@@ -6,8 +6,15 @@ Search order:
 2. ``IRALENS_ENGINE_PATH`` environment variable.
 3. Managed cache directory: ``~/.cache/iralens/engine/`` (or ``$XDG_CACHE_HOME/iralens/engine/``).
 4. ``PATH`` (looking for ``iralens-browser-engine``, ``iralens-engine``, or ``obscura``).
-5. Bundled in-package engine at ``iralens/_internal/browser_engine/bin/iralens-browser-engine``
+5. A launcher **generated** into the managed cache directory (step 3). This is
+   the machine-local, writable location; nothing inside the installed package
+   is ever written at runtime.
+6. Bundled in-package engine at ``iralens/_internal/browser_engine/bin/iralens-browser-engine``
    (always available after standard package installation without runtime downloads).
+
+Nothing in this module writes to package data. The in-package launcher (step 6)
+is relocatable and carries no absolute path, so it is safe to ship and safe to
+keep: setup, doctor and discovery leave a checkout's tracked files untouched.
 """
 
 from __future__ import annotations
@@ -18,7 +25,10 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from .._internal.browser_engine.builder import ensure_bundled_launcher
+from .._internal.browser_engine.builder import (
+    TRACKED_LAUNCHER_PATH,
+    ensure_generated_launcher,
+)
 
 ENGINE_BINARY_NAMES: List[str] = (
     ["iralens-browser-engine.cmd", "iralens-engine.exe", "obscura.exe"]
@@ -51,16 +61,41 @@ def _is_executable(path: Path) -> bool:
 
 
 def bundled_engine_path() -> Optional[Path]:
-    """Return the bundled in-package browser engine executable."""
+    """Return the bundled in-package browser engine executable.
+
+    Read-only: the launcher is tracked package data and is never generated,
+    rewritten or chmod-ed here, so running doctor from a checkout cannot dirty
+    it. It resolves its own interpreter at run time, so it works from any
+    location and cannot carry a stale absolute path.
+    """
     if os.environ.get("IRALENS_DISABLE_BUNDLED_ENGINE") == "1":
         return None
     try:
-        launcher = ensure_bundled_launcher()
-        if _is_executable(launcher):
-            return launcher
+        if _is_executable(TRACKED_LAUNCHER_PATH):
+            return TRACKED_LAUNCHER_PATH
     except Exception:
         return None
     return None
+
+
+def generated_engine_path(target_dir: Optional[Path] = None) -> Optional[Path]:
+    """A machine-local launcher generated into a *writable* runtime directory.
+
+    This is where an interpreter-specific launcher belongs: it is per-user,
+    per-machine, and outside the installed package. Returns ``None`` when the
+    directory cannot be written and no usable launcher is already there, so a
+    caller reports the engine as unavailable instead of exec'ing a launcher
+    that points at a deleted interpreter.
+    """
+    if os.environ.get("IRALENS_DISABLE_BUNDLED_ENGINE") == "1":
+        return None
+    try:
+        path = ensure_generated_launcher(target_dir or engine_cache_dir())
+    except Exception:
+        return None
+    if path is None:
+        return None
+    return path if _is_executable(path) else None
 
 
 def find_engine(config=None) -> Optional[Path]:
@@ -94,5 +129,13 @@ def find_engine(config=None) -> Optional[Path]:
             if _is_executable(p):
                 return p
 
-    # 5. Bundled native browser engine shipped inside iralens._internal.browser_engine
+    # 5. A launcher generated into the writable per-user cache. Machine-local
+    #    by design: this is the only place an absolute interpreter path is
+    #    ever written, and it is never package data.
+    generated = generated_engine_path(cache)
+    if generated is not None:
+        return generated
+
+    # 6. Bundled native browser engine shipped inside
+    #    iralens._internal.browser_engine (relocatable, read-only package data).
     return bundled_engine_path()

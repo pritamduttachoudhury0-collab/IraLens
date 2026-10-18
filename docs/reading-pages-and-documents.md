@@ -37,6 +37,27 @@ print(page.title, page.content[:200], page.metadata.get("truncated"))
 MCP: the `read` tool takes `url`, optional `mode` (`auto` / `static` /
 `browser`), and `max_chars`.
 
+## Titles and main-content selection
+
+A static read reports two things: the page's `title` and its `content`.
+
+- **`title` is metadata, not an excerpt.** It comes from the page's `<title>`,
+  falling back to the first `<h1>`. It is bounded to 200 characters, so a page
+  whose blocks did not separate can never contribute its whole body as the
+  title. `metadata.title_source` says where it came from (`html`, `markdown`
+  or `browser`), and `metadata.title_truncated` records that it was clipped.
+- **The content budget never applies to the title.** `max_chars` bounds
+  `content` only.
+- **Main-content selection is one conversion, not two.** When a page has a
+  recognisable container (`<main>`, `<article>`, `role="main"`, or a known
+  content `id`/`class`) holding at least half the page's prose and at least
+  200 visible characters, that region is isolated and converted to Markdown
+  exactly once. Otherwise the whole page is converted. Headings, paragraphs,
+  lists, links, tables and Unicode survive the isolation; `<script>`,
+  `<style>`, `<noscript>`, `<nav>`, `<footer>` and `<aside>` do not.
+- `metadata.total_chars` is always reported (it equals `len(content)` when
+  nothing was cut), so a partial read can be compared against the real page.
+
 ## Budgets and limits
 
 - 5 MB response cap for pages, 20 MB for PDFs (`read_max_bytes`,

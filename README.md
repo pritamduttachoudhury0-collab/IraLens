@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/pritamduttachoudhury0-collab/IraLens/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/pritamduttachoudhury0-collab/IraLens/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.3.0-informational)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.3.1-informational)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.10-blue)](pyproject.toml)
 
 IraLens lets an AI agent search the web, read pages and documents, drive a
@@ -189,7 +189,9 @@ says so.
 
 | What | Result | Date | Evidence |
 |---|---|---|---|
-| Offline + local-fixture test suite (Python 3.11) | **636 passed, 14 skipped, 0 failed** (includes local V8 browser integration tests; skipped tests require live network) | 2026-10-18 | `tests/` · [error register](docs/audit/ERROR_REGISTER.md) |
+| Offline + local-fixture test suite (Python 3.11) | **748 passed, 14 skipped, 0 failed** (includes local V8 browser integration tests; skipped tests require live network) | 2026-10-18 | `tests/` · [error register](docs/audit/ERROR_REGISTER.md) |
+| Offline + local-fixture test suite (Python 3.11, pre-0.3.1 baseline) | **644 passed, 14 skipped, 0 failed** | 2026-10-18 | `tests/` (recorded before the 0.3.1 remediation) |
+| 0.3.1 remediation regression suite (F-01…F-08: 6 new modules, 8 HTML fixtures, 110 tests) | **110 passed, 0 failed, 0 skipped** — all offline and deterministic | 2026-10-18 | `tests/test_extraction_main_content.py` · `test_launcher_immutability.py` · `test_executable_discovery.py` · `test_health_reporting.py` · `test_docs_runtime_agreement.py` · `test_search_date_provenance.py` |
 | Audit acceptance suite (17 offline checks, inverted so each asserts the defect is gone) | **17/17** | 2026-10-18 | `python benchmarks/acceptance_17.py` |
 | Scraping test (read/extract probes: budget, main content, JS shell, script leakage, typed 429, block classification, cache provenance, concurrent saves, typed refusal) | **12/12** | 2026-10-18 | `python benchmarks/run_scraping.py` |
 | Frozen 3,000-query corpus through the engine (offline pipeline) | **14,262/14,262 clean**; the same corpus re-scored from the audit's own captured baseline run shows 8,435 code-caused and 5,223 external failures out of 31,264 checks, every code-caused family now fixed | 2026-10-18 | `python benchmarks/run_audit3000.py --offline-pipeline` · `--replay` |
@@ -198,7 +200,8 @@ says so.
 | Subject/request split, scored against the corpus's own recorded topics | **2,622 / 2,950 = 88.88%** recovered exactly; the request lexicon scores **89.15%** on a held-out half | 2026-10-18 | `python benchmarks/measure_focus_split.py` · `derive_request_markers.py` |
 | A query that names a page is **read**, not searched for | the 9 of the corpus's 130 URL queries the sandbox can reach go from coverage `low` to `good` in **9/9** cases; the rest need egress the sandbox does not have | 2026-10-18 | `python benchmarks/measure_shape_ranking.py` · `docs/audit/ERROR_REGISTER.md` (E-39) |
 | The request shape's **kind of source** is honoured in the ranking | the top result changes in 32 of the 1,250 questions that ask for a kind of source — 5 of those changes for the better, 3 for the worse | 2026-10-18 | `python benchmarks/measure_shape_ranking.py --sweep` |
-| Lint (`ruff --select E9,F,B`) + types (`mypy`) | clean; 81 source files typed | 2026-10-18 | `docs/audit/ERROR_REGISTER.md` |
+| Lint (`ruff --select E9,F,B`) + types (`mypy`) | clean; 83 source files typed | 2026-10-18 | `docs/audit/ERROR_REGISTER.md` |
+| Lint (`ruff --select E9,F,B`) + types (`mypy`), 0.3.1 | **clean; 83 source files typed** | 2026-10-18 | `ruff check --select E9,F,B .` · `mypy iralens` |
 | Evidence-driven search improvement (D1–D8) | Ranking/intent, script handling, degradation, date provenance and security regressions covered offline; live quality P@5, 100-page real extraction and live engine resilience **NOT MEASURED** in restricted egress | 2026-10-17 | [final report](docs/improvements/FINAL_REPORT.md) · frozen 300-query holdout in `benchmark/holdout/` |
 | Live 3,000-query run (frozen corpus, live engines) | **NOT MEASURED** — the verification environment reaches only package indexes and GitHub, so the provider-side captchas and throttles could not be exercised; the runner reports `not_run` with the reason | — | `python benchmarks/run_audit3000.py --live` |
 | Lint (`ruff --select E9,F,B`) + types (`mypy`) | clean; 74 source files typed | 2026-10-17 | [final verification](docs/audits/final-verification.md) |
@@ -280,6 +283,21 @@ python -m pytest -q            # offline suite; live tests auto-skip without egr
 ruff check --select E9,F,B .   # lint gate
 mypy iralens                   # type gate
 ```
+
+### Offline vs. live tests
+
+The suite is designed to be meaningful without egress, and it says which is
+which:
+
+| Kind | When it runs | Examples |
+|---|---|---|
+| Offline / deterministic | always | `test_extraction_main_content.py`, `test_launcher_immutability.py`, `test_executable_discovery.py`, `test_health_reporting.py`, `test_docs_runtime_agreement.py`, `test_search_date_provenance.py`, `test_content_guard.py`, `test_extract.py`, `test_search_*.py` |
+| Local-fixture integration | when the bundled V8 engine can start (no network) | `test_browser_engine_integration.py`, `test_pdf_and_js_fallback.py` |
+| Live / requires egress | auto-skipped without network; enabled by `--live` or by reachable providers | `test_integration_live.py` |
+
+A skipped live test is reported as skipped, never as a pass. Fixtures live in
+`tests/fixtures/` and are checked in, so extraction behaviour is pinned to
+byte-stable inputs rather than to whatever a provider serves today.
 
 Contributions welcome: [CONTRIBUTING.md](CONTRIBUTING.md). Security reports:
 [SECURITY.md](SECURITY.md). Behavior expectations:

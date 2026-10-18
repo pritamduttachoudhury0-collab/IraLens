@@ -23,7 +23,7 @@ import threading
 import time
 import urllib.error
 import urllib.parse
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 _DIRECT_META_LOCAL = threading.local()
 
@@ -69,6 +69,12 @@ _JS_SHELL_MIN_CHARS = 150
 #: The length bound keeps real articles that merely mention "404" intact.
 _SOFT_404_MARKERS = ("404 not found", "page not found", "error 404", "does not exist")
 _SOFT_404_MAX_LEN = 2000
+
+#: A title is *metadata*, not content. The `<title>` (or first `<h1>`) wins;
+#: a markdown heading is only a fallback, and it is bounded so a page whose
+#: blocks failed to separate cannot contribute its whole body as the title.
+#: The budget applies to `content` only -- it never applies to the title.
+_MAX_TITLE_CHARS = 200
 
 
 def _is_antibot_page(body: bytes) -> bool:
@@ -360,6 +366,12 @@ def read_direct(
         html = body.decode("utf-8", errors="replace")
         text = html_to_markdown(html)
         title = extract_title(html)
+        # The <title> (or first <h1>) is trustworthy page metadata. It is
+        # carried to the artifact builder explicitly instead of being
+        # re-derived from the markdown, where a page whose blocks failed to
+        # separate would offer one long body line as a "title".
+        if isinstance(_DIRECT_META_LOCAL.last, dict) and title:
+            _DIRECT_META_LOCAL.last["html_title"] = title
         if title and not any(line.startswith("# ") for line in text.splitlines()[:5]):
             text = f"Title: {title}\n\n{text}" if text else f"Title: {title}"
     else:
@@ -598,12 +610,17 @@ class WebSource(Source):
                     or current.get("url")
                     or safe_url
                 )
-                title = str(
-                    nav_dict.get("title")
-                    or current.get("title")
-                    or _title_from_markdown(content)
-                    or final_url
-                )
+                # Same order as the static path: browser-supplied metadata
+                # first, bounded heading fallback last, URL as a last resort.
+                _nav_title = str(nav_dict.get("title") or current.get("title") or "").strip()
+                if _nav_title:
+                    title, title_clipped = _bound_title(_nav_title)
+                    title_source = "browser"
+                else:
+                    title, title_clipped = _title_from_markdown(content)
+                    title_source = "markdown" if title else "url"
+                if not title:
+                    title = str(final_url or "")
                 content_type: Optional[str] = (
                     str(nav_dict["content_type"])
                     if isinstance(nav_dict.get("content_type"), str)
@@ -626,7 +643,10 @@ class WebSource(Source):
                     "redirect_chain": redirect_chain,
                     "max_chars": max_chars,
                     "truncated": max_chars > 0 and len(content) >= max_chars,
+                    "title_source": title_source,
                 }
+                if title_clipped:
+                    metadata["title_truncated"] = True
                 if status_code is not None:
                     metadata["status_code"] = status_code
                 if content_type is not None:
@@ -736,12 +756,19 @@ def _static_artifact(url: str, markdown: str, *, cache: dict, flags=None,
         metadata["content_type"] = content_type
     if max_chars:
         metadata["max_chars"] = max_chars
-    if truncated and total_chars:
+    # Reported whenever it is known, not only when the content was cut: a
+    # consumer comparing a partial read to the real page size needs the total
+    # either way. When nothing was truncated it equals len(content).
+    if total_chars:
         metadata["total_chars"] = total_chars
     sec_flags = list(flags or [])
     warnings = [f"security:{f}" for f in sec_flags]
     if truncated:
         warnings.append("content_truncated")
+    title, title_source, title_truncated = _resolve_title(markdown, direct_meta, final_url)
+    if title_truncated:
+        metadata["title_truncated"] = True
+    metadata["title_source"] = title_source
     prov: Dict[str, Any] = {
         "security_flags": sec_flags,
         "cache": cache,
@@ -757,7 +784,7 @@ def _static_artifact(url: str, markdown: str, *, cache: dict, flags=None,
     if content_type is not None:
         prov["content_type"] = content_type
     return Artifact(
-        title=_title_from_markdown(markdown) or final_url,
+        title=title,
         url=final_url,
         requested_url=url,
         final_url=final_url,
@@ -775,11 +802,49 @@ def _static_artifact(url: str, markdown: str, *, cache: dict, flags=None,
     )
 
 
-def _title_from_markdown(markdown: str) -> str:
+def _bound_title(text: str, limit: int = _MAX_TITLE_CHARS) -> Tuple[str, bool]:
+    """Collapse whitespace and clip to *limit*. Returns ``(title, clipped)``."""
+    collapsed = " ".join(str(text or "").split())
+    if len(collapsed) <= limit:
+        return collapsed, False
+    clipped = collapsed[:limit]
+    # Prefer a word boundary so a clipped title still reads like a title.
+    space = clipped.rfind(" ")
+    if space >= limit // 2:
+        clipped = clipped[:space]
+    return clipped.rstrip(" ,;:-–—") + "…", True
+
+
+def _title_from_markdown(markdown: str) -> Tuple[str, bool]:
+    """``(title, clipped)`` from the markdown head; ``('', False)`` if none.
+
+    Only the first heading or ``Title:`` line is considered, and it is
+    bounded. A heading is metadata: a page whose blocks did not separate
+    offers its entire body as one ``# `` line, and that must never become
+    the artifact title.
+    """
     for line in markdown.splitlines()[:20]:
-        line = line.strip()
-        if line.startswith("# "):
-            return line[2:].strip()
-        if line.lower().startswith("title:"):
-            return line.split(":", 1)[1].strip()
-    return ""
+        stripped = line.strip()
+        if stripped.startswith("# "):
+            return _bound_title(stripped[2:])
+        if stripped.lower().startswith("title:"):
+            return _bound_title(stripped.split(":", 1)[1])
+    return "", False
+
+
+def _resolve_title(markdown: str, retrieval: Optional[Dict[str, Any]],
+                   fallback_url: str) -> Tuple[str, str, bool]:
+    """Pick the artifact title: HTML metadata first, heading second, URL last.
+
+    Returns ``(title, source, clipped)``. ``source`` is ``html``,
+    ``markdown`` or ``url`` so a consumer can tell where the label came from,
+    and ``clipped`` records that the label was shortened to stay concise.
+    """
+    html_title = str((retrieval or {}).get("html_title") or "").strip()
+    if html_title:
+        bounded, clipped = _bound_title(html_title)
+        return bounded, "html", clipped
+    heading, clipped = _title_from_markdown(markdown)
+    if heading:
+        return heading, "markdown", clipped
+    return str(fallback_url or ""), "url", False

@@ -300,7 +300,50 @@ def test_direct_read_extracts_html_to_markdown(monkeypatch, tmp_path):
     assert art.retrieval_method == "direct"
     assert "# Head" in art.content
     assert "Body." in art.content
+    # The <title> is page metadata and wins over the first heading, which is
+    # only a fallback. The artifact records where the label came from.
+    assert art.title == "Page"
+    assert art.metadata["title_source"] == "html"
+
+
+def test_direct_read_falls_back_to_heading_without_title(monkeypatch, tmp_path):
+    """With no <title>, `extract_title` uses the first <h1> -- still HTML metadata."""
+    html = b"<html><body><h1>Head</h1><p>Body.</p></body></html>"
+    _patch_urlopen(monkeypatch, response=FakeResponse(html))
+    monkeypatch.setattr(web_mod, "ResponseCache",
+                        lambda enabled=True: ResponseCache(tmp_path / "pages"))
+    art = web_mod.WebSource().read_url("https://example.org/y", _RejectEngineCtx(),
+                                       mode="static")
     assert art.title == "Head"
+    assert art.metadata["title_source"] == "html"
+
+
+def test_resolve_title_prefers_html_metadata_then_bounded_heading():
+    """Title precedence, and the hard bound that keeps a title concise."""
+    long_line = "# " + ("body words " * 100)
+    title, source, clipped = web_mod._resolve_title(long_line, {}, "https://example.org/z")
+    assert source == "markdown"
+    assert clipped is True
+    assert len(title) <= web_mod._MAX_TITLE_CHARS
+
+    title, source, clipped = web_mod._resolve_title(
+        "# Ignored\n\ntext", {"html_title": "Real page title"}, "https://example.org/z")
+    assert (title, source, clipped) == ("Real page title", "html", False)
+
+    title, source, clipped = web_mod._resolve_title("no heading here", {}, "https://example.org/z")
+    assert (title, source, clipped) == ("https://example.org/z", "url", False)
+
+
+def test_static_artifact_title_is_bounded_by_the_content_budget_independently():
+    """A flattened body line must never become the title; content is budgeted."""
+    flattened = "# " + ("word " * 5000)
+    art = web_mod._static_artifact("https://example.org/flat", flattened, cache={})
+    assert len(art.title) <= web_mod._MAX_TITLE_CHARS
+    assert art.title.endswith("…")
+    assert art.metadata["title_truncated"] is True
+    # The content budget was not applied to the title and did not trim content
+    # here, because no max_chars was requested.
+    assert art.content == flattened
 
 
 def test_direct_read_passes_plain_text_through(monkeypatch, tmp_path):

@@ -53,7 +53,7 @@ iralens/
   proc.py          subprocess runner + honest health probing
   cli.py           `iralens` command
   api.py           `iralens-api` / `iralens serve` HTTP service
-  mcp_server.py    IraLens MCP server (49 tools at v0.3.0)
+  mcp_server.py    IraLens MCP server (49 tools at v0.3.1)
   engine/          spawns the engine binary, classifies its errors, exports state
   _internal/
     browser_engine/
@@ -64,7 +64,11 @@ iralens/
       ssrf.py                IPv4/IPv6 SSRF deny-set & per-hop redirect validator
       cookies.py             RFC 6265 CookieJar with HttpOnly/Secure/SameSite & 0600 persistence
       mcp_server.py          JSON-RPC 2.0 stdio server & CLI entrypoint (iralens-browser-engine)
-      builder.py             bundled native launcher + optional Rust workspace builder
+      builder.py             relocatable bundled launcher, generated runtime launcher,
+                             optional Rust workspace builder
+      bin/iralens-browser-engine
+                             relocatable launcher shipped as package data; read-only at
+                             runtime and free of any absolute path
       UPSTREAM_PROVENANCE.md upstream revision, imported crates, modifications & update procedure
       THIRD_PARTY_NOTICES.md Apache-2.0 and transitive dependency notices
   sources/         platform modules behind the Source base class
@@ -90,6 +94,16 @@ maintained browser subsystem under `iralens/_internal/browser_engine/`:
   persistent Node.js V8 VM worker if `py_mini_racer` is unavailable).
   `find_engine()` discovers the bundled engine automatically without runtime
   binary downloads from GitHub Releases.
+- **No runtime writes to package data:** the in-package launcher is
+  relocatable — it resolves its interpreter (`$IRALENS_PYTHON`, then
+  `python3`/`python`) when it runs, so it carries no build-time path. Setup,
+  `doctor` and discovery only ever read it (see
+  `builder.ensure_bundled_launcher`). A launcher bound to a specific
+  interpreter is generated on demand into the writable per-user engine cache
+  (`engine_cache_dir()`, or `$IRALENS_ENGINE_CACHE_DIR`) by
+  `builder.ensure_generated_launcher`; when that directory cannot be written
+  the call reports unavailable rather than returning a stale launcher. A
+  checkout therefore stays clean after `scripts/setup.sh` and `iralens doctor`.
 - **Optional Rust compilation:** When `cargo` is present and
   `IRALENS_BUILD_RUST_ENGINE=1` is set, `builder.py` compiles the vendored
   Rust workspace (`vendor/obscura/Cargo.toml`) directly from source.

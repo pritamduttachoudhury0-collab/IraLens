@@ -208,7 +208,7 @@ class BrowserEngine:
             self._rpc("initialize", {
                 "protocolVersion": _PROTOCOL_VERSION,
                 "capabilities": {},
-                "clientInfo": {"name": "iralens", "version": "0.3.0"},
+                "clientInfo": {"name": "iralens", "version": "0.3.1"},
             }, timeout=self._handshake_timeout())
         except errors.EngineUnavailableError as exc:
             self._startup_failure = exc

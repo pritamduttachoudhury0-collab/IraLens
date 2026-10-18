@@ -48,10 +48,12 @@ internal targets.
 - Authority scoring is a domain-suffix table. It is not a trust decision.
 - A fetched page cannot be fully contained by this layer. The browser engine
   runs the page's JavaScript by design.
-- The fetch-time guard covers the static-reader path. Specialized sources
-  that issue their own HTTP calls (RSS feeds via `requests`, the GitHub API
-  constant) validate the literal URL but do not pin resolved addresses; the
-  GitHub/API targets are constants, and feed URLs are operator-supplied.
+- The fetch-time guard covers the static-reader path **and RSS/Atom feeds**:
+  both use `security.safe_urlopen`, which pins the resolved address and
+  re-validates every redirect hop. One specialized source still issues its own
+  HTTP calls with `requests` (the `transcribe` audio download and its Whisper
+  POST); it validates the literal URL with `normalize_public_http_url` but does
+  not pin resolved addresses. The GitHub API targets are constants.
 - The browser-engine release publishes no checksum; unless the operator supplies
   one (`IRALENS_ENGINE_SHA256` or `install-engine --checksum`), install integrity
   rests on HTTPS plus the startup probe. The install never claims a verified

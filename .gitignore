@@ -4,10 +4,28 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.dmypy.json
 tools/engine/
 dist/
 build/
 .venv/
+venv/
+env/
+*.egg
+
+# coverage and local run artefacts
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+pip-wheel-metadata/
+
+# local state and secrets must never be committed
+.env
+.env.*
+*.key
+*.pem
+!iralens/_internal/browser_engine/vendor/obscura/**/*.pem
 
 # benchmark output and its isolated home are per-run, not source
 benchmarks/results/

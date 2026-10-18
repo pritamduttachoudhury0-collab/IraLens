@@ -2,6 +2,90 @@
 
 All notable changes to this project are documented here, newest first.
 
+## 0.3.1 — 2026-10-18
+
+Remediation of the eight findings from the feasibility-gated partial audit of
+2026-10-18 (`F-01`…`F-08`), plus the defects found while reproducing them.
+Every fix is covered by a deterministic offline regression test; nothing in
+this release requires network access to verify.
+
+### Fixed
+
+- **F-01 — main-content extraction flattened pages and contaminated the
+  title.** `select_main_content()` returned *markdown*, which
+  `html_to_markdown()` then re-parsed as HTML; with no block tags left to
+  break on, a whole page collapsed into one line and the artifact title
+  (taken from the first heading line) became the entire body. The selector
+  now returns an HTML fragment (`_ContentSerializer`) and the document is
+  converted exactly once. Titles come from `<title>`/`<h1>` metadata, are
+  bounded to 200 characters, and the content budget applies to content only.
+  `metadata.total_chars` is now reported even when nothing was truncated.
+- **F-02 — setup and doctor rewrote a tracked launcher with machine
+  absolute paths.** `ensure_bundled_launcher()` wrote the running
+  interpreter's path into `iralens/_internal/browser_engine/bin/`, dirtying
+  every checkout. The in-package launcher is now relocatable, path-free
+  package data that is only ever read; the machine-local launcher is
+  generated into the writable per-user engine cache instead. An unrefreshable
+  target reports unavailable rather than returning a stale path.
+- **F-03 — `doctor` reported an installed yt-dlp as "not installed."**
+  Discovery used `shutil.which()` alone, so a tool installed in the running
+  interpreter's environment was invisible when that environment was not on
+  `PATH`. `proc.resolve_executable()` now also checks the interpreter's own
+  `bin`/`Scripts` directories and a `python -m` module fallback, and
+  `scripts/setup.sh`/`setup.ps1` put the venv on `PATH` for the health check.
+- **F-04 — search health over-claimed.** `SearchSource.health()` special-cased
+  only the browser status `off`; `error` fell through to an `ok` message
+  claiming a rendered fallback, and the message implied upstream providers
+  had been probed. Health now returns structured `details`
+  (`direct_search`, `browser_fallback`, `provider_probe`) and a browser
+  `error` yields `warn`, never `ok`.
+- **F-05 — search-cache TTL documentation was stale.** `docs/search.md` said
+  900 s; the configured default is 300 s. The documentation is corrected and
+  a test ties the documented number to `Settings`.
+- **F-06 — stale RSS security claim.** `docs/security.md` and
+  `KNOWN_LIMITATIONS.md` said RSS uses its own HTTP client and does not pin
+  DNS answers; `sources/rss.py` uses `safe_urlopen`. The documents now name
+  the source that actually still uses `requests` (`transcribe`).
+- **F-07 — benign documentation triggered the tool-directive flag.** The
+  `tool_directive` pattern matched the bare phrase "run function", so the
+  Python asyncio page was flagged. The rule now requires syntactic evidence
+  of an invocation (a shell, a named target, or an imperative aimed at the
+  reader). Explicit injections are still flagged; flags remain advisory.
+- **F-08 — legacy artifacts lost date provenance.** `to_artifacts()` dropped
+  `date_evidence`, `date_kind` and `modified_at`. All three are now carried
+  in both `metadata` and `provenance`, so every non-null date that affects
+  freshness is traceable.
+
+### Added
+
+- `tests/fixtures/extraction/` — eight deterministic HTML fixtures covering a
+  qualifying `<main>`/`<article>`, headings, paragraphs, both list kinds,
+  links, tables, Unicode, nested containers, malformed HTML, script/style
+  exclusion, missing and over-long titles, and the selection threshold.
+- Five new offline test modules: `test_extraction_main_content.py`,
+  `test_launcher_immutability.py`, `test_executable_discovery.py`,
+  `test_health_reporting.py`, `test_docs_runtime_agreement.py`, plus
+  `test_search_date_provenance.py` and an expanded `test_content_guard.py`.
+
+### Changed
+
+- `SourceHealth` gained an optional structured `details` mapping, carried
+  through `to_dict()` and therefore through `doctor`. Additive: existing
+  consumers see the same fields as before.
+- The browser-engine subsystem keeps its own independent version (`0.2.4`).
+
+### Notes and limitations
+
+- The 12,000-query paired benchmark referenced by the audit was **not**
+  executed. It remains unstarted: no query manifest was produced and no
+  per-query criteria were registered. Offline tests do not substitute for it.
+- F-08's suspect `published_at: 2015-03-13` on a Python 3.13 page is
+  **unresolved**. The raw engine response was never captured, so no cause is
+  assigned; the date is now inspectable and typed `unknown` rather than
+  asserted as a verified publication date.
+- Live provider reachability, DNS-rebinding, redirect-to-private and
+  scanned-PDF OCR paths were not exercised in this environment.
+
 ## 0.3.0 — 2026-10-18
 
 Remediation of the independent audit of 2026-10-17, in three phases, plus a

@@ -38,6 +38,10 @@ echo "==> installing iralens ($TARGET) in editable mode"
 "$VENV_DIR/bin/python" -m pip install -e "$TARGET"
 
 echo "==> health check"
+# The venv's bin directory goes on PATH for the check: console scripts such as
+# yt-dlp live there, and without it doctor reports them "not installed" even
+# though this script just installed them.
+export PATH="$PWD/$VENV_DIR/bin:$PATH"
 "$VENV_DIR/bin/iralens" --version
 "$VENV_DIR/bin/iralens" --json doctor >/dev/null && echo "doctor: ok"
 

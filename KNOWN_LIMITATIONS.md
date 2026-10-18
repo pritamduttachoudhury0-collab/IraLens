@@ -180,9 +180,11 @@ records at the end show exactly what was exercised and where.
     miss paraphrases and other languages, and are advisory — not a boundary.
 25. **The private-address check is literal plus fetch-time.** The literal URL
     check covers everything; DNS resolution, answer validation, and redirect
-    re-validation cover the fetch path (`security.safe_urlopen`). Sources
-    with their own HTTP clients (RSS, the constant GitHub API targets)
-    validate only the literal URL.
+    re-validation cover the fetch path (`security.safe_urlopen`). Page reads
+    **and RSS/Atom feeds** use that transport, so both are DNS-pinned across
+    redirects. One source still uses its own HTTP client — `transcribe`, which
+    downloads audio and posts it to a Whisper endpoint with `requests` — and
+    validates only the literal URL; the GitHub API targets are constants.
 26. **The private-host allowlist applies to search transports only.** Page
     reads keep the strict public-URL policy, so a self-hosted SearXNG cannot
     be used as a general reader, and a *search* response linking to private
@@ -240,6 +242,40 @@ The corpus is `benchmarks/audit3000/queries.jsonl` with its sha256 in
 `benchmarks/audit3000/dataset.sha256`; it is never edited to move a number.
 A family that could not be run is reported as `not_run` with its reason and
 is never counted as a pass.
+
+## The 0.3.1 remediation
+
+The eight findings of the 2026-10-18 feasibility-gated partial audit
+(`F-01`…`F-08`) are fixed and regression-tested offline. What follows is what
+is *still* not established.
+
+- **The 12,000-query paired benchmark was NOT run.** No query manifest was
+  produced, no per-query criteria were registered, and no corpus was
+  submitted to either system. The repository's offline suites and its
+  3,000-query replay do not substitute for it, and the 98% acceptance target
+  remains unmeasured.
+- **F-08's suspect date is unresolved.** One result carried
+  `published_at: 2015-03-13` on a Python 3.13 page. The raw engine response
+  was never captured, so no cause is assigned: a provider field, a snippet or
+  URL-path extraction, and a merged duplicate all remain possible. The date
+  is now *inspectable* (`date_evidence`, `date_kind`) and typed `unknown`
+  where it cannot be attributed, rather than asserted as a publication date.
+- **Main-content selection is heuristic.** It isolates a region when one
+  container holds at least half the page's prose and at least 200 visible
+  characters. Pages that split their article across several equal containers,
+  or that mark up content in an unrecognised way, are read whole — which is
+  correct but can include navigation. Fixtures cover the threshold; arbitrary
+  real-world markup does not.
+- **Injection flags are still a heuristic.** F-07 removed one false positive
+  by requiring syntactic evidence of an invocation. Paraphrases, other
+  languages, and genuinely novel phrasings are still missed. A page that is
+  *not* flagged is not thereby trusted.
+- **Live provider reachability is not probed by `doctor`.** It reports
+  `provider_probe: not_run` by design: the health check makes no unsolicited
+  upstream request. Verify live state with an actual search.
+- **Browser-engine integrity is unchanged.** The bundled engine keeps its own
+  version (`0.2.4`); release artifacts still have no published checksum
+  unless the operator supplies one.
 
 ## Verification records
 

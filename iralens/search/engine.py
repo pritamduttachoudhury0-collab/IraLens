@@ -521,26 +521,49 @@ def to_artifacts(response: SearchResponse, question: str) -> List[Artifact]:
                                         or ["none"])
     out: List[Artifact] = []
     for rank, r in enumerate(response.results, start=1):
+        # `published_at` alone is not auditable: a caller cannot tell whether
+        # the date came from a provider field, was parsed out of a snippet, or
+        # was guessed from the URL path. The evidence and the kind travel with
+        # it, so every non-null date that affects freshness is traceable.
+        metadata: Dict[str, Any] = {
+            "query": question, "rank": rank, "score": r.score,
+            "published_at": r.published_at,
+            "date_status": r.date_status,
+        }
+        if r.snippet:
+            metadata["snippet"] = r.snippet
+        if r.date_evidence:
+            metadata["date_evidence"] = r.date_evidence
+        if r.date_kind:
+            metadata["date_kind"] = r.date_kind
+        if r.modified_at:
+            metadata["modified_at"] = r.modified_at
+        provenance: Dict[str, Any] = {
+            "engines": r.engines,
+            "engine_ranks": r.engine_ranks,
+            "canonical_url": r.canonical_url,
+            "score_breakdown": r.score_breakdown,
+            "queries": r.queries,
+            "merged_from": r.merged_from,
+            "security_flags": r.security_flags,
+            "date_status": r.date_status,
+            "date_evidence": r.date_evidence,
+            "date_kind": r.date_kind,
+            # A revision stamp is reported separately and is never promoted to
+            # a publication date; keeping both lets a consumer see the
+            # difference instead of inferring it.
+            "modified_at": r.modified_at,
+        }
         out.append(Artifact(
             title=r.title,
             url=r.url,
             source="web-search",
             kind="search_result",
             content=r.snippet,
-            metadata={"query": question, "rank": rank, "score": r.score,
-                      "published_at": r.published_at, **({"snippet": r.snippet} if r.snippet else {})},
+            metadata=metadata,
             retrieval_method=backend_label,
             discovered_from=f"search:{question}",
-            provenance={
-                "engines": r.engines,
-                "engine_ranks": r.engine_ranks,
-                "canonical_url": r.canonical_url,
-                "score_breakdown": r.score_breakdown,
-                "queries": r.queries,
-                "merged_from": r.merged_from,
-                "security_flags": r.security_flags,
-                "date_status": r.date_status,
-            },
+            provenance=provenance,
         ))
     return out
 

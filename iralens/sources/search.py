@@ -65,27 +65,71 @@ class SearchSource(Source):
                 "ok",
                 "semantic search bridge present; web engines also available as fallback",
                 self.active_backend,
+                details={"direct_search": "configured",
+                         "browser_fallback": "not_probed",
+                         "provider_probe": "not_run"},
             )
-        # free engines fetch SERPs directly over SSRF-safe HTTP, so
-        # search works with no browser engine installed. The engine, when
-        # present, is a rendered fallback for bot walls and JS layouts.
+        # Free engines fetch SERPs directly over SSRF-safe HTTP, so search
+        # works with no browser engine installed. The engine, when present, is
+        # a *rendered fallback* for bot walls and JS layouts — a secondary
+        # capability, reported separately from direct-search readiness.
         self.active_backend = "direct-search"
-        engine_status = ""
         try:
             engine_health = context.engine().health()
         except Exception as exc:  # engine is optional; never fail health on it
             engine_health = {"status": "off", "error": str(exc)}
-        if engine_health.get("status") == "off":
+        engine_status = str(engine_health.get("status") or "").strip().lower()
+        engine_message = str(engine_health.get("message") or "").strip()
+        details: Dict[str, Any] = {
+            "direct_search": "configured",
+            "browser_fallback": engine_status or "unknown",
+            # Doctor is non-destructive and makes no unsolicited upstream
+            # request: whether DuckDuckGo/Bing are reachable right now is
+            # genuinely untested, and the report says so.
+            "provider_probe": "not_run",
+        }
+        if engine_message:
+            details["browser_fallback_message"] = engine_message[:200]
+
+        if engine_status == "off":
             return SourceHealth(
                 "ok",
-                "direct SERP fetch over HTTP (browser-engine fallback not installed)",
+                "direct SERP fetch over HTTP; rendered browser fallback not "
+                "installed; upstream search providers not probed",
                 self.active_backend,
+                details=details,
+            )
+        if engine_status == "error":
+            # Never present a broken optional fallback as "all healthy": the
+            # direct path is still usable, so the source is `warn`, not `ok`.
+            reason = engine_message or "browser engine reported an error"
+            return SourceHealth(
+                "warn",
+                "direct SERP fetch over HTTP is ready; rendered browser fallback "
+                f"is NOT available ({reason}); upstream search providers not probed",
+                self.active_backend,
+                hint="run 'iralens doctor' for engine detail, or reinstall with "
+                     "'iralens install-engine'",
+                details=details,
+            )
+        if engine_status != "ok":
+            # An unrecognized engine status is not evidence that the fallback
+            # works: say it is unproven rather than claiming readiness.
+            return SourceHealth(
+                "ok",
+                "direct SERP fetch over HTTP is ready; rendered browser fallback "
+                f"status unrecognized ({engine_status or 'empty'}) and therefore "
+                "unproven; upstream search providers not probed",
+                self.active_backend,
+                details=details,
             )
         self.active_backend = "browser-search"
         return SourceHealth(
             "ok",
-            "direct SERP fetch with rendered browser fallback" + engine_status,
+            "direct SERP fetch with rendered browser fallback available "
+            "(engine probe passed); upstream search providers not probed",
             self.active_backend,
+            details=details,
         )
 
     # --------------------------------------------------------------- fetch
