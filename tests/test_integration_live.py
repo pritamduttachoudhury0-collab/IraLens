@@ -5,6 +5,7 @@ These hit the real network and the real browser engine; they are skipped
 automatically when either is unavailable.
 """
 
+import functools
 import json
 import subprocess
 
@@ -12,12 +13,49 @@ import pytest
 
 from iralens import IraLens
 from iralens.errors import (
+    AuthRequiredError,
     IraLensError,
     PageUnavailableError,
+    RateLimitedError,
     SessionStateError,
 )
 
 from .conftest import browser, cli_command, live
+
+
+def unverified_when_the_provider_refuses(func):
+    """A live test the *outside world* refused to let run is unverified.
+
+    A shared CI address can exhaust GitHub's anonymous quota, and a service
+    can be down or behind a captcha. That says nothing about IraLens:
+    reporting it as a failure blames the code for the network's mood, and
+    reporting it as a pass claims a check that never ran. It is a skip --
+    unverified -- and it says which provider refused and why.
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except (RateLimitedError, AuthRequiredError) as exc:
+            pytest.skip(f"the provider refused the request, so this check is unverified: {exc}")
+
+    return wrapper
+
+
+def skip_if_every_engine_refused(hil, query):
+    """Skip when every search engine refused for a reason outside the code.
+
+    A rate limit, a captcha or a service that is not reachable is the
+    provider's answer, not IraLens'. An engine that answered "no results"
+    is a real answer and is *not* a reason to skip.
+    """
+    response = hil.search_api(query, options={"max_results": 1})
+    outcomes = [outcome for outcome in response.outcomes if outcome.status != "skipped"]
+    external = {"rate_limited", "captcha", "unavailable", "transient"}
+    if outcomes and all(outcome.kind in external for outcome in outcomes):
+        detail = ", ".join(f"{o.engine}: {o.kind}" for o in outcomes)
+        pytest.skip(f"every search engine refused for an external reason ({detail})")
 
 
 @pytest.fixture
@@ -31,6 +69,8 @@ def hil(isolated_home):
 @browser
 def test_a_web_search_open_extract(hil):
     results = hil.search("what is the capital of France", limit=5)
+    if not results:
+        skip_if_every_engine_refused(hil, "what is the capital of France")
     assert 1 <= len(results) <= 5
     first = results[0]
     assert first.url.startswith("http")
@@ -59,6 +99,7 @@ def test_b_scrape_bulk_mixed_results(hil):
 
 
 @live
+@unverified_when_the_provider_refuses
 def test_b_rss_structured_data(hil):
     feed = hil.fetch("rss", "read", url="https://hnrss.org/frontpage", limit=5)
     assert feed.source == "rss"
@@ -69,6 +110,7 @@ def test_b_rss_structured_data(hil):
 
 
 @live
+@unverified_when_the_provider_refuses
 def test_b_github_structured_data(hil):
     repos = hil.fetch("github", "search_repos", query="headless browser", limit=3)
     assert repos, "expected public repo results"
@@ -79,6 +121,7 @@ def test_b_github_structured_data(hil):
 
 
 @live
+@unverified_when_the_provider_refuses
 def test_b_v2ex_structured_data(hil):
     topics = hil.fetch("v2ex", "hot")
     assert topics and topics[0].source == "v2ex"
@@ -87,6 +130,7 @@ def test_b_v2ex_structured_data(hil):
 
 # --------------------------------------- Test C — cross-capability navigation
 @browser
+@unverified_when_the_provider_refuses
 def test_c_discover_then_browse(hil):
     """URL found via one capability is browsed with another, seamlessly."""
     repos = hil.fetch("github", "search_repos", query="example", limit=1)
