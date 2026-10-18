@@ -132,6 +132,40 @@ class RateLimitedError(PageUnavailableError):
         self.retry_after = retry_after
 
 
+class VerificationRequiredError(PageUnavailableError):
+    """The origin requires interactive verification before it will serve.
+
+    A CAPTCHA, a bot-check interstitial, an authentication wall, or an access
+    block. It is a subclass of `PageUnavailableError` so existing
+    `except PageUnavailableError` handlers keep working, but it carries a
+    distinct machine-readable `error` so a caller can branch.
+
+    The distinction matters operationally: switching transport (static to
+    browser) or retrying will *not* complete an interactive check, so the
+    correct response is to stop and try a different source, not to escalate
+    through the fallback chain. Callers can read `verification.kind` to see
+    exactly what was detected.
+    """
+
+    error_type = "verification_required"
+
+    def __init__(self, message: str, *, hint: str = "", detail: str = "",
+                 verdict: Any = None, url: str = "") -> None:
+        super().__init__(message, hint=hint, detail=detail)
+        #: The `challenge.ChallengeVerdict` that produced this error.
+        self.verdict = verdict
+        #: The URL that required verification (never the page contents).
+        self.url = url
+
+    def to_dict(self) -> dict:
+        data = super().to_dict()
+        if self.verdict is not None and hasattr(self.verdict, "to_dict"):
+            data["verification"] = self.verdict.to_dict()
+        if self.url:
+            data["url"] = self.url
+        return data
+
+
 class AuthRequiredError(IraLensError):
     """The operation needs credentials/login the user has not provided."""
 

@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 _DIRECT_META_LOCAL = threading.local()
 
-from .. import content_guard
+from .. import challenge, content_guard
 from ..cache import ResponseCache
 from ..extract import extract_title, html_to_markdown, looks_like_pdf, pdf_to_text
 from ..errors import (
@@ -35,6 +35,7 @@ from ..errors import (
     IraLensError,
     OperationTimeoutError,
     PageUnavailableError,
+    VerificationRequiredError,
     classify_http_status,
 )
 from ..model import Artifact
@@ -93,6 +94,30 @@ def _is_antibot_page(body: bytes) -> bool:
         "ray id" in sample or "/cdn-cgi/challenge-platform/" in sample
     )
     return (captcha_warning and challenge_structure) or cloudflare_block
+
+
+def _reject_if_challenge(body: bytes, *, url: str = "",
+                         http_status: Optional[int] = None,
+                         headers: Optional[Dict[str, object]] = None) -> None:
+    """Raise `VerificationRequiredError` when the response is an interstitial.
+
+    The legacy `_is_antibot_page` check recognised one narrow Cloudflare
+    markdown shape and reported it as a generic page failure, which made the
+    fallback chain treat an interactive check as a transport problem worth
+    retrying. It is not: rendering or switching transport cannot complete a
+    human verification, so this raises a distinct typed error instead.
+    """
+    verdict = challenge.detect(body, http_status=http_status, headers=headers)
+    if verdict.detected and verdict.confident:
+        raise VerificationRequiredError(
+            f"the site requires interactive verification ({verdict.kind})",
+            hint=("this is not a transport problem: retrying or rendering will "
+                  "not complete an interactive check. Try a different source, or "
+                  "complete verification in an authorized browser session"),
+            detail=f"{verdict.kind}:{verdict.provider or 'unknown'}",
+            verdict=verdict,
+            url=url,
+        )
 
 
 #: Link-label characters (markdown `[label](url)`) as a share of the text.
@@ -255,6 +280,7 @@ def read_with_static_reader(
         raise PageUnavailableError(
             "static reader could not fetch the page", detail=str(exc)
         ) from exc
+    _reject_if_challenge(body, url=url)
     if _is_antibot_page(body):
         raise PageUnavailableError(
             "the site served an anti-bot challenge to the static reader",
@@ -350,6 +376,10 @@ def read_direct(
         raise PageUnavailableError(
             "direct fetch could not reach the page", detail=str(exc)
         ) from exc
+    direct_status = None
+    if isinstance(_DIRECT_META_LOCAL.last, dict):
+        direct_status = _DIRECT_META_LOCAL.last.get("status_code")
+    _reject_if_challenge(body, url=safe_url, http_status=direct_status)
     if _is_antibot_page(body):
         raise PageUnavailableError(
             "the site served an anti-bot challenge",
@@ -533,6 +563,15 @@ class WebSource(Source):
                               {"markdown": markdown, "method": method,
                                "retrieval": retrieval},
                               cacheable=bool(markdown.strip()))
+                # A challenge page that *renders* cleanly is still a challenge
+                # page. Detect on the extracted text as well as the raw body:
+                # otherwise the browser tier hands back a polished interstitial
+                # and the agent reads "verify you are human" as evidence.
+                served_status = retrieval.get("status_code")
+                _reject_if_challenge(
+                    markdown.encode("utf-8", errors="ignore"), url=safe_url,
+                    http_status=served_status if isinstance(served_status, int) else None,
+                )
                 flags = content_guard.scan(markdown)
                 # The cache keeps the full text; the budget is enforced when
                 # serving, so different max_chars values share one entry.
@@ -542,6 +581,12 @@ class WebSource(Source):
                     total_chars=len(markdown), max_chars=max_chars, method=method,
                     retrieval=retrieval)
             except (PageUnavailableError, ExtractionError, OperationTimeoutError) as exc:
+                # An interactive check is not a transport failure. Escalating it
+                # to the browser tier spends a full render to redraw the same
+                # "verify you are human" page, so it stops here and the caller
+                # gets a typed, machine-readable verdict instead.
+                if isinstance(exc, VerificationRequiredError):
+                    raise
                 static_failure = exc
                 TRANSPORT_HEALTH.record(
                     urllib.parse.urlsplit(safe_url).netloc.lower(), "static", ok=False)
