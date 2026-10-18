@@ -235,6 +235,61 @@ records at the end show exactly what was exercised and where.
     upstream repository was not fetched, and no live test against any
     bot-detection service was run.
 
+## Retrieval trust (what the results tell you)
+
+33. **A degraded result set says so.** When an engine is circuit-open or
+    failed, another engine fills the slots, so the result count stays the
+    same while the coverage silently shrinks. Every search result now
+    carries a `degradation` block (`degraded`, `engines_served`,
+    `engines_impaired`, `reasons`, `filler_risk`) derived from engine
+    outcomes. An engine that answered with nothing is *not* counted as
+    impaired. `doctor` reports `warn` while any engine is tripped.
+34. **Recency cannot rescue an irrelevant result.** Freshness is held at
+    neutral when relevance falls below the gate, so a page published today
+    no longer outranks an undated page that actually answers the question.
+    The cap only removes upside; it never inflates a score. Gated results
+    report `freshness_gated: true`.
+35. **Snippets are chosen for relevance, not length.** Candidate snippets
+    are scored on query-term coverage and density, penalised for
+    marketing/navigation copy, and credited for carrying a figure when the
+    question asks for one. When no candidate matches any query term the
+    longest is used, so an uninformative choice is at least a deterministic
+    one. This is a heuristic: it improves snippet selection, it does not
+    guarantee the snippet answers the question.
+36. **Disagreements between sources are surfaced, never adjudicated.**
+    Where two different domains state materially different figures sharing a
+    unit (more than 5% apart), the response carries a conflict record with
+    both sides, their sources and their dates. Detection is **lexical and
+    heuristic** — it compares numbers, it does not understand claims, and it
+    never decides which source is correct. Agreement is not reported as
+    conflict, and one domain restating itself is not two sources. Every
+    result also carries a `sufficiency` label: `insufficient` (fewer than two
+    independent domains), `undated`, or `sourced`.
+
+## Still open — not fixed
+
+37. **Retrieval quality on generic, multi-concept queries is unproven and
+    probably weak (the principal remaining gap).** A 10-query product
+    audit found only 2 of 10 queries returned answer-bearing evidence in the
+    top 5, with failures on single-fact lookups, market data, benchmarks,
+    and advisory queries. Queries anchored on a distinctive brand name work
+    well. Nothing in the current pipeline performs concept-level matching;
+    results show per-term matching instead, which is how "Kit" returns an
+    unrelated KIT entity and "Stripe" returns pages about stripes. **This is
+    not fixed and is not claimed to be.** It cannot be measured in an
+    offline environment because it requires live queries against search
+    providers.
+38. **The 12,000-query paired benchmark has still not been run.** Zero
+    queries have been submitted; the ≥98% acceptance bar is untested and is
+    not claimed. This is the same unmet bar recorded in the earlier audits.
+39. **The paired-query audit was performed against `main` at `af0af08`,
+    before the 0.3.1 remediation.** Several of its findings (extraction
+    flattening, the injection false positive on benign documentation, cache
+    TTL and RSS documentation mismatches) are fixed in the 0.3.1 line but
+    were published as open because the audited revision predates them. The
+    audit should be re-run against current `main` before its severity
+    ratings are relied upon.
+
 ## Platform and packaging
 
 27. **Not published to PyPI.** Install from a checkout, or straight from

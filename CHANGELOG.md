@@ -38,6 +38,34 @@ separate call for the maintainer.
   (`IRALENS_ENGINE_PROXY`), which is owner-readable only. An explicit
   `--proxy` flag still works and still wins over the environment.
 
+### Fixed (retrieval trust — IraPulse gap analysis)
+
+- **F-02 — silent fusion degradation.** An open circuit did not reduce the
+  result count, because another engine filled the slots, so a caller saw a
+  healthy-looking top 5 assembled by a substitute (typically an
+  entity-matching index). Every result now carries a `degradation` block
+  derived from engine outcomes, including on the legacy `search()` path.
+- **F-03 — freshness rescued irrelevant results.** A page published today
+  scores ~0.98 on freshness, so dated junk outranked undated relevance.
+  Relevance is now gated; below the floor, freshness is held at neutral.
+- **F-05 — snippets were chosen by length**, which prefers verbose
+  boilerplate over the passage carrying the answer. Selection now scores
+  term coverage and density, penalises marketing copy, and credits a figure
+  when the question asks for one.
+- **F-08 — `doctor` reported `ok` during a partial outage.** Health now
+  reads breaker state (a local read; doctor stays non-destructive) and
+  reports `warn` with the tripped engines named.
+- **F-09 — disagreements were never surfaced.** Figures sharing a unit that
+  differ by more than 5% across distinct domains now produce a conflict
+  record retaining both sides with sources and dates, plus a `sufficiency`
+  label (`insufficient` / `undated` / `sourced`). Detection is lexical and
+  heuristic and never adjudicates which source is right.
+- **F-06 and F-07** (extraction flattening; injection false positive on
+  benign documentation) were fixed in 0.3.1; the audit was run against
+  `main` before that remediation, which is recorded in `KNOWN_LIMITATIONS.md`.
+- **F-10** — README test count and cache-TTL documentation brought back in
+  line with the code.
+
 ### Security
 
 - Browser **subresource** SSRF now has regression coverage: a hostile page
@@ -46,6 +74,15 @@ separate call for the maintainer.
   control itself already worked; only the test was missing.
 - No security control was weakened to make anything pass: no timeout raised,
   no assertion relaxed, no test skipped, no validation bypassed.
+
+### Still open
+
+- **F-01 — concept-level retrieval** for generic and multi-concept queries
+  is **not** fixed and is **not** claimed to be fixed. It requires live
+  queries against search providers to measure, which this offline
+  environment cannot do. See `KNOWN_LIMITATIONS.md`.
+- **F-11 — the 12,000-query paired benchmark** has still not been run
+  (0 queries submitted). The ≥98% bar remains untested.
 
 ### Documentation
 

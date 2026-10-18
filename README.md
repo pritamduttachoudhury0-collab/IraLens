@@ -189,9 +189,10 @@ says so.
 
 | What | Result | Date | Evidence |
 |---|---|---|---|
-| Offline + local-fixture test suite (Python 3.11) | **748 passed, 14 skipped, 0 failed** (includes local V8 browser integration tests; skipped tests require live network) | 2026-10-18 | `tests/` · [error register](docs/audit/ERROR_REGISTER.md) |
+| Offline + local-fixture test suite (Python 3.11) | **829 passed, 14 skipped, 0 failed** (includes local V8 browser integration tests; skipped tests require live network) | 2026-10-18 | `tests/` · [error register](docs/audit/ERROR_REGISTER.md) |
 | Offline + local-fixture test suite (Python 3.11, pre-0.3.1 baseline) | **644 passed, 14 skipped, 0 failed** | 2026-10-18 | `tests/` (recorded before the 0.3.1 remediation) |
 | 0.3.1 remediation regression suite (F-01…F-08: 6 new modules, 8 HTML fixtures, 110 tests) | **110 passed, 0 failed, 0 skipped** — all offline and deterministic | 2026-10-18 | `tests/test_extraction_main_content.py` · `test_launcher_immutability.py` · `test_executable_discovery.py` · `test_health_reporting.py` · `test_docs_runtime_agreement.py` · `test_search_date_provenance.py` |
+| Retrieval-trust regression suite (IraPulse gaps F-02, F-03, F-05, F-08, F-09: degradation reporting, relevance gating, answer-passage snippets, health circuits, conflict surfacing) | **36 passed, 0 failed, 0 skipped** — all offline and deterministic | 2026-10-18 | `tests/test_retrieval_quality_fixes.py` |
 | Audit acceptance suite (17 offline checks, inverted so each asserts the defect is gone) | **17/17** | 2026-10-18 | `python benchmarks/acceptance_17.py` |
 | Scraping test (read/extract probes: budget, main content, JS shell, script leakage, typed 429, block classification, cache provenance, concurrent saves, typed refusal) | **12/12** | 2026-10-18 | `python benchmarks/run_scraping.py` |
 | Frozen 3,000-query corpus through the engine (offline pipeline) | **14,262/14,262 clean**; the same corpus re-scored from the audit's own captured baseline run shows 8,435 code-caused and 5,223 external failures out of 31,264 checks, every code-caused family now fixed | 2026-10-18 | `python benchmarks/run_audit3000.py --offline-pipeline` · `--replay` |
