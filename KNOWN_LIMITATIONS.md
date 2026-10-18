@@ -191,8 +191,13 @@ records at the end show exactly what was exercised and where.
 
 ## Platform and packaging
 
-27. **Not published to PyPI.** Install from a checkout (README). Publishing
-    follows the open-network benchmark and release review.
+27. **Not published to PyPI.** Install from a checkout, or straight from
+    GitHub: `pip install "iralens @ git+https://github.com/pritamduttachoudhury0-collab/IraLens.git"`
+    gives the latest developed version (README). The release artifacts are
+    built and attached to every GitHub release and the publish workflow is
+    in the repository, but the upload itself needs the project's PyPI
+    account — see `docs/releasing.md` for the one step that is not
+    automatable from here.
 28. **The HTTP API is a single node.** No hosted URL, SLA, TLS termination,
     multi-node health store, or managed uptime. Put a TLS reverse proxy and
     resource limits in front of it for anything beyond local use.

@@ -17,8 +17,19 @@ iralens doctor              # what works right now, per capability
 iralens install-engine      # optional: the local browser engine (JS pages, automation)
 ```
 
+That is the **latest developed version**: `main` carries every merged
+change, and the setup script installs the checkout it was run from. If you
+would rather not clone, install the same code straight from GitHub:
+
+```bash
+pip install "iralens @ git+https://github.com/pritamduttachoudhury0-collab/IraLens.git"
+```
+
 `pip install -e .` from the checkout works too; `./scripts/setup.sh --no-dev`
-skips the test tools. The package is not yet published to PyPI.
+skips the test tools. The package is not on PyPI yet: the release artifacts
+for it are built and attached to every GitHub release, and the publish
+workflow is in the repository, but the upload itself needs the project's
+PyPI account (see `docs/releasing.md`).
 
 ## Prove it works
 

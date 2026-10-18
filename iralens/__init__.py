@@ -31,7 +31,7 @@ from .errors import (
 )
 from .model import Artifact, SearchResult
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 __all__ = [
     "IraLens",

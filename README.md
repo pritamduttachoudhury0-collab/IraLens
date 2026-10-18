@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/pritamduttachoudhury0-collab/IraLens/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/pritamduttachoudhury0-collab/IraLens/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.2.1-informational)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.3.0-informational)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.10-blue)](pyproject.toml)
 
 IraLens lets an AI agent search the web, read pages and documents, drive a
@@ -61,8 +61,18 @@ iralens read "https://arxiv.org/pdf/1706.03762"
 iralens research "What efficiency did solar panels reach in 2025?" --rounds 2
 ```
 
-Windows setup is provided (`scripts/setup.ps1`) and is untested. The package
-is not yet published to PyPI. Full guide:
+Windows setup is provided (`scripts/setup.ps1`) and is untested. The
+checkout is the latest developed version; to install the same code without
+cloning:
+
+```bash
+pip install "iralens @ git+https://github.com/pritamduttachoudhury0-collab/IraLens.git"
+```
+
+The package is not on PyPI yet — the release artifacts are built and
+attached to every GitHub release, and the publish workflow is in the
+repository, but the upload needs the project's PyPI account
+(`docs/releasing.md`). Full guide:
 [docs/getting-started.md](docs/getting-started.md).
 
 ## Features

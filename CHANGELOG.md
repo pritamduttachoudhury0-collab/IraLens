@@ -2,11 +2,12 @@
 
 All notable changes to this project are documented here, newest first.
 
-## Unreleased — 2026-10-18
+## 0.3.0 — 2026-10-18
 
-Remediation of the independent audit of 2026-10-17, in three phases. The
-complete error register (E-01…E-35, the cross-audit ID map and the phase
-plan) is in `docs/audit/ERROR_REGISTER.md`.
+Remediation of the independent audit of 2026-10-17, in three phases, plus a
+fourth pass over the audit's own corpus. The complete error register
+(E-01…E-43, the cross-audit ID map and the phase plan) is in
+`docs/audit/ERROR_REGISTER.md`.
 
 ### Phase A — Integrity & Truthfulness (E-01…E-13)
 
@@ -160,7 +161,7 @@ under the strictest reading. It is a projection, not a measurement.
 
 ### Measured
 
-- `pytest -q` — **636 passed, 14 skipped, 0 failed**.
+- `pytest -q` — **637 passed, 14 skipped, 0 failed**.
 - `ruff check --select E9,F,B .` — clean. `mypy iralens` — clean.
 - `python benchmarks/acceptance_17.py` — **17/17**.
 - `python benchmarks/run_scraping.py` — **12/12**.
@@ -197,6 +198,27 @@ under the strictest reading. It is a projection, not a measurement.
   environment: it can reach package indexes and GitHub only, so the
   provider-side captchas and throttles could not be exercised. The runner
   reports `not_run` with the reason.
+
+### Release engineering
+
+- The release is **0.3.0** and the version is written in four places —
+  `pyproject.toml`, `iralens/__init__.py`, the MCP `clientInfo` handshake
+  and the README badge. A test asserts that all four agree
+  (`tests/test_release.py::test_the_version_is_the_same_everywhere_it_is_written`),
+  so a badge that lies about the build cannot be shipped.
+- The sdist and the wheel are built with `python -m build`, checked with
+  `twine check` (both **PASSED**), checksummed (`dist/SHA256SUMS`) and
+  attached to the GitHub release. Both were installed into a clean virtual
+  environment and reported `iralens 0.3.0`.
+- `.github/workflows/publish.yml` publishes to PyPI with **trusted
+  publishing** (a GitHub OIDC token exchanged for a short-lived PyPI upload
+  token). No API token is stored in the repository; the one owner-side step
+  is in `docs/releasing.md`.
+- The newest merged code is installable without a clone:
+  `pip install "iralens @ git+https://github.com/pritamduttachoudhury0-collab/IraLens.git"`.
+  The README, the getting-started guide and the known-limitations list now
+  say so, and no longer say the package "is not yet published to PyPI"
+  without saying what to do instead.
 
 ## 0.2.1 — 2026-10-16
 

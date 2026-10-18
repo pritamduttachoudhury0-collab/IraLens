@@ -53,7 +53,7 @@ iralens/
   proc.py          subprocess runner + honest health probing
   cli.py           `iralens` command
   api.py           `iralens-api` / `iralens serve` HTTP service
-  mcp_server.py    IraLens MCP server (49 tools at v0.2.1)
+  mcp_server.py    IraLens MCP server (49 tools at v0.3.0)
   engine/          spawns the engine binary, classifies its errors, exports state
   _internal/
     browser_engine/
