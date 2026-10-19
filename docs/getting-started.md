@@ -70,7 +70,7 @@ fresh install:
 | Research mode | yes | Quality depends on reachable search sources; output is leads, not verdicts. |
 | GitHub source | yes | Public data without credentials; `gh` CLI unlocks private repos and code search. |
 | RSS / V2EX | yes | Public feeds only. |
-| Browser engine (JS rendering, automation) | after `iralens install-engine` | Pinned release, startup-probed at install; stealth off; localhost-only control. |
+| Browser engine (JS rendering, automation) | after `iralens install-engine` | Pinned release, startup-probed at install; stealth available but off by default; localhost-only control. |
 | YouTube | when `yt-dlp` is installed | Bundled as a dependency; outages surface as honest health status. |
 | Twitter/X, Reddit, Bilibili, XiaoHongShu, LinkedIn, Xueqiu, Boss直聘, Facebook, Instagram | with your credentials/tools | Each source reports honest health with multi-backend fallbacks; no auto-login. |
 | Podcast transcription | when `groq_key` is configured | `iralens configure groq_key=...`. |
@@ -84,7 +84,7 @@ fresh install:
 
 ```bash
 iralens configure groq_key=...            # transcription
-iralens configure stealth=true            # engine anti-detection (off by default)
+iralens configure stealth=true            # engine identity consistency (off by default; see docs/stealth.md)
 iralens configure proxy=http://...        # engine proxy
 ```
 

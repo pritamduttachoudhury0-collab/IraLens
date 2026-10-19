@@ -12,21 +12,24 @@ Upstream source revision: `bd9529418b7fa975b50eabeac415cfaaa865a588` (Apache-2.0
 
 from __future__ import annotations
 
+import base64
 import datetime
+import http.client
 import json
+import mimetypes
 import os
 import re
 import shutil
 import socket
+import ssl
 import subprocess
 import threading
 import time
-import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ...errors import (
     EngineUnavailableError,
@@ -38,6 +41,12 @@ from ...errors import (
 from ...extract import looks_like_pdf, pdf_to_text
 from .cookies import CookieJar
 from .ssrf import allow_private_network, validate_navigation_url
+from .stealth import (
+    ContentEncodingError,
+    StealthProfile,
+    build_stealth_capability,
+    decode_body,
+)
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 VENDOR_OBSCURA_DIR = PACKAGE_DIR / "vendor" / "obscura"
@@ -340,8 +349,16 @@ class ObscuraBrowserContext:
         storage_dir: Optional[Path] = None,
         allow_private: bool = False,
         allow_file: bool = False,
+        stealth: Optional[StealthProfile] = None,
     ) -> None:
-        self.user_agent = user_agent or DEFAULT_USER_AGENT
+        # The stealth profile is the single source of truth for identity. When
+        # it is present its UA wins over the raw override so the header layer
+        # and the JavaScript layer cannot describe different machines.
+        self.stealth: Optional[StealthProfile] = stealth
+        if stealth is not None:
+            self.user_agent = stealth.user_agent
+        else:
+            self.user_agent = user_agent or DEFAULT_USER_AGENT
         self.proxy_url = proxy_url
         self.storage_dir = storage_dir
         self.allow_private = allow_private
@@ -382,9 +399,81 @@ class ObscuraBrowserContext:
         os.replace(tmp, ls_path)
 
 
-class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+def _host_header(parts: Any, port: Optional[int]) -> str:
+    """The exact ``Host`` value Chromium would send for a parsed URL."""
+    host = parts.hostname or ""
+    try:
+        host = host.encode("idna").decode("ascii")
+    except Exception:
+        pass
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    default_port = 443 if (parts.scheme or "").lower() == "https" else 80
+    if port and port != default_port:
+        return f"{host}:{port}"
+    return host
+
+
+class _BufferedResponse:
+    """A response for URLs that never touch the network (``file://``)."""
+
+    def __init__(self, status: int, headers: Dict[str, str], body: bytes) -> None:
+        self.status = status
+        self.headers = headers
+        self._body = body
+        self._offset = 0
+
+    def getcode(self) -> int:
+        return self.status
+
+    def read(self, amount: int = -1) -> bytes:
+        if amount is None or amount < 0:
+            chunk = self._body[self._offset:]
+            self._offset = len(self._body)
+            return chunk
+        chunk = self._body[self._offset:self._offset + amount]
+        self._offset += len(chunk)
+        return chunk
+
+    def close(self) -> None:
         return None
+
+    def __enter__(self) -> "_BufferedResponse":
+        return self
+
+    def __exit__(self, *exc_info: Any) -> None:
+        self.close()
+
+
+class _ClosingHttpResponse:
+    """``http.client`` response that also hangs up its one-shot connection.
+
+    Every request opens its own connection (there is no pool), so closing the
+    response must close the socket too; ``HTTPResponse.close`` alone leaves it
+    to the garbage collector.
+    """
+
+    def __init__(self, connection: http.client.HTTPConnection, response: http.client.HTTPResponse) -> None:
+        self._connection = connection
+        self._response = response
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._response, name)
+
+    def __enter__(self) -> "_ClosingHttpResponse":
+        return self
+
+    def __exit__(self, *exc_info: Any) -> None:
+        self.close()
+
+    def read(self, amount: int = -1) -> bytes:
+        return self._response.read(amount)
+
+    def close(self) -> None:
+        try:
+            self._response.close()
+        finally:
+            self._connection.close()
 
 
 def _origin_of(url: str) -> str:
@@ -417,14 +506,25 @@ class ObscuraNativeEngine:
         storage_dir: Optional[Path] = None,
         allow_private: bool = False,
         allow_file: bool = False,
+        stealth: bool = False,
+        stealth_profile: Optional[StealthProfile] = None,
     ) -> None:
         self._lock = threading.RLock()
+        # A profile passed explicitly wins; otherwise `stealth=True` builds the
+        # default identity around whatever user agent was requested.
+        if stealth_profile is None and stealth:
+            from .stealth import profile_for_engine
+
+            stealth_profile = profile_for_engine(stealth=True, user_agent=user_agent)
+        self.stealth_profile: Optional[StealthProfile] = stealth_profile
+        self.stealth_error: Optional[str] = None
         self.context = ObscuraBrowserContext(
             user_agent=user_agent,
             proxy_url=proxy_url,
             storage_dir=storage_dir,
             allow_private=allow_private,
             allow_file=allow_file,
+            stealth=stealth_profile,
         )
         self._tabs: Dict[str, BrowserTab] = {}
         self._tab_counter = 1
@@ -432,6 +532,63 @@ class ObscuraNativeEngine:
         self._tabs[first_id] = BrowserTab(first_id, self.context)
         self._active_tab_id = first_id
         self._closed = False
+
+    # ------------------------------------------------------------- stealth
+    def stealth_capability(self) -> Dict[str, Any]:
+        """What stealth is doing in this engine instance, for the handshake."""
+        return build_stealth_capability(self.stealth_profile, error=self.stealth_error)
+
+    def _stealth_payload(self) -> Optional[Dict[str, Any]]:
+        """The identity block handed to the V8 isolate on every navigation."""
+        profile = self.stealth_profile
+        if profile is None:
+            return None
+        return {
+            "before": profile.identity_globals(),
+            "after": profile.post_init_globals(),
+        }
+
+    def _request_headers(
+        self,
+        url: str,
+        *,
+        resource_type: str,
+        referrer: Optional[str],
+        initiator: Optional[str],
+        method: str,
+        cookie: Optional[str],
+        content_type: Optional[str],
+    ) -> Dict[str, str]:
+        """Headers for one request.
+
+        Without a stealth profile this keeps the historical minimal set: adding
+        browser-shaped headers only where they were asked for keeps stealth an
+        explicit, observable choice.
+        """
+        profile = self.stealth_profile
+        if profile is None:
+            headers: Dict[str, str] = {
+                "User-Agent": self.context.user_agent,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+            }
+            if cookie:
+                headers["Cookie"] = cookie
+            if content_type:
+                headers["Content-Type"] = content_type
+            return headers
+
+        if content_type is None and method.upper() not in ("GET", "HEAD"):
+            content_type = "application/x-www-form-urlencoded"
+        return profile.build_headers(
+            url=url,
+            resource_type=resource_type,
+            referrer=referrer,
+            initiator=initiator,
+            method=method,
+            cookie=cookie,
+            content_type=content_type,
+        )
 
     @property
     def active_tab(self) -> BrowserTab:
@@ -450,6 +607,134 @@ class ObscuraNativeEngine:
                 tab.close()
             self._tabs.clear()
 
+    def _effective_proxy(self, scheme: str, host: str) -> Optional[str]:
+        """The proxy for one request: explicit config first, then the environment.
+
+        ``urllib`` used to pick up ``HTTP_PROXY``/``HTTPS_PROXY`` (and
+        ``NO_PROXY``) implicitly when the opener was built. The transport is
+        explicit now, so the same resolution has to be explicit too.
+        """
+        if self.context.proxy_url:
+            return str(self.context.proxy_url)
+        try:
+            if urllib.request.proxy_bypass(host):
+                return None
+            proxies = urllib.request.getproxies()
+        except Exception:
+            return None
+        candidate = proxies.get(scheme) or proxies.get("all")
+        return str(candidate) if candidate else None
+
+    def _open_http(
+        self,
+        url: str,
+        *,
+        method: str,
+        body: Optional[bytes],
+        headers: Dict[str, str],
+        timeout: float,
+    ) -> Union[_BufferedResponse, _ClosingHttpResponse]:
+        """Open one HTTP(S) request with the headers exactly as given.
+
+        ``urllib`` cannot be used for this: its handler rewrites every header
+        name through ``str.title()`` (turning ``sec-ch-ua`` into ``Sec-Ch-Ua``)
+        and force-sets ``Connection: close``. Both are visible on the wire, so
+        the request is built on ``http.client`` directly. Redirects, cookies and
+        SSRF checks stay in ``_fetch_http``; this method performs exactly one
+        hop.
+        """
+        parts = urllib.parse.urlsplit(url)
+        scheme = (parts.scheme or "").lower()
+        host = parts.hostname or ""
+        if scheme == "file":
+            return self._open_file(url, parts)
+        if scheme not in ("http", "https") or not host:
+            raise PageUnavailableError(
+                f"Unsupported URL for the browser engine: {url}",
+                detail="unsupported_scheme",
+            )
+        try:
+            explicit_port = parts.port
+        except ValueError as exc:
+            raise PageUnavailableError(
+                f"invalid port in URL: {url}", detail="invalid_url"
+            ) from exc
+        port = explicit_port or (443 if scheme == "https" else 80)
+        selector = parts.path or "/"
+        if parts.query:
+            selector += "?" + parts.query
+
+        # `Host` first, exactly as Chromium emits it. `http.client` skips its
+        # own Host when the caller supplies one, which also keeps proxy requests
+        # pointing at the origin host rather than the proxy.
+        merged: Dict[str, str] = {"Host": _host_header(parts, explicit_port)}
+        merged.update(headers)
+
+        proxy_url = self._effective_proxy(scheme, host)
+        proxy = urllib.parse.urlsplit(proxy_url) if proxy_url else None
+        proxy_auth: Dict[str, str] = {}
+        if proxy is not None and proxy.hostname and proxy.username is not None:
+            credentials = (
+                urllib.parse.unquote(proxy.username)
+                + ":"
+                + urllib.parse.unquote(proxy.password or "")
+            )
+            token = base64.b64encode(credentials.encode("utf-8")).decode("ascii")
+            proxy_auth["Proxy-Authorization"] = "Basic " + token
+
+        connection: http.client.HTTPConnection
+        if scheme == "https":
+            context = ssl.create_default_context()
+            if proxy is not None and proxy.hostname:
+                # CONNECT through the proxy, then TLS to the origin. The proxy
+                # credential must not be forwarded down the tunnel.
+                connection = http.client.HTTPSConnection(
+                    proxy.hostname, proxy.port or 80, timeout=timeout, context=context
+                )
+                connection.set_tunnel(host, port, headers=proxy_auth)
+            else:
+                connection = http.client.HTTPSConnection(
+                    host, port, timeout=timeout, context=context
+                )
+            target = selector
+        elif proxy is not None and proxy.hostname:
+            connection = http.client.HTTPConnection(
+                proxy.hostname, proxy.port or 80, timeout=timeout
+            )
+            # A plain-HTTP proxy wants the absolute URI on the request line.
+            target = urllib.parse.urlunsplit((scheme, parts.netloc, selector, "", ""))
+            for name, value in proxy_auth.items():
+                merged.setdefault(name, value)
+        else:
+            connection = http.client.HTTPConnection(host, port, timeout=timeout)
+            target = selector
+
+        try:
+            connection.request(method, target, body=body, headers=merged)
+            return _ClosingHttpResponse(connection, connection.getresponse())
+        except BaseException:
+            connection.close()
+            raise
+
+    def _open_file(self, url: str, parts: Any) -> _BufferedResponse:
+        """Read a ``file://`` URL after the caller's policy checks have passed."""
+        if not self.context.allow_file:
+            raise SecurityBlockedError(
+                "file:// navigation is disabled for MCP",
+                detail="file_scheme_disabled",
+            )
+        path = urllib.request.url2pathname(parts.path or "")
+        try:
+            data = Path(path).read_bytes()
+        except OSError as exc:
+            raise PageUnavailableError(
+                f"could not read {url}: {exc}", detail="file_unreadable"
+            ) from exc
+        content_type = mimetypes.guess_type(path)[0] or "application/octet-stream"
+        if content_type.startswith("text/"):
+            content_type += "; charset=utf-8"
+        return _BufferedResponse(200, {"Content-Type": content_type}, data)
+
     def _fetch_http(
         self,
         url: str,
@@ -459,8 +744,15 @@ class ObscuraNativeEngine:
         headers: Optional[Dict[str, str]] = None,
         timeout: float = 30.0,
         resource_type: str = "document",
+        referrer: Optional[str] = None,
+        initiator: Optional[str] = None,
     ) -> Tuple[str, int, str, bytes, List[str]]:
         """Perform an SSRF-guarded HTTP request with manual redirect validation.
+
+        `referrer` is the page the request originates from (used for ``Referer``
+        and ``Sec-Fetch-Site``); `initiator` is the document that started a
+        navigation when it differs from the referrer. Both only matter in
+        stealth mode, where the header layer has to look like a page load.
 
         Returns `(final_url, status_code, content_type, body_bytes, redirect_chain)`.
         """
@@ -480,24 +772,11 @@ class ObscuraNativeEngine:
                 [current_url],
             )
 
-        handlers: List[Any] = [_NoRedirectHandler()]
-        if self.context.proxy_url:
-            handlers.append(
-                urllib.request.ProxyHandler(
-                    {"http": self.context.proxy_url, "https": self.context.proxy_url}
-                )
-            )
-        opener = urllib.request.build_opener(*handlers)
-
         req_method = method.upper()
         req_body = body
-        req_headers: Dict[str, str] = {
-            "User-Agent": self.context.user_agent,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
-        if headers:
-            req_headers.update(headers)
+        # Headers that must survive redirects are built per hop below; this is
+        # only the caller-supplied overlay (an explicit Authorization, etc.).
+        req_headers: Dict[str, str] = dict(headers or {})
 
         redirect_chain: List[str] = [current_url]
         deadline = time.monotonic() + max(1.0, float(timeout))
@@ -511,25 +790,33 @@ class ObscuraNativeEngine:
                 )
 
             cookie_hdr = self.context.cookie_jar.cookie_header(current_url)
-            hop_headers = dict(req_headers)
-            if cookie_hdr:
-                hop_headers["Cookie"] = cookie_hdr
-            if req_method == "POST" and "Content-Type" not in hop_headers:
-                hop_headers["Content-Type"] = "application/x-www-form-urlencoded"
-
-            req = urllib.request.Request(
+            hop_headers = self._request_headers(
                 current_url,
-                data=req_body if req_method not in ("GET", "HEAD") else None,
-                headers=hop_headers,
+                resource_type=resource_type,
+                referrer=referrer,
+                initiator=initiator,
                 method=req_method,
+                cookie=cookie_hdr or None,
+                content_type=(
+                    "application/x-www-form-urlencoded" if req_body and req_method not in ("GET", "HEAD") else None
+                ),
             )
+            # Caller-supplied headers win, and go last so they cannot be
+            # reordered behind the identity headers.
+            hop_headers.update(req_headers)
 
             status_code = 200
             resp_headers: Any = {}
             raw_chunks: List[bytes] = []
 
             try:
-                with opener.open(req, timeout=max(0.5, min(remaining, 30.0))) as resp:
+                with self._open_http(
+                    current_url,
+                    method=req_method,
+                    body=req_body if req_method not in ("GET", "HEAD") else None,
+                    headers=hop_headers,
+                    timeout=max(0.5, min(remaining, 30.0)),
+                ) as resp:
                     status_code = getattr(resp, "status", None) or resp.getcode() or 200
                     resp_headers = resp.headers
                     total = 0
@@ -549,34 +836,23 @@ class ObscuraNativeEngine:
                                 detail="response_too_large",
                             )
                         raw_chunks.append(chunk)
-            except urllib.error.HTTPError as http_err:
-                status_code = http_err.code
-                resp_headers = http_err.headers or {}
-                try:
-                    if http_err.fp is not None:
-                        err_body = http_err.fp.read(MAX_NAVIGATION_BODY_BYTES)
-                        if err_body:
-                            raw_chunks.append(err_body)
-                except Exception:
-                    pass
             except (TimeoutError, socket.timeout) as exc:  # type: ignore[name-defined]
                 raise OperationTimeoutError(
                     f"Navigation timeout after {timeout}s: {exc}",
                     detail="navigation_timeout",
                 ) from exc
-            except urllib.error.URLError as exc:
-                reason = exc.reason
-                if isinstance(reason, TimeoutError) or "timed out" in str(reason).lower():
-                    raise OperationTimeoutError(
-                        f"Navigation timeout after {timeout}s: {reason}",
-                        detail="navigation_timeout",
-                    ) from exc
+            except ssl.SSLError as exc:
                 raise PageUnavailableError(
-                    f"Network error: {current_url}: {reason}",
-                    detail="network_error",
+                    f"TLS error while fetching {current_url}: {exc}",
+                    detail="tls_error",
+                ) from exc
+            except http.client.HTTPException as exc:
+                raise PageUnavailableError(
+                    f"malformed HTTP response from {current_url}: {exc}",
+                    detail="protocol_error",
                 ) from exc
             except OSError as exc:
-                if "timed out" in str(exc).lower():
+                if isinstance(exc, TimeoutError) or "timed out" in str(exc).lower():
                     raise OperationTimeoutError(
                         f"Navigation timeout after {timeout}s: {exc}",
                         detail="navigation_timeout",
@@ -633,6 +909,21 @@ class ObscuraNativeEngine:
                 content_type = resp_headers.get("Content-Type") or resp_headers.get("content-type") or "text/html"
 
             body_bytes = b"".join(raw_chunks)
+            content_encoding = ""
+            if hasattr(resp_headers, "get"):
+                content_encoding = (
+                    resp_headers.get("Content-Encoding")
+                    or resp_headers.get("content-encoding")
+                    or ""
+                )
+            if content_encoding:
+                try:
+                    body_bytes = decode_body(body_bytes, str(content_encoding))
+                except ContentEncodingError as exc:
+                    raise ExtractionError(
+                        f"response encoding could not be decoded: {exc}",
+                        detail="content_encoding_unsupported",
+                    ) from exc
             self.active_tab.network_requests.append(
                 NetworkEventRecord(
                     url=current_url,
@@ -702,6 +993,7 @@ class ObscuraNativeEngine:
             body=body_bytes,
             _record_history=v8_state.get("pendingHistoryIndex") is None,
             _depth=depth + 1,
+            _initiator_url=tab.current_url if tab.current_url != "about:blank" else None,
         )
 
     def navigate(
@@ -714,16 +1006,21 @@ class ObscuraNativeEngine:
         body: Optional[bytes] = None,
         _record_history: bool = True,
         _depth: int = 0,
+        _initiator_url: Optional[str] = None,
     ) -> NavigationOutcome:
         with self._lock:
             tab = self.active_tab
             deadline = time.monotonic() + max(0.5, float(timeout))
+            # A navigation started from a page (form post, JS redirect) passes
+            # its initiator; an address-bar-style navigate sends none, which is
+            # what Chromium reports as `Sec-Fetch-Site: none`.
             final_url, status_code, content_type, body_bytes, redirect_chain = self._fetch_http(
                 url,
                 method=method,
                 body=body,
                 timeout=timeout,
                 resource_type="document",
+                initiator=_initiator_url,
             )
 
             ct_lower = (content_type or "").lower()
@@ -768,6 +1065,7 @@ class ObscuraNativeEngine:
                             resolved_src,
                             timeout=min(rem, 5.0),
                             resource_type="script",
+                            referrer=final_url,
                         )
                         if 200 <= s_status < 300 and len(s_bytes) <= MAX_SUBRESOURCE_SCRIPT_BYTES:
                             external_scripts[resolved_src] = s_bytes.decode("utf-8", errors="replace")
@@ -805,6 +1103,9 @@ class ObscuraNativeEngine:
                 "html": html,
                 "externalScripts": external_scripts,
             }
+            stealth_payload = self._stealth_payload()
+            if stealth_payload is not None:
+                load_payload["stealth"] = stealth_payload
 
             rem_v8 = max(0.2, deadline - time.monotonic())
             raw_v8 = tab.isolate.eval(

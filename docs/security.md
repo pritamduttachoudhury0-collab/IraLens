@@ -87,7 +87,10 @@ internal targets.
 - Proxy credentials remain readable by the same user through the child
   process's environment. Eliminating that needs an out-of-band channel
   (a pipe or inherited file descriptor) and is not implemented.
-- Stealth, where an engine provides it, is a browser-identity consistency
-  measure. It is not a security control, does not solve CAPTCHAs, and does not
-  guarantee success against interactive challenges. It is unreachable in every
-  shipped configuration of this distribution (see `KNOWN_LIMITATIONS.md`).
+- Stealth (`iralens configure stealth=true`) is a browser-identity
+  consistency measure implemented by the bundled engine: it aligns the HTTP
+  headers it sends with the navigator values it exposes. It is not a security
+  control, does not solve CAPTCHAs, does not impersonate Chrome's TLS or
+  HTTP/2 fingerprint, and does not guarantee success against interactive
+  challenges. The engine reports those limits in every handshake; see
+  [stealth.md](stealth.md) and `KNOWN_LIMITATIONS.md`.

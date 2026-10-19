@@ -1,14 +1,17 @@
 # -*- coding: utf-8 -*-
 """Optional features must be discoverable, never silently assumed.
 
-`--stealth` was declared on the CLI and forwarded to the engine subprocess,
-but no code ever read it. A caller setting `stealth: true` therefore believed
-requests were protected when nothing had changed. That is worse than not
-having the flag: the operator cannot correct a behaviour they cannot see.
+`--stealth` was once declared on the CLI and forwarded to the engine
+subprocess while no code read it, so a caller setting `stealth: true` believed
+requests were protected when nothing had changed. The contract that replaced
+that is the one tested here: the engine advertises what it actually
+implements, a request is reported together with whether it was *applied*, and
+a requested-but-unavailable feature is surfaced rather than dropped.
 
-These tests assert the contract that replaced it — the engine advertises what
-it actually implements, and a requested-but-absent feature is reported
-instead of being dropped. They are offline and deterministic.
+Stealth is now implemented by the Python/native-V8 tier (`stealth.py`), so
+"requested" and "applied" agree in the shipped configuration; the unavailable
+branch is still exercised below with a simulated engine, because a future
+tier may again be unable to honour the request.
 """
 
 from __future__ import annotations
@@ -22,8 +25,8 @@ from iralens.engine.native import BrowserEngine
 
 
 # --------------------------------------------------------------- payload unit
-def test_stealth_is_advertised_as_unsupported():
-    assert mcp_server.ENGINE_CAPABILITIES["stealth"]["supported"] is False
+def test_stealth_is_advertised_as_supported():
+    assert mcp_server.ENGINE_CAPABILITIES["stealth"]["supported"] is True
 
 
 def test_supported_capabilities_are_advertised_as_supported():
@@ -36,12 +39,23 @@ def test_unrequested_stealth_reports_requested_false():
     assert payload["stealth"]["applied"] is False
 
 
-def test_requested_stealth_is_recorded_even_though_it_cannot_be_applied():
-    """The caller must be able to distinguish 'off' from 'unavailable'."""
+def test_requested_stealth_is_applied_and_reported():
+    """The caller must be able to distinguish 'off' from 'on' and from 'no'."""
     payload = mcp_server.capabilities_payload(stealth_requested=True)
     assert payload["stealth"]["requested"] is True
+    assert payload["stealth"]["applied"] is True
+    assert payload["stealth"]["supported"] is True
+
+
+def test_unavailable_stealth_is_reported_as_not_applied():
+    """A tier that cannot honour the request must say so, not fake success."""
+    payload = mcp_server.capabilities_payload(
+        stealth_requested=True,
+        engine_stealth={"applied": False, "reason": "no stealth implementation"},
+    )
+    assert payload["stealth"]["requested"] is True
     assert payload["stealth"]["applied"] is False
-    assert payload["stealth"]["supported"] is False
+    assert "reason" in payload["stealth"]
 
 
 def test_payload_is_a_copy_not_the_shared_constant():
@@ -53,11 +67,12 @@ def test_payload_is_a_copy_not_the_shared_constant():
     assert mcp_server.ENGINE_CAPABILITIES["stealth"].get("requested") is None
 
 
-def test_stealth_notice_states_it_does_not_defeat_captchas():
+def test_stealth_notice_states_what_it_does_and_does_not_do():
     """Marketing restraint is part of the contract, not an aside."""
     notice = mcp_server._stealth_notice().lower()
-    assert "not supported" in notice
+    assert "stealth active" in notice
     assert "captcha" in notice
+    assert "tls" in notice
 
 
 # ------------------------------------------------------------ end-to-end CLI
@@ -88,14 +103,18 @@ def test_requesting_stealth_is_reported_not_swallowed():
     result = json.loads(out.strip().splitlines()[0])["result"]
     stealth = result["engineCapabilities"]["stealth"]
     assert stealth["requested"] is True
-    assert stealth["applied"] is False
-    assert stealth["supported"] is False
+    assert stealth["applied"] is True
+    assert stealth["supported"] is True
+    # The applied identity travels with the handshake, so a client can check
+    # what it is actually wearing without reading the engine source.
+    assert stealth["profile"]["user_agent"].startswith("Mozilla/5.0")
+    assert stealth["profile"]["sec_ch_ua"]
     # And it is said out loud, so an operator watching stderr sees it too.
     assert "stealth" in err.lower()
 
 
 def test_engine_still_starts_with_the_flag():
-    """An unsupported optional feature must not take the browser tier down."""
+    """An optional feature must never take the browser tier down."""
     out, _ = _handshake(["--stealth"])
     assert json.loads(out.strip().splitlines()[0])["result"]["serverInfo"]["name"]
 
@@ -148,13 +167,16 @@ def test_stealth_status_is_machine_readable():
     eng = BrowserEngine(config=_Cfg(stealth="true"), session=None)
     eng._record_capabilities({
         "engineCapabilities": {
-            "stealth": {"supported": False, "requested": True, "applied": False,
-                        "reason": "not compiled"},
+            "stealth": {"supported": True, "requested": True, "applied": True,
+                        "profile": {"user_agent": "x"}},
         }
     })
     status = eng.stealth_status()
     assert set(status) >= {"requested", "supported", "active", "note"}
-    assert status["requested"] is True and status["active"] is False
+    assert status["requested"] is True
+    assert status["supported"] is True
+    assert status["active"] is True
+    assert eng.capability_warnings == []
 
 
 def test_health_surfaces_the_warning_when_running(monkeypatch):

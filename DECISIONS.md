@@ -244,6 +244,22 @@ with stealth features OFF unless explicitly enabled, enforces SSRF validation
 on every navigation and redirect hop, bounds V8 script execution (15 s
 timeout, 256 MB heap cap), and communicates over stdio pipes only.
 
+**Stealth is implemented in the Python tier, not by compiling the Rust
+feature gate.** The vendored Rust crates implement stealth behind
+`#[cfg(feature = "stealth")]`, but this distribution runs the Python/native-V8
+tier; requiring a Rust build would make the feature depend on a toolchain most
+installs do not have. The tier therefore implements the same idea itself:
+one `StealthProfile` feeds the engine's own `globalThis.__obscura_*` hooks
+(the exact knobs the upstream Rust tier writes) and the HTTP header layer. Two
+consequences follow. First, the Rust gate stays uncompiled and upstream code
+stays untouched, so a vendored upgrade cannot conflict with local patches.
+Second, the identity is applied through engine-supported values only: no
+`Function.prototype.toString` hijacking and no fabricated WebGL, because a
+convincing lie the host cannot back is a worse fingerprint than an honest
+absence. The transport moved from `urllib` to `http.client` for the same
+reason: `urllib` rewrites header names through `str.title()` and forces
+`Connection: close`, so the wire could never match the profile.
+
 ## Research
 
 **Deterministic core; LLM is an optional adapter.** Planning, claim

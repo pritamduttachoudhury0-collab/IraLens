@@ -13,6 +13,7 @@ start. Each guide below opens with one plain sentence on what it is for.
 | [Research mode](research.md) | Bounded research runs with cited statements, provenance, and replay. |
 | [API](api.md) | The single-node HTTP service: native endpoints, Serper compatibility, metrics, limits. |
 | [Security](security.md) | The threat model and guard layers for Internet content in an AI agent. |
+| [Stealth mode](stealth.md) | The engine's coherent browser identity: what changes, what does not, and how to verify it. |
 | [Deployment](deployment.md) | The self-hosted Docker stack, state, monitoring, and the daily-watch canary. |
 
 ## Reference

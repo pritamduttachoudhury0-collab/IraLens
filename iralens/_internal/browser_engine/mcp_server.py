@@ -13,7 +13,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ...errors import (
     EngineUnavailableError,
@@ -28,6 +28,11 @@ from .runtime import (
     UPSTREAM_REVISION,
     ObscuraNativeEngine,
 )
+from .stealth import (
+    STEALTH_LIMITATIONS,
+    StealthProfile,
+    profile_for_engine,
+)
 
 #: Channel used to hand the proxy to a spawned engine without putting it on
 #: the command line. `/proc/<pid>/cmdline` is world-readable, so a proxy URL
@@ -39,27 +44,23 @@ PROXY_ENV_VAR = "IRALENS_ENGINE_PROXY"
 ENGINE_SERVER_NAME = "iralens-browser-engine"
 ENGINE_SERVER_VERSION = f"0.2.4+rev.{UPSTREAM_REVISION[:12]}"
 
-#: What this build actually implements, as opposed to what the vendored
-#: upstream source is capable of. The distinction matters: the vendored
-#: Obscura crates carry real stealth code behind Rust `#[cfg(feature =
-#: "stealth")]` gates, and this distribution does not compile the Rust
-#: crates at all -- it runs the Python/native-V8 tier. The capability is
-#: therefore *upstream*, not *present*. Advertising it as available would
-#: let a caller believe requests are protected when they are not.
+#: What this build actually implements. The vendored Obscura crates carry
+#: their own stealth code behind Rust ``#[cfg(feature = "stealth")]`` gates,
+#: which this distribution does not compile -- it runs the Python/native-V8
+#: tier. That tier now implements stealth itself (``stealth.py``): one coherent
+#: identity applied to the HTTP headers and to the engine's navigator hooks.
 #:
-#: Even where stealth is compiled in, it is a browser-identity consistency
-#: measure. It does not solve CAPTCHAs and does not guarantee success
-#: against interactive Cloudflare / DataDome / Akamai challenges.
+#: Stealth here is still a browser-identity consistency measure, not an
+#: anti-bot guarantee: it does not solve CAPTCHAs, impersonate Chrome's TLS
+#: fingerprint, or create surfaces the engine does not have. The limitations
+#: list travels with every handshake so a caller cannot mistake one for the
+#: other.
 ENGINE_CAPABILITIES: Dict[str, Any] = {
     "stealth": {
-        "supported": False,
+        "supported": True,
         "tier": "python-native-v8",
-        "reason": (
-            "stealth is implemented in the vendored Rust crate "
-            "obscura-browser behind the 'stealth' cargo feature, which this "
-            "distribution does not compile; the Python/native-V8 tier has no "
-            "stealth implementation"
-        ),
+        "layers": ["http_request_identity", "navigator_identity", "client_hints"],
+        "limitations": list(STEALTH_LIMITATIONS),
     },
     "javascript_rendering": {"supported": True},
     "proxy": {"supported": True},
@@ -67,27 +68,53 @@ ENGINE_CAPABILITIES: Dict[str, Any] = {
 }
 
 
-def _stealth_notice() -> str:
-    """The diagnostic shown when `--stealth` is requested but unsupported."""
-    info = ENGINE_CAPABILITIES["stealth"]
+def _stealth_notice(profile: Optional[StealthProfile] = None) -> str:
+    """The diagnostic printed when ``--stealth`` is requested.
+
+    Stealth changes what every request looks like, so it is announced rather
+    than applied silently -- and it is announced *with* its boundary, so nobody
+    reads "stealth active" as "challenges will pass".
+    """
+    detail = ""
+    if profile is not None:
+        described = profile.describe()
+        screen = described.get("screen") or ["?", "?"]
+        detail = (
+            f" ({described.get('ua_platform', '?')} "
+            f"Chrome {described.get('user_agent', '').split('Chrome/')[-1].split('.')[0]}, "
+            f"screen {screen[0]}x{screen[1]})"
+        )
     return (
-        f"{ENGINE_SERVER_NAME}: --stealth was requested but is not supported by "
-        f"this build ({info['tier']}); continuing without it. {info['reason']}. "
-        "Note that stealth, where available, does not solve CAPTCHAs and does "
-        "not guarantee success against interactive challenges."
+        f"{ENGINE_SERVER_NAME}: stealth active{detail}. Browser-identity "
+        "consistency only: TLS/HTTP2 fingerprints and WebGL remain the host's, "
+        "and it does not solve CAPTCHAs or guarantee success against interactive "
+        "challenges."
     )
 
 
-def capabilities_payload(stealth_requested: bool = False) -> Dict[str, Any]:
+def capabilities_payload(
+    stealth_requested: bool = False,
+    engine_stealth: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """Capabilities for the `initialize` response.
 
-    A requested-but-unsupported feature is reported explicitly rather than
-    being dropped, so the client can tell the difference between "off
-    because you did not ask" and "off because this build cannot".
+    A requested feature is reported with whether it was actually *applied*, so
+    the client can tell the difference between "off because you did not ask",
+    "off because this build cannot", and "on, with these limits".
     """
     payload = {name: dict(value) for name, value in ENGINE_CAPABILITIES.items()}
     payload["stealth"]["requested"] = bool(stealth_requested)
-    payload["stealth"]["applied"] = False
+    if engine_stealth is not None:
+        for key in ("profile", "reason", "layers"):
+            if key in engine_stealth:
+                payload["stealth"][key] = engine_stealth[key]
+        payload["stealth"]["applied"] = bool(
+            stealth_requested and engine_stealth.get("applied")
+        )
+    else:
+        # No engine instance to ask (unit callers, capability probes): the tier
+        # supports it, so a request is honoured by construction.
+        payload["stealth"]["applied"] = bool(stealth_requested)
     return payload
 
 
@@ -445,7 +472,12 @@ def _serialize_tool_output(val: Any) -> str:
 
 def run_mcp_stdio_loop(engine: ObscuraNativeEngine,
                        *, stealth_requested: bool = False) -> int:
-    """Run the JSON-RPC 2.0 MCP server loop over stdin/stdout."""
+    """Run the JSON-RPC 2.0 MCP server loop over stdin/stdout.
+
+    ``stealth_requested`` is what the caller asked for; what the engine actually
+    applied comes from the engine itself, so the two can never be conflated.
+    """
+    engine_stealth = engine.stealth_capability()
     try:
         for raw_line in sys.stdin:
             line = raw_line.strip()
@@ -482,7 +514,7 @@ def run_mcp_stdio_loop(engine: ObscuraNativeEngine,
                             "name": ENGINE_SERVER_NAME,
                             "version": ENGINE_SERVER_VERSION,
                         },
-                        "engineCapabilities": capabilities_payload(stealth_requested),
+                        "engineCapabilities": capabilities_payload(stealth_requested, engine_stealth),
                     },
                 }
             elif method == "ping":
@@ -575,7 +607,65 @@ def build_parser() -> argparse.ArgumentParser:
     p_scrape.add_argument("--selector", required=True, help="CSS selector to extract.")
     p_scrape.add_argument("--timeout", type=float, default=30.0, help="Navigation timeout in seconds.")
     p_scrape.add_argument("--allow-private", action="store_true", help="Allow loopback/private IPs.")
+
+    # Stealth applies to the one-shot subcommands too: `fetch --stealth` and
+    # `mcp --stealth` must describe the same machine.
+    for sub_parser in (p_mcp, p_fetch, p_scrape):
+        if sub_parser is not p_mcp:
+            sub_parser.add_argument("--user-agent", default=None, help="Custom User-Agent header.")
+            sub_parser.add_argument("--proxy", default=None, help="HTTP/HTTPS proxy URL.")
+            sub_parser.add_argument(
+                "--stealth",
+                action="store_true",
+                help="Apply the coherent stealth browser identity (off by default).",
+            )
+        sub_parser.add_argument(
+            "--language",
+            default=None,
+            help="BCP-47 language for navigator.language and Accept-Language (default: env).",
+        )
+        sub_parser.add_argument(
+            "--screen",
+            default=None,
+            help="Screen size as WIDTHxHEIGHT for stealth mode (default: 1920x1080).",
+        )
+        sub_parser.add_argument(
+            "--geolocation",
+            default=None,
+            help="Latitude,longitude reported by navigator.geolocation in stealth mode.",
+        )
     return parser
+
+
+def _profile_for_args(args: argparse.Namespace) -> Optional[StealthProfile]:
+    """Resolve the stealth identity from the parsed CLI arguments."""
+    return profile_for_engine(
+        stealth=bool(getattr(args, "stealth", False)),
+        user_agent=getattr(args, "user_agent", None),
+        language=getattr(args, "language", None),
+        screen=getattr(args, "screen", None),
+        geolocation=getattr(args, "geolocation", None),
+    )
+
+
+def _engine_for_args(
+    args: argparse.Namespace,
+    *,
+    allow_private: bool,
+    storage_dir: Optional[Path] = None,
+    proxy: Optional[str] = None,
+) -> Tuple[ObscuraNativeEngine, Optional[StealthProfile]]:
+    profile = _profile_for_args(args)
+    engine = ObscuraNativeEngine(
+        user_agent=getattr(args, "user_agent", None),
+        proxy_url=proxy if proxy is not None else getattr(args, "proxy", None),
+        storage_dir=storage_dir,
+        allow_private=allow_private,
+        allow_file=bool(getattr(args, "allow_file", False)),
+        stealth=profile is not None,
+        stealth_profile=profile,
+    )
+    return engine, profile
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -589,11 +679,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
 
     stealth_requested = bool(getattr(args, "stealth", False))
+    profile = _profile_for_args(args)
     if stealth_requested:
-        # Loud, not fatal: a caller who believes stealth is on must be told it
-        # is not, but refusing to start would take the whole browser tier down
-        # over an optional cosmetic flag.
-        print(_stealth_notice(), file=sys.stderr)
+        # Stealth changes what every request looks like, so it is announced on
+        # stderr (never stdout: that is the JSON-RPC channel) together with the
+        # limits that make it a consistency measure rather than a guarantee.
+        print(_stealth_notice(profile), file=sys.stderr)
 
     if args.subcommand in (None, "mcp"):
         # Explicit --proxy wins; env is the safe channel used by the parent.
@@ -603,17 +694,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                 args.proxy = env_proxy
         raw_storage = getattr(args, "storage_dir", None)
         storage_dir = Path(str(raw_storage)).expanduser() if raw_storage else None
-        engine = ObscuraNativeEngine(
-            user_agent=getattr(args, "user_agent", None),
-            proxy_url=getattr(args, "proxy", None),
-            storage_dir=storage_dir,
+        engine, _ = _engine_for_args(
+            args,
             allow_private=bool(getattr(args, "allow_private", False)),
-            allow_file=bool(getattr(args, "allow_file", False)),
+            storage_dir=storage_dir,
+            proxy=getattr(args, "proxy", None),
         )
         return run_mcp_stdio_loop(engine, stealth_requested=stealth_requested)
 
     if args.subcommand == "fetch":
-        engine = ObscuraNativeEngine(allow_private=bool(args.allow_private))
+        engine, _ = _engine_for_args(args, allow_private=bool(args.allow_private))
         try:
             outcome = engine.navigate(args.url, timeout=args.timeout)
             if args.format == "markdown":
@@ -634,7 +724,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             engine.close()
 
     if args.subcommand == "scrape":
-        engine = ObscuraNativeEngine(allow_private=bool(args.allow_private))
+        engine, _ = _engine_for_args(args, allow_private=bool(args.allow_private))
         try:
             outcome = engine.navigate(args.url, timeout=args.timeout)
             items = engine.dispatch_tool("browser_extract", {"selector": args.selector})

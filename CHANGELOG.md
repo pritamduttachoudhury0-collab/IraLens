@@ -9,6 +9,47 @@ Browser resilience and honest reporting of optional features. This work is
 decision, so no version was bumped. Cutting a version for these changes is a
 separate call for the maintainer.
 
+### Added
+
+- **Stealth mode is implemented instead of advertised.** `stealth: true` used
+  to be accepted, forwarded, reported as `requested`, and then ignored: the
+  Python/native-V8 tier contained no stealth code, and the vendored Rust tier
+  that does implement it is not compiled by this distribution. The tier now
+  applies one profile to both layers it controls. On the wire: Chromium's
+  header set and order (`sec-ch-ua*` client hints whose GREASE brands are
+  generated with the same algorithm the engine uses for
+  `navigator.userAgentData.brands`, `Sec-Fetch-Site/Mode/User/Dest` derived per
+  request and resource type, `Referer` under the default
+  `strict-origin-when-cross-origin` policy, `Origin` only where Chrome sends
+  it, and an `Accept-Encoding` list restricted to encodings this install can
+  actually decode, which it then decodes). In the page: user agent, platform,
+  `userAgentData`, languages, screen, geolocation when configured, and
+  CPU/memory values pinned for the engine instance because the engine reseeds
+  them on every navigation. Values come from a single profile, so a custom
+  `user_agent` moves every layer together. `docs/stealth.md` documents the
+  mode; `tests/test_stealth_mode.py` asserts header order and casing against a
+  raw socket and reads the same engine's navigator back. The capability
+  payload now reports `applied: true` with the active profile and the
+  remaining limits (TLS/HTTP2 fingerprint, WebGL, font metrics, TCP/IP), so
+  stealth is never presented as an anti-bot guarantee.
+
+- **Stealth can be verified without trusting the docs.**
+  `scripts/verify_stealth.py` serves a page from a raw socket, records the
+  request bytes, and checks the wire header order, the client-hint brands
+  against `navigator.userAgentData.brands`, `Accept-Language` against
+  `navigator.languages`, CPU/memory stability across navigations, and the
+  capability report -- the same observations the original audit made.
+
+- **The engine transport is explicit.** `urllib` title-cased every header name
+  (`sec-ch-ua` became `Sec-Ch-Ua`) and forced `Connection: close`, both
+  visible on the wire. Requests now go through `http.client` directly, which
+  keeps header order and casing exact, still honours `HTTP_PROXY`/`NO_PROXY`
+  and proxy credentials (CONNECT for TLS), and leaves redirects, cookies and
+  SSRF validation where they were. `file://` navigation (behind `--allow-file`)
+  is served from disk by the same transport, so it keeps working without
+  `urlopen`, and an unreadable path is reported as `file_unreadable` rather
+  than a generic network error.
+
 ### Fixed
 
 - **A verification page could be returned as research content.** A CAPTCHA

@@ -32,6 +32,12 @@ from .runtime import (
     V8PageIsolate,
 )
 from .ssrf import allow_private_network, is_blocked_ip, validate_navigation_url
+from .stealth import (
+    STEALTH_LIMITATIONS,
+    StealthProfile,
+    profile_for_engine,
+    profile_from_config,
+)
 
 __all__ = [
     "BUNDLED_BIN_DIR",
@@ -44,6 +50,8 @@ __all__ = [
     "ObscuraBrowserContext",
     "ObscuraNativeEngine",
     "PACKAGE_DIR",
+    "STEALTH_LIMITATIONS",
+    "StealthProfile",
     "StoredCookie",
     "UPSTREAM_BASE_TAG",
     "UPSTREAM_BASE_TAG_COMMIT",
@@ -56,6 +64,8 @@ __all__ = [
     "ensure_bundled_launcher",
     "ensure_generated_launcher",
     "install_bundled_engine",
+    "profile_for_engine",
+    "profile_from_config",
     "relocatable_launcher_content",
     "is_blocked_ip",
     "validate_navigation_url",

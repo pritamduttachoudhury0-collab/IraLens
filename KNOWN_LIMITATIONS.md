@@ -211,17 +211,21 @@ records at the end show exactly what was exercised and where.
     fingerprint, a reference ID, or a refusing status code, and is otherwise
     reported as detected-but-unconfirmed. Novel challenge designs, and
     challenges served in languages other than English, will be missed.
-30. **Stealth is an upstream capability, not a shipped one.** The vendored
-    Obscura source implements stealth, but only behind a Rust
-    `#[cfg(feature = "stealth")]` gate, `obscura-browser` declares
-    `default = []`, and the optional Rust build does not pass
-    `--features stealth`. The default execution tier is Python plus native
-    V8 and contains no stealth code at all. **Stealth is therefore
-    unreachable in every shipped configuration.** Setting it is accepted,
-    reported, and has no effect. Even where a browser engine does implement
-    stealth, it is a browser-identity consistency measure: it does not solve
-    CAPTCHAs and does not guarantee success against interactive Cloudflare,
-    DataDome, or Akamai challenges.
+30. **Stealth is implemented in the Python/native-V8 tier, and is still only
+    an identity-consistency measure.** The tier had no stealth code at all: it
+    accepted the setting, forwarded the flag, and changed nothing. It now
+    applies one profile to the HTTP headers it sends (client hints,
+    `Sec-Fetch-*`, `Referer`, `Accept*`) and to the navigator surfaces the
+    vendored engine derives (user agent, `userAgentData`, platform, languages,
+    screen, and pinned CPU/memory values). `docs/stealth.md` lists what
+    changes. What it still cannot do: impersonate Chrome's TLS/JA3 and
+    HTTP/2 SETTINGS fingerprint (the transport is Python's and the host TLS
+    stack's), expose WebGL (the engine has none), differentiate font metrics,
+    or shape TCP/IP behaviour. Those gaps are real detection signals, and the
+    engine reports them in `engineCapabilities.stealth.limitations` on every
+    MCP handshake. Stealth does not solve CAPTCHAs and does not guarantee
+    success against interactive Cloudflare, DataDome, or Akamai challenges; a
+    detected challenge is still reported as `verification_required`.
 31. **Optional features now advertise what they actually do.** The engine
     reports its capabilities in the MCP `initialize` response, including
     whether a feature was *requested*, whether it is *supported*, and

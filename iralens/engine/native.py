@@ -18,7 +18,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .. import errors
 from ..proc import utf8_env
@@ -170,6 +170,55 @@ class BrowserEngine:
                 pass
         return _HANDSHAKE_TIMEOUT
 
+    def _argv_and_env(self, binary: Path) -> Tuple[List[str], Dict[str, str]]:
+        """The child's argv and extra environment for the current config.
+
+        Kept separate from :meth:`start` so what is *promised* to the child can
+        be asserted without spawning one. Every stealth value this process has
+        (flag, identity knobs, user agent) has to appear here; anything missing
+        makes the child silently fall back to a default and the two tiers would
+        then describe different machines.
+        """
+        argv = [str(binary), "mcp"]
+        # Secrets and per-child settings travel in the environment, never on
+        # argv: the command line of a running process is world-readable.
+        child_extra: Dict[str, str] = {}
+        if self.config is None:
+            return argv, child_extra
+        stealth_on = str(self.config.get("stealth", "")).lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        if stealth_on:
+            argv.append("--stealth")
+            for key, flag in (
+                ("stealth_language", "--language"),
+                ("stealth_screen", "--screen"),
+                ("stealth_geolocation", "--geolocation"),
+            ):
+                value = self.config.get(key)
+                if value not in (None, ""):
+                    argv += [flag, str(value)]
+        proxy = self.config.get("proxy")
+        if proxy:
+            child_extra[PROXY_ENV_VAR] = str(proxy)
+        # `stealth_user_agent` overrides `user_agent` when stealth is on, in the
+        # child exactly as it does in this process. Sending only the latter
+        # would let the header identity and the page identity part ways -- the
+        # one thing stealth must never do.
+        ua = self.config.get("user_agent")
+        if stealth_on:
+            ua = self.config.get("stealth_user_agent") or ua
+        if ua:
+            argv += ["--user-agent", str(ua)]
+        storage_dir = self.config.get("storage_dir")
+        if storage_dir:
+            argv += ["--storage-dir", str(storage_dir)]
+        if str(self.config.get("allow_private", "")).lower() in ("1", "true", "yes"):
+            argv.append("--allow-private")
+        return argv, child_extra
+
     def start(self) -> None:
         if self.running:
             return
@@ -181,24 +230,7 @@ class BrowserEngine:
             raise errors.EngineUnavailableError(previous.message, hint=previous.hint,
                                                 detail=previous.detail)
         binary = self.binary_path()
-        argv = [str(binary), "mcp"]
-        # Secrets and per-child settings travel in the environment, never on
-        # argv: the command line of a running process is world-readable.
-        child_extra: Dict[str, str] = {}
-        if self.config is not None:
-            if str(self.config.get("stealth", "")).lower() in ("1", "true", "yes"):
-                argv.append("--stealth")
-            proxy = self.config.get("proxy")
-            if proxy:
-                child_extra[PROXY_ENV_VAR] = str(proxy)
-            ua = self.config.get("user_agent")
-            if ua:
-                argv += ["--user-agent", str(ua)]
-            storage_dir = self.config.get("storage_dir")
-            if storage_dir:
-                argv += ["--storage-dir", str(storage_dir)]
-            if str(self.config.get("allow_private", "")).lower() in ("1", "true", "yes"):
-                argv.append("--allow-private")
+        argv, child_extra = self._argv_and_env(binary)
         try:
             self._proc = subprocess.Popen(
                 argv,
@@ -256,12 +288,26 @@ class BrowserEngine:
             return {"requested": self._wants_stealth(), "supported": None,
                     "active": False,
                     "note": "the engine did not report capabilities"}
-        return {
+        status: Dict[str, Any] = {
             "requested": bool(stealth.get("requested")),
             "supported": bool(stealth.get("supported")),
             "active": bool(stealth.get("applied")),
             "note": str(stealth.get("reason") or ""),
         }
+        profile = stealth.get("profile")
+        if isinstance(profile, dict):
+            # Only what identifies the machine, never a secret. Lets `doctor`
+            # show *which* identity is active instead of just "on".
+            status["profile"] = {
+                "user_agent": str(profile.get("user_agent") or ""),
+                "platform": str(profile.get("platform") or ""),
+                "language": str(profile.get("language") or ""),
+                "screen": profile.get("screen"),
+            }
+        limitations = stealth.get("limitations")
+        if isinstance(limitations, list) and limitations:
+            status["limitations"] = [str(item) for item in limitations]
+        return status
 
     def _wants_stealth(self) -> bool:
         if self.config is None:
@@ -647,6 +693,8 @@ class BrowserEngine:
             # visible wherever engine state is reported.
             if self.capability_warnings:
                 health["warnings"] = list(self.capability_warnings)
+            if self.capabilities.get("stealth"):
+                health["stealth"] = self.stealth_status()
             return health
         from ..proc import probe_command
 
@@ -654,7 +702,21 @@ class BrowserEngine:
         if probe.ok:
             match = re.search(r"\d+\.\d+(?:\.\d+)?", probe.output or "")
             version = match.group(0) if match else ""
-            return {"status": "ok", "message": f"browser engine ready{f' (v{version})' if version else ''}"}
+            health = {
+                "status": "ok",
+                "message": f"browser engine ready{f' (v{version})' if version else ''}",
+            }
+            if self._wants_stealth():
+                # Config-only view: the child has not run yet, so nothing has
+                # been applied. Reporting "active" here would be the same
+                # optimistic claim the old capability payload made; reporting
+                # nothing would hide a configured mode from `doctor`.
+                health["stealth"] = {
+                    "requested": True,
+                    "active": False,
+                    "note": "configured; applied when the engine starts",
+                }
+            return health
         return {
             "status": "error",
             "message": f"browser engine cannot execute ({probe.status})",

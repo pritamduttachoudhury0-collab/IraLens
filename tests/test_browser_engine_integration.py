@@ -11,6 +11,7 @@ from __future__ import annotations
 import http.server
 import json
 import os
+import socket
 import threading
 import time
 import urllib.parse
@@ -678,3 +679,100 @@ def test_unified_result_schema_across_modes(
             serialized = json.dumps(payload).lower()
             assert "obscura" not in serialized
             assert "agent-reach" not in serialized
+
+
+# --------------------------------------------------------------- transport
+def test_real_browser_reads_file_urls_when_allowed(tmp_path: Path) -> None:
+    """`--allow-file` read local documents before the transport change; keep it."""
+    from iralens._internal.browser_engine.runtime import ObscuraNativeEngine
+
+    page = tmp_path / "local.html"
+    page.write_text(
+        "<!doctype html><html><head><title>Local File</title></head>"
+        "<body><p>from disk</p></body></html>",
+        encoding="utf-8",
+    )
+    engine = ObscuraNativeEngine(allow_file=True)
+    try:
+        outcome = engine.navigate(page.as_uri(), timeout=10)
+        assert outcome.status_code == 200
+        assert outcome.title == "Local File"
+        assert "from disk" in engine.dispatch_tool("browser_markdown", {})
+    finally:
+        engine.close()
+
+
+def test_real_browser_refuses_file_urls_without_the_flag(tmp_path: Path) -> None:
+    from iralens._internal.browser_engine.runtime import ObscuraNativeEngine
+
+    page = tmp_path / "local.html"
+    page.write_text("<html><body>secret</body></html>", encoding="utf-8")
+    engine = ObscuraNativeEngine()
+    try:
+        with pytest.raises(errors.SecurityBlockedError):
+            engine.navigate(page.as_uri(), timeout=10)
+    finally:
+        engine.close()
+
+
+def test_real_browser_reports_a_missing_file_url(tmp_path: Path) -> None:
+    """A file:// URL that does not exist is a typed failure, not a traceback."""
+    from iralens._internal.browser_engine.runtime import ObscuraNativeEngine
+
+    engine = ObscuraNativeEngine(allow_file=True)
+    try:
+        with pytest.raises(errors.PageUnavailableError) as excinfo:
+            engine.navigate((tmp_path / "absent.html").as_uri(), timeout=10)
+        assert excinfo.value.detail == "file_unreadable"
+    finally:
+        engine.close()
+
+
+def test_real_browser_sends_proxied_requests_to_the_proxy() -> None:
+    """A configured proxy must receive the absolute URI, not a direct connect."""
+    from iralens._internal.browser_engine.runtime import ObscuraNativeEngine
+
+    seen: list[str] = []
+
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("127.0.0.1", 0))
+    server.listen(4)
+    proxy_port = server.getsockname()[1]
+
+    def _serve() -> None:
+        while True:
+            try:
+                conn, _ = server.accept()
+            except OSError:
+                return
+            try:
+                buf = b""
+                while b"\r\n\r\n" not in buf:
+                    chunk = conn.recv(65536)
+                    if not chunk:
+                        break
+                    buf += chunk
+                seen.append(buf.split(b"\r\n", 1)[0].decode("latin-1"))
+                body = b"<html><head><title>Via Proxy</title></head><body>proxied</body></html>"
+                conn.sendall(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n"
+                    b"Content-Length: " + str(len(body)).encode() + b"\r\n"
+                    b"Connection: close\r\n\r\n" + body
+                )
+            finally:
+                conn.close()
+
+    thread = threading.Thread(target=_serve, daemon=True)
+    thread.start()
+    engine = ObscuraNativeEngine(
+        proxy_url=f"http://127.0.0.1:{proxy_port}", allow_private=True
+    )
+    try:
+        outcome = engine.navigate("http://127.0.0.1:9/through-proxy", timeout=10)
+        assert outcome.status_code == 200
+        assert outcome.title == "Via Proxy"
+    finally:
+        engine.close()
+        server.close()
+    assert seen and seen[0] == "GET http://127.0.0.1:9/through-proxy HTTP/1.1"

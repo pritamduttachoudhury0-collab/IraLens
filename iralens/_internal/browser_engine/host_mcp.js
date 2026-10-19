@@ -293,7 +293,26 @@
 
       globalThis.__documentReadyState__ = "loading";
       globalThis.__obscura_init = state.savedObscuraInit;
+      // Stealth identity is applied through the engine's own hooks (the same
+      // ones the upstream Rust tier writes), never by patching a prototype.
+      // Ordering matters in both directions:
+      //   * before init, because the engine derives screen/viewport and the
+      //     CPU/memory pools while initializing;
+      //   * again after init, because __obscura_init re-declares its own
+      //     internal globals, which resets them to undefined;
+      //   * `after` last, because init reseeds the CPU/memory pools on every
+      //     navigation and a real browser's hardware does not change on reload.
+      const stealth = payload.stealth || null;
+      const applyStealthGlobals = (values) => {
+        if (!values) return;
+        for (const key of Object.keys(values)) {
+          if (key.indexOf("__obscura_") === 0) globalThis[key] = values[key];
+        }
+      };
+      applyStealthGlobals(stealth && stealth.before);
       globalThis.__obscura_init();
+      applyStealthGlobals(stealth && stealth.before);
+      applyStealthGlobals(stealth && stealth.after);
 
       // Execute connected <script> elements in document order if scripting is enabled
       const externalMap = payload.externalScripts || {};
