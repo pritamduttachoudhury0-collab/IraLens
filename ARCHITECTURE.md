@@ -78,9 +78,10 @@ iralens/
 ## Integrated native browser subsystem
 
 IraLens embeds Obscura (`https://github.com/h4ckf0r0day/obscura`, commit
-`bd9529418b7fa975b50eabeac415cfaaa865a588`, base tag `v0.2.4` at
-`1fccab2c1ecd0f7eadc16d7a520ba227f9e7f782`, Apache-2.0) as an internally
-maintained browser subsystem under `iralens/_internal/browser_engine/`:
+`bd9529418b7fa975b50eabeac415cfaaa865a588` — the `v0.2.5` tag commit —
+Apache-2.0, plus four documented local `bootstrap.js` patches) as an
+internally maintained browser subsystem under
+`iralens/_internal/browser_engine/`:
 
 - **Vendored components:** `obscura-ssrf`, `obscura-dom`, `obscura-net`,
   `obscura-js` (`js/bootstrap.js`, `js/indexed_db.js`, `src/markdown.rs`),

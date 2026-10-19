@@ -24,6 +24,9 @@ start. Each guide below opens with one plain sentence on what it is for.
 | [KNOWN_LIMITATIONS.md](../KNOWN_LIMITATIONS.md) | Every known limit, stated plainly, with dated verification records. |
 | [BENCHMARKS.md](../BENCHMARKS.md) | The frozen acceptance benchmark and every recorded run. |
 | [CHANGELOG.md](../CHANGELOG.md) | What changed, release by release. |
+| [Obscura upgrade report](OBSCURA_UPGRADE_REPORT.md) | The v0.2.5 provenance audit, adopted and rejected upstream fixes, and patch ledger for 0.3.5. |
+| [0.3.5 release report](RELEASE_0.3.5_REPORT.md) | Branches integrated, test results, performance, security checks, and limitations for the 0.3.5 release. |
+| [Live validation plan](LIVE_VALIDATION_PLAN.md) | The repeatable live-site validation procedure that remains outstanding after 0.3.5. |
 
 ## Audit evidence
 

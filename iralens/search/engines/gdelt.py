@@ -25,7 +25,7 @@ from .base import NATIVE, POST, SearchBackend
 ENDPOINT = "https://api.gdeltproject.org/api/v2/doc/doc"
 _HOST = "api.gdeltproject.org"
 _MAX_RESPONSE_BYTES = 3 * 1024 * 1024
-_USER_AGENT = "IraLens/0.3.1 (https://github.com/pritamduttachoudhury0-collab/IraLens)"
+_USER_AGENT = "IraLens/0.3.5 (https://github.com/pritamduttachoudhury0-collab/IraLens)"
 
 
 def _clean(value: Any, limit: int = 500) -> str:

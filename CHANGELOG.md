@@ -2,12 +2,13 @@
 
 All notable changes to this project are documented here, newest first.
 
-## Unreleased
+## 0.3.5 — 2026-10-19
 
-Browser resilience, a working stealth tier, and honest reporting of optional
-features. This work is **not** a new release: the release version remains
-`0.3.1` by project decision, so no version was bumped. Cutting a version for
-these changes is a separate call for the maintainer.
+Browser resilience, a working stealth tier, an Obscura provenance and
+JS-runtime upgrade, broader keyless search, and honest reporting of optional
+features. Live anti-bot effectiveness and real CAPTCHA-solving success remain
+**not verified**; the offline contracts and mocked provider outcomes are
+covered by the test suite.
 
 ### Added
 
@@ -56,6 +57,17 @@ these changes is a separate call for the maintainer.
 - **The engine's capability report grew.** `tls_impersonation` and
   `captcha_solver` are now reported with their real availability, and the
   `stealth` entry distinguishes *requested*, *supported* and *applied*.
+- **Obscura provenance corrected and JS runtime upgraded.** The vendored
+  revision `bd9529418b7fa975b50eabeac415cfaaa865a588` is the upstream
+  `v0.2.5` tag commit, not a post-`v0.2.4` snapshot; the engine version,
+  prebuilt-binary version and provenance docs now say so. Two post-`v0.2.5`
+  upstream `bootstrap.js` fixes were adopted as documented local patches:
+  same-document fragment navigation (with an IraLens host bridge delivering
+  `hashchange` in the Python/native-V8 tier) and real
+  `HTMLOListElement`/`HTMLLIElement` identity. The WebCrypto AES-KW work was
+  reviewed and rejected for this release because it requires native ops the
+  vendored Rust tree and host bridge do not provide. See
+  `iralens/_internal/browser_engine/UPSTREAM_PROVENANCE.md`.
 
 ### Search — keyless coverage iteration
 
@@ -170,17 +182,18 @@ these changes is a separate call for the maintainer.
 
 ### Documentation
 
-- `KNOWN_LIMITATIONS.md`: new section stating that verification pages are
-  reported and never solved, that challenge detection is conservative, and
-  that **stealth is unreachable in every shipped configuration** (it exists
-  only behind an uncompiled Rust `stealth` feature gate).
+- `KNOWN_LIMITATIONS.md`: verification pages are reported by default and are
+  solved only through an operator-configured provider; challenge detection is
+  conservative; stealth is an identity-consistency tier whose limits and
+  optional dependencies are stated explicitly.
 - `docs/security.md`: browser navigation guard, verification-stop control,
-  proxy credentials moved to the environment, and four new known gaps.
-- `README.md`: challenge pages are reported not solved; `stealth` has no
-  effect in this distribution.
-- `BROWSER_RESILIENCE_IMPLEMENTATION_REPORT.md`: full implementation report
+  proxy and solver credentials moved to the environment, and known gaps.
+- `README.md` and `docs/getting-started.md`: how to enable stealth, install
+  the optional `iralens[stealth]` TLS backend, and configure a solver with
+  the operator's own credentials.
+- `BROWSER_RESILIENCE_IMPLEMENTATION_REPORT.md`: implementation report
   separating verified facts from inferred conclusions and untested
-  assumptions.
+  assumptions; `docs/OBSCURA_UPGRADE_REPORT.md` records the upstream audit.
 
 ## 0.3.1 — 2026-10-18
 

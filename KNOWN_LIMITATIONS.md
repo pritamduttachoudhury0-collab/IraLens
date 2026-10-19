@@ -21,8 +21,8 @@ records at the end show exactly what was exercised and where.
    is less exercised than DuckDuckGo's. Use `--engine duckduckgo` if it
    misbehaves.
 4. **The integrated browser engine ships bundled and is startup-probed.**
-   Core Obscura source (`bd9529418b7fa975b50eabeac415cfaaa865a588`, base tag
-   `v0.2.4`) is vendored under `iralens/_internal/browser_engine/vendor/obscura`
+   Core Obscura source (`bd9529418b7fa975b50eabeac415cfaaa865a588`, the
+   `v0.2.5` tag commit) is vendored under `iralens/_internal/browser_engine/vendor/obscura`
    and runs out of the box via `py_mini_racer`'s isolated V8 runtime without
    runtime downloads from GitHub Releases (`iralens install-engine --status`
    and `iralens doctor` report the live state). Pixel-level GPU rendering

@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/pritamduttachoudhury0-collab/IraLens/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/pritamduttachoudhury0-collab/IraLens/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.3.1-informational)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.3.5-informational)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.10-blue)](pyproject.toml)
 
 IraLens lets an AI agent search the web, read pages and documents, drive a
@@ -201,7 +201,8 @@ says so.
 | Subject/request split, scored against the corpus's own recorded topics | **2,622 / 2,950 = 88.88%** recovered exactly; the request lexicon scores **89.15%** on a held-out half | 2026-10-18 | `python benchmarks/measure_focus_split.py` · `derive_request_markers.py` |
 | A query that names a page is **read**, not searched for | the 9 of the corpus's 130 URL queries the sandbox can reach go from coverage `low` to `good` in **9/9** cases; the rest need egress the sandbox does not have | 2026-10-18 | `python benchmarks/measure_shape_ranking.py` · `docs/audit/ERROR_REGISTER.md` (E-39) |
 | The request shape's **kind of source** is honoured in the ranking | the top result changes in 32 of the 1,250 questions that ask for a kind of source — 5 of those changes for the better, 3 for the worse | 2026-10-18 | `python benchmarks/measure_shape_ranking.py --sweep` |
-| Lint (`ruff --select E9,F,B`) + types (`mypy`) | clean; 88 source files typed | 2026-10-19 | `.venv/bin/ruff check --select E9,F,B .` · `.venv/bin/mypy iralens` |
+| Lint (`ruff --select E9,F,B`) + types (`mypy`) | clean; 92 source files typed | 2026-10-19 | `.venv/bin/ruff check --select E9,F,B .` · `.venv/bin/mypy iralens` |
+| Local browser performance/memory (10 browser opens: 5 static + 5 JS fixtures) | 0.343 s total (0.034 s/open); 136.9 MB sampled process-tree RSS; baseline 0.3.1 measured 0.328 s and 136.5 MB under the same fixture, so no material regression was observed | 2026-10-19 | local `ThreadingHTTPServer` fixture; see [0.3.5 release report](docs/RELEASE_0.3.5_REPORT.md) |
 | Lint (`ruff --select E9,F,B`) + types (`mypy`), pre-search additions | clean; 83 source files typed | 2026-10-18 | `docs/audit/ERROR_REGISTER.md` |
 | Lint (`ruff --select E9,F,B`) + types (`mypy`), 0.3.1 | **clean; 83 source files typed** | 2026-10-18 | `ruff check --select E9,F,B .` · `mypy iralens` |
 | Evidence-driven search improvement (D1–D8) | Ranking/intent, script handling, degradation, date provenance and security regressions covered offline; live quality P@5, 100-page real extraction and live engine resilience **NOT MEASURED** in restricted egress | 2026-10-17 | [final report](docs/improvements/FINAL_REPORT.md) · frozen 300-query holdout in `benchmark/holdout/` |

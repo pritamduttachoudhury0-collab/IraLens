@@ -39,6 +39,41 @@
     }
   }
 
+  // The upstream fragment-navigation helper queues `hashchange` with the
+  // bootstrap's `setTimeout`. This host reports Obscura's async runtime as
+  // unavailable (host_ops.js), so that bootstrap timer is intentionally
+  // dropped rather than pumped by deno_core. Wrap the helper after each
+  // document init and queue the same event through this host's timer wheel,
+  // which drainTimers() pumps after navigation and tool calls. The upstream
+  // helper still owns history state and the final URL; this bridge only
+  // delivers the event in the Python/native-V8 tier.
+  function installFragmentHashchangeBridge() {
+    const original = globalThis.__obscuraNavigateToFragment;
+    if (typeof original !== "function" || original.__iralensHostBridge) return;
+    const bridged = function (url, replace) {
+      const prevUrl = globalThis.location?.href || "";
+      const result = original(url, replace);
+      const newUrl = globalThis.location?.href || String(url || "");
+      if (!prevUrl || prevUrl === newUrl) return result;
+      const id = state.nextTimerId++;
+      state.timers.set(id, {
+        delay: 0,
+        cb: () => {
+          const event = new globalThis.HashChangeEvent("hashchange");
+          event.oldURL = prevUrl;
+          event.newURL = newUrl;
+          globalThis.dispatchEvent(event);
+        },
+      });
+      return result;
+    };
+    bridged.__iralensHostBridge = true;
+    Object.defineProperty(globalThis, "__obscuraNavigateToFragment", {
+      value: bridged,
+      configurable: true,
+    });
+  }
+
   function resolveElementByRefOrSelector(args) {
     if (args.ref !== undefined && args.ref !== null && String(args.ref) !== "") {
       const refId = Number(args.ref);
@@ -306,6 +341,7 @@
       }
       globalThis.__obscura_init = state.savedObscuraInit;
       globalThis.__obscura_init();
+      installFragmentHashchangeBridge();
       const postInitScripts = payload.postInitScripts || [];
       for (let i = 0; i < postInitScripts.length; i++) {
         try {

@@ -242,7 +242,7 @@ class BrowserEngine:
             handshake = self._rpc("initialize", {
                 "protocolVersion": _PROTOCOL_VERSION,
                 "capabilities": {},
-                "clientInfo": {"name": "iralens", "version": "0.3.1"},
+                "clientInfo": {"name": "iralens", "version": "0.3.5"},
             }, timeout=self._handshake_timeout())
             self._record_capabilities(handshake)
         except errors.EngineUnavailableError as exc:

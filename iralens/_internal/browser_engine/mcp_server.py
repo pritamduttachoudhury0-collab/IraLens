@@ -43,7 +43,11 @@ CAPTCHA_PROVIDER_ENV_VAR = "IRALENS_ENGINE_CAPTCHA_PROVIDER"
 CAPTCHA_KEY_ENV_VAR = "IRALENS_ENGINE_CAPTCHA_KEY"
 
 ENGINE_SERVER_NAME = "iralens-browser-engine"
-ENGINE_SERVER_VERSION = f"0.2.4+rev.{UPSTREAM_REVISION[:12]}"
+#: Derived from the vendored upstream tag so the reported engine version can
+#: never drift from the provenance metadata in runtime.py.
+ENGINE_SERVER_VERSION = (
+    f"{UPSTREAM_BASE_TAG.removeprefix('v')}+rev.{UPSTREAM_REVISION[:12]}"
+)
 
 
 def _tls_impersonation_available() -> bool:

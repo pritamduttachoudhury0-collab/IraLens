@@ -51,8 +51,13 @@ PACKAGE_DIR = Path(__file__).resolve().parent
 VENDOR_OBSCURA_DIR = PACKAGE_DIR / "vendor" / "obscura"
 UPSTREAM_REPOSITORY = "https://github.com/h4ckf0r0day/obscura"
 UPSTREAM_REVISION = "bd9529418b7fa975b50eabeac415cfaaa865a588"
-UPSTREAM_BASE_TAG = "v0.2.4"
-UPSTREAM_BASE_TAG_COMMIT = "1fccab2c1ecd0f7eadc16d7a520ba227f9e7f782"
+#: The vendored revision *is* the upstream v0.2.5 tag commit. (Earlier
+#: releases of IraLens labelled it "post-v0.2.4" because the tag did not
+#: exist yet when the tree was imported; v0.2.5 was tagged at exactly this
+#: commit on 2026-10-17.) Post-tag upstream fixes adopted as local patches
+#: are enumerated in UPSTREAM_PROVENANCE.md.
+UPSTREAM_BASE_TAG = "v0.2.5"
+UPSTREAM_BASE_TAG_COMMIT = "bd9529418b7fa975b50eabeac415cfaaa865a588"
 
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
