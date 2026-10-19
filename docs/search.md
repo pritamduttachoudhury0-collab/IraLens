@@ -34,32 +34,38 @@ with the same keys.
 
 ## Engines and the default chain
 
-The default chain is `duckduckgo -> bing -> wikipedia -> semantic-search`:
+The configured general chain is `duckduckgo -> bing -> mojeek -> wikipedia -> semantic-search`:
 
 - **duckduckgo** and **bing** fetch public results pages over direct HTTP
   (no key needed). Bing is experimental.
+- **mojeek** is a tertiary, keyless fallback after DuckDuckGo and Bing. It is
+  normally reached only when an earlier engine fails or the configured
+  independent-engine target has not been met. Its live HTML behavior is still
+  network-dependent; the request has an 8-second cap and the shared circuit
+  breaker applies.
 - **wikipedia** uses Wikimedia's official API with an identifying User-Agent
-  and at least one second between requests. Non-English queries try the detected
-  edition first, then English if no local-edition hits are found. It is a useful
-  supplemental index, not general web search; for procedural/statistical/current
-  queries the ranker caps it at one result.
-- **mojeek** is an additional keyless backend, registered but **opt-in** because
-  its live HTML parser and current terms have not been verified in this environment.
-  Enable via `IRALENS_SEARCH_ENGINES=duckduckgo,mojeek,bing,wikipedia` or an
-  explicit per-call engine list. The normal circuit breaker applies.
+  and at least one second between requests. It tries a detected language
+  edition first, then English if no local-edition hits are found. Detection
+  uses Unicode script plus conservative lexical hints for common Latin-script
+  languages; it is still a heuristic. Wikipedia is supplemental, not general
+  web search; for procedural/statistical/current queries the ranker caps it at
+  one result.
 - **semantic-search** is the optional `mcporter`/Exa bridge, used only when
   installed.
-- On queries whose wording explicitly asks for them, **intent-routed official
-  APIs** are tried before the general chain: Crossref + arXiv for scholarly
-  papers; Stack Exchange for software questions; and GitHub's public REST API
-  for repository, issue, or release lookups. These are specialist indexes,
-  not general web search. They need no key for public data (GitHub can use an
-  operator-supplied `IRALENS_GITHUB_TOKEN` for its higher authenticated quota).
-  The API and rate limits apply. One GitHub release API smoke is verified
-  here; broad GitHub quality and live Crossref/arXiv/Stack Exchange behavior
-  remain unmeasured. Disable routing with
-  `IRALENS_SEARCH_SPECIALIST_ENGINES=false`, or select `options.engines`
-  explicitly to own routing for one request.
+- On current-event/news-shaped queries, **GDELT DOC 2.0** is routed before
+  the general chain. It is a public, no-key news index that returns direct
+  publisher URLs. Its `seendate` is only an index-seen timestamp, never
+  represented as an article publication date. GDELT's live availability and
+  relevance are network-dependent and must be measured on the operator's
+  network.
+- Other intent-routed public APIs complement the general chain: Crossref +
+  arXiv for scholarly papers, Stack Exchange for software questions, and
+  GitHub's REST API for repository, issue, or release lookups. These are
+  specialist indexes, not general web search. They need no key for public data
+  (GitHub can use an operator-supplied `IRALENS_GITHUB_TOKEN` for its higher
+  authenticated quota). API terms and rate limits apply. Disable specialist
+  routing with `IRALENS_SEARCH_SPECIALIST_ENGINES=false`, or select
+  `options.engines` explicitly to own routing for one request.
 - A configured **private SearXNG** instance is inserted before Bing, and the
   optional **paid-backup** (Brave, Serper, or Tavily) is appended only when
   both its provider and key are configured. No third-party public SearXNG
@@ -120,14 +126,14 @@ metadata names are refused even when allowlisted.
 
 ## Filter support by engine
 
-| Filter | duckduckgo | bing | wikipedia | semantic-search (Exa) | paid-backup |
-|---|---|---|---|---|---|
-| date_from / date_to | post-filtered | post-filtered | post-filtered | post-filtered | post-filtered |
-| include_domains | emulated (`site:`, first domain) + post-filtered | same | post-filtered | post-filtered | post-filtered |
-| exclude_domains | post-filtered | post-filtered | unsupported | post-filtered | post-filtered |
-| file_type | emulated (`filetype:`) + post-filtered | same | unsupported | post-filtered | post-filtered |
-| region | native (`kl`) | unsupported | unsupported | unsupported | unsupported |
-| language | unsupported | native (`setlang`; auto-hint for detected scripts) | native (edition selected; auto-detected first) | unsupported | unsupported |
+| Filter | duckduckgo | bing | mojeek | wikipedia | gdelt | semantic-search (Exa) | paid-backup |
+|---|---|---|---|---|---|---|---|
+| date_from / date_to | post-filtered | post-filtered | post-filtered | post-filtered | native + post-filtered | post-filtered | post-filtered |
+| include_domains | emulated (`site:`, first domain) + post-filtered | same | emulated + post-filtered | post-filtered | post-filtered | post-filtered | post-filtered |
+| exclude_domains | post-filtered | post-filtered | post-filtered | unsupported | post-filtered | post-filtered | post-filtered |
+| file_type | emulated (`filetype:`) + post-filtered | same | emulated + post-filtered | unsupported | post-filtered | post-filtered | post-filtered |
+| region | native (`kl`) | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported |
+| language | unsupported | native (`setlang`; auto-hint) | unsupported | native (edition selected; auto-detected first) | post-filtered | unsupported | post-filtered |
 
 Filters an engine cannot apply are reported `unsupported`, never faked.
 Undated results are kept and counted (`date_unknown_kept`). The intent-routed
@@ -226,7 +232,9 @@ source's current terms for your jurisdiction, volume, and use case.
 |---|---|---|---|
 | DuckDuckGo HTML/lite | Requests public results pages and parses HTML. | No provider key; DDG receives the query and caller network identity. | Verify current terms, permitted automation/rate, robots/technical restrictions, caching, and result-display rules. |
 | Bing HTML | Requests public search HTML; parser is experimental. | No provider key; Microsoft receives the query and caller network identity. | Verify current Microsoft/Bing terms and any published API alternatives. |
+| Mojeek HTML | Tertiary public-results fallback; an 8-second cap and circuit breaker apply. | No provider key; Mojeek receives the query and caller network identity. | Verify current terms, permitted automation/rate, caching, and result-display rules. |
 | Wikipedia / MediaWiki API | Official `list=search` API, identifying User-Agent, ≥1 s between calls. | No API key; Wikimedia receives the query. | Verify current API etiquette, rate guidance, attribution, and reuse obligations. |
+| GDELT DOC 2.0 | Public news article-list API, intent-routed for current-event queries, paced at ≥1 s per process. | No API key; GDELT receives the query. | Verify current API limits, terms, attribution, and source reuse obligations; index time is not publication time. |
 | Crossref | Official works API, used only for scholarly-paper intent; paced at ≥1 s per process. | No API key; Crossref receives the subject query. | Review current API etiquette, attribution, and reuse obligations. |
 | arXiv | Official Atom API, used only for scholarly-paper intent; paced at ≥3 s per process. | No API key; arXiv receives the subject query. | Review current API etiquette, attribution, and reuse obligations. |
 | Stack Exchange | Official advanced-search API, used only for technical/software intent; paced at ≥1 s per process. | Public endpoints need no key but have quota limits; Stack Exchange receives the query. | Review current API terms, quota, attribution, and content licensing. |

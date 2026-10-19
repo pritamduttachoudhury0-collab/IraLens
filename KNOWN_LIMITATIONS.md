@@ -88,9 +88,23 @@ records at the end show exactly what was exercised and where.
     forwards queries to its enabled upstream engines; their terms, rate
     limits, and availability apply. Review `docs/search.md` (source policy)
     before deployment.
-- **Mojeek is opt-in and not live-verified.** Its HTML parser has offline
-  fixtures only; no claim is made about live markup stability, service terms,
-  result quality, or availability. It is deliberately excluded from defaults.
+- **Mojeek is a tertiary default fallback, but its live behavior remains
+  unverified.** The HTML parser has offline fixtures only; no claim is made
+  about live markup stability, service terms, result quality, or availability.
+  It follows DuckDuckGo and Bing, has an 8-second request cap, and is subject
+  to the shared circuit breaker.
+- **GDELT news search is newly intent-routed and not yet live-validated.** It
+  uses the public DOC 2.0 API with no key, but the datacenter benchmark run at
+  `240ff01` predates this adapter. GDELT's article-index timestamp is not
+  treated as publication time; news freshness remains unknown unless a source
+  reports a publication date.
+- **Live frozen-search results remain below the requested target.** The
+  2026-10-19 datacenter run on `240ff01` scored `free_replacement_rate` 0.715
+  (143/200) with no paid-backup attempts. Recent-news was 0/25 and
+  non-English was 12/25; DuckDuckGo was fully circuit-open and Bing was
+  intermittently circuit-open, including on the five unavailable queries.
+  This is one provider/network-dependent run, not a universal
+  search-quality estimate, and 90% has not been achieved.
 - **A non-empty result set is not an answer.** Every search carries a
   `coverage` verdict: how much of the question the results actually address.
   When the results are generic filler, `no_results_reason` is

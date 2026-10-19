@@ -11,6 +11,22 @@ separate call for the maintainer.
 
 ### Search — keyless coverage iteration
 
+- The first external all-200 datacenter search run on `240ff01` measured a
+  71.5% keyless gold-hit rate (143/200), with no paid-backup calls. This is
+  below the requested 90%; recent-news was 0/25 and non-English 12/25.
+  DuckDuckGo was circuit-open throughout and Bing intermittently so; this is a
+  single network-dependent measurement, not a causal A/B or universal rate.
+- Added intent-routed GDELT DOC 2.0 news search as a public, keyless
+  current-event index. Its index-seen timestamp is retained as provenance and
+  is not mislabeled as article publication time. Live reachability and quality
+  remain to be measured.
+- Expanded local-language routing with conservative Latin-script language
+  hints, Japanese kana precedence, and Ukrainian/Persian script distinctions.
+  These hints steer Wikimedia/Bing queries but are not a general language-ID
+  model.
+- Promoted Mojeek to a tertiary default fallback after DuckDuckGo and Bing;
+  requests are capped at eight seconds and continue through the shared circuit
+  breaker. Its live parser and terms still need network verification.
 - Added intent-routed Crossref, arXiv, Stack Exchange, and GitHub public-API
   adapters. They are specialist sources, not general indexes, and make no
   live-availability or 90% quality claim.

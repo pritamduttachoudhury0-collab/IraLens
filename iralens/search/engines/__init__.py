@@ -11,6 +11,7 @@ from .bing import BingBackend
 from .crossref import CrossrefBackend
 from .duckduckgo import DuckDuckGoBackend
 from .github import GitHubSearchBackend
+from .gdelt import GdeltBackend
 from .exa import ExaBackend
 from .mojeek import MojeekBackend
 from .paid_backup import PaidSearchBackupBackend
@@ -34,7 +35,7 @@ def build_backends() -> Dict[str, SearchBackend]:
     backends = (ExaBackend(), DuckDuckGoBackend(), SearxngBackend(), BingBackend(),
                 WikipediaBackend(), PaidSearchBackupBackend(), MojeekBackend(),
                 CrossrefBackend(), ArxivBackend(), StackExchangeBackend(),
-                GitHubSearchBackend())
+                GitHubSearchBackend(), GdeltBackend())
     return {b.name: b for b in backends}
 
 

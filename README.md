@@ -79,7 +79,7 @@ repository, but the upload needs the project's PyPI account
 
 | Feature | What you get |
 |---|---|
-| **Search** | Keyless general engines (DuckDuckGo, Bing — experimental —, Wikimedia API, optional self-hosted SearXNG) plus intent-routed Crossref/arXiv/Stack Exchange/GitHub public APIs; adaptive query forms; ranked results, cross-engine dedup, explainable scores, and honest coverage/degradation reporting. Only a single GitHub release-API smoke is verified here; broad quality and the other specialist APIs remain unmeasured. |
+| **Search** | Keyless general engines (DuckDuckGo, Bing — experimental —, Mojeek fallback, Wikimedia API, optional self-hosted SearXNG) plus intent-routed GDELT news, Crossref/arXiv/Stack Exchange/GitHub public APIs; adaptive query forms; ranked results, cross-engine dedup, explainable scores, and honest coverage/degradation reporting. These additions are provider-dependent; see the frozen live benchmark and `KNOWN_LIMITATIONS.md` for measured limits. |
 | **Page reading** | Any URL through specialized readers → fast local static extraction → local browser fallback for JS-heavy pages, with typed errors (`http_403`, `soft_404`, `antibot_challenge`, …) that say exactly what happened. |
 | **Documents** | PDF text extraction with ligature/hyphen normalization and a 20 MB cap; scanned PDFs get automatic **local** OCR when `pdftoppm` + `tesseract` are installed — never uploaded. |
 | **Browser** | Integrated native browser engine (`iralens._internal.browser_engine`, V8 + HTML5 DOM): navigate, snapshot, click, fill, extract, evaluate JS, tabs, RFC 6265 cookies, storage state. Bundled out of the box with zero runtime binary downloads; stealth off; stdio-only control. |

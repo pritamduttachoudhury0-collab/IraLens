@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Mojeek backend: offline parser tests + opt-in registration (Phase 2)."""
+"""Mojeek backend: offline parser tests + tertiary default fallback."""
 from iralens.search.engines import build_backends
 from iralens.search.engines.mojeek import parse_results_page
 from iralens.settings import Settings
@@ -22,9 +22,10 @@ def test_mojeek_parser_extracts_hits():
     assert "partnership firm" in page.hits[0]["snippet"]
 
 
-def test_mojeek_registered_but_not_in_default_chain():
+def test_mojeek_registered_as_tertiary_default_fallback():
     assert "mojeek" in build_backends()
-    assert "mojeek" not in Settings().search_engines  # opt-in only
+    assert Settings().search_engines.index("mojeek") == 2
+    assert Settings().search_engines[-1] == "semantic-search"
 
 
 def test_mojeek_empty_page_is_not_silent():

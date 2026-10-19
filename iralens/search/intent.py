@@ -55,6 +55,10 @@ _ACADEMIC_SEARCH_RE = re.compile(
 _GITHUB_SEARCH_RE = re.compile(
     r"\b(github|repository|repositories|repo|repos|issue|issues|pull request|pull requests|"
     r"release notes|open regression issue|source code|commit history)\b", re.IGNORECASE)
+_NEWS_SEARCH_RE = re.compile(
+    r"\b(latest|recent|today|current|news|announced|this month|forecast|polls?|earnings|"
+    r"layoffs|outbreak|evacuation|launch schedule|order backlog|election|summit|"
+    r"reporting|alerts?|monetary policy|production decision)\b", re.IGNORECASE)
 _TECHNICAL_SEARCH_RE = re.compile(
     r"\b(python|javascript|typescript|java|rust|c\+\+|c#|\.net|sql|postgres(?:ql)?|"
     r"mysql|sqlite|redis|docker|kubernetes|k8s|nginx|linux|git|http|https|tls|ssl|"
@@ -136,10 +140,11 @@ def classify_query(question: str) -> QueryIntent:
 def specialist_search_engines(question: str) -> Tuple[str, ...]:
     """Select no-key official APIs for a query that names their subject area.
 
-    These are additions to, never replacements for, the general web engines.
-    A caller that explicitly supplies ``SearchOptions.engines`` owns the
-    routing decision, so the search orchestrator does not call this function
-    for an explicit engine list.
+    These are additions to, never replacements for, the general web engines:
+    GDELT for current events, Crossref/arXiv for scholarly works, Stack
+    Exchange for software questions, and GitHub for repository lookups. A
+    caller that explicitly supplies ``SearchOptions.engines`` owns the routing
+    decision, so the orchestrator does not call this function for that list.
     """
     text = " ".join((question or "").split())
     low = text.casefold()
@@ -152,9 +157,12 @@ def specialist_search_engines(question: str) -> Tuple[str, ...]:
         return ("github-search",)
     if _ACADEMIC_SEARCH_RE.search(text):
         return ("crossref", "arxiv")
+    routed = []
+    if _NEWS_SEARCH_RE.search(text) or classify_query(text).answer_type == "current_event":
+        routed.append("gdelt")
     if _TECHNICAL_SEARCH_RE.search(text):
-        return ("stackexchange",)
-    return ()
+        routed.append("stackexchange")
+    return tuple(routed)
 
 
 def intent_multiplier(url: str, intent: QueryIntent) -> float:

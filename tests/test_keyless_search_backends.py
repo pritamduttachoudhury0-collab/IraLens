@@ -41,6 +41,9 @@ def test_specialist_routes_require_a_matching_search_intent():
     assert specialist_search_engines(
         "nginx reverse proxy websocket version specific known issue") == ("stackexchange",)
     assert specialist_search_engines("GitHub API rate limits official policy") == ()
+    assert specialist_search_engines("latest news about central bank policy") == ("gdelt",)
+    assert specialist_search_engines("weather forecast for the next storm") == ("gdelt",)
+    assert specialist_search_engines("Python latest version release notes") == ("gdelt", "stackexchange")
     assert specialist_search_engines("capital of Assam") == ()
 
 

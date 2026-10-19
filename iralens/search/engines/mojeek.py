@@ -1,17 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Mojeek backend (keyless, OPT-IN — not in the default chain).
+"""Mojeek backend (keyless, tertiary default fallback).
 
 Mojeek is an independent crawler-based engine with a keyless HTML search
-surface (https://www.mojeek.com/search). It was added in the improvement
-programme (Phase 2) as an additional keyless engine, but it is **off by
-default**: it has not been live-verified from the development environment,
-and an untested parser in the default chain could silently degrade results.
-Enable explicitly, e.g. `IRALENS_SEARCH_ENGINES=duckduckgo,mojeek,bing,wikipedia`
-or per-call `options={"engines": ("mojeek", ...)}`. The circuit breaker and
-degradation reporting apply to it like every other engine, so a dead Mojeek
-is visible, never silent. Review Mojeek's terms before production use.
-
-Parser is a pure function of the HTML and is fixture-tested offline.
+surface (https://www.mojeek.com/search). It follows DuckDuckGo and Bing in the
+default chain, so it is normally called only when a primary engine fails or
+more independent sources are needed. The parser is fixture-tested offline;
+live behavior remains network-dependent. A short timeout plus the shared
+circuit breaker keeps a blocked endpoint from dominating latency. Review
+Mojeek's terms before production use.
 """
 from __future__ import annotations
 
@@ -109,7 +105,14 @@ class MojeekBackend(SearchBackend):
 
     def search(self, query: str, filters: SearchFilters, limit: int, context: Any,
                *, offset: int = 0) -> List[SearchHit]:
-        timeout = int(context.config.get("search_timeout_seconds", 45)) if getattr(context, "config", None) else 45
+        config = getattr(context, "config", None)
+        try:
+            configured_timeout = max(1, int(config.get("search_timeout_seconds", 45))) if config else 45
+        except (TypeError, ValueError):
+            configured_timeout = 45
+        # Mojeek is a fallback, so a blocked or slow endpoint must not consume
+        # the general search deadline on each of the first breaker probes.
+        timeout = min(configured_timeout, 8)
         url = ENDPOINT.format(q=urllib.parse.quote_plus(query))
         if offset:
             url += f"&s={int(offset)}"

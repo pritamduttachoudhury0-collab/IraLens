@@ -29,10 +29,10 @@ DEFAULT_SEARXNG_INSTANCES: Tuple[str, ...] = ()
 @dataclass(frozen=True)
 class Settings:
     # --- engines / fallback ------------------------------------------------
-    # Keyless sources first. The optional semantic bridge runs last; the
-    # operator-configured SearXNG instance is inserted before Bing, and the
-    # paid backup is appended only when explicitly configured.
-    search_engines: Tuple[str, ...] = ("duckduckgo", "bing", "wikipedia", "semantic-search")
+    # Keyless sources first, with an independent crawler-based fallback before
+    # Wikipedia. The optional semantic bridge runs last; the operator-configured
+    # SearXNG instance is inserted before Bing, and paid backup is opt-in.
+    search_engines: Tuple[str, ...] = ("duckduckgo", "bing", "mojeek", "wikipedia", "semantic-search")
     search_min_engines: int = 2            # engines queried for cross-engine agreement
     search_max_results: int = 8
     search_timeout_seconds: int = 45       # per engine navigation/extraction budget

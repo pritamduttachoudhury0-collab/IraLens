@@ -161,6 +161,18 @@ code's control:
 
 ### Run log
 
+**2026-10-19 — external live search-only run on `240ff01` (not a full
+benchmark pass).** All 200 frozen queries ran on a datacenter network at the
+default 2-second pace with cache bypassed and no paid backup configured. The
+measured `free_replacement_rate` was **0.715 (143/200)**; paid-backup query
+rate was **0.0**. Quality was 0.7214 on dev and 0.7000 on held-out, availability
+0.975, recent-news quality 0/25, non-English 12/25, and search p95 1.677 s.
+The run failed availability and quality thresholds; engine redundancy and the
+non-search phases were not run. A nearby `ab54804` baseline recorded 140/200
+quality hits, but DuckDuckGo/Bing circuit state differed between runs, so this
+is not a clean causal A/B. The target 90% remains unachieved; the result JSONs
+were supplied externally and are not committed.
+
 **2026-10-11 — harness validated; thresholds not measurable in a restricted
 environment (not a benchmark row).** The verification environment available
 at the time allowed outbound access only to package indexes and GitHub;

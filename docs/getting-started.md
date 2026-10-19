@@ -65,7 +65,7 @@ fresh install:
 
 | Capability | Works out of the box | Notes |
 |---|---|---|
-| Keyless search (DuckDuckGo, Bing, Wikipedia API) | yes* | *Live availability depends on your network and the sources' bot policies; outcomes are always reported honestly. |
+| Keyless search (DuckDuckGo, Bing, Mojeek fallback, Wikipedia API, intent-routed GDELT news) | yes* | *Live availability depends on your network and the sources' bot policies; outcomes are always reported honestly. |
 | Page and PDF reading (local) | yes | Scanned-PDF OCR needs `pdftoppm` + `tesseract` installed. |
 | Research mode | yes | Quality depends on reachable search sources; output is leads, not verdicts. |
 | GitHub source | yes | Public data without credentials; `gh` CLI unlocks private repos and code search. |

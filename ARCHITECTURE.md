@@ -22,7 +22,7 @@ Unified Internet capabilities
 ```
 IraLens facade (core.py) — search(), search_api(), research(), open(), read(), fetch(), …
  ├── search/            schema, adaptive reformulation, fallback, filters, dedup, ranking,
- │                      keyless SERPs, intent-routed Crossref/arXiv/Stack Exchange/GitHub APIs,
+ │                      keyless SERPs, intent-routed GDELT/Crossref/arXiv/Stack Exchange/GitHub APIs,
  │                      optional SearXNG / Exa / paid adapters
  ├── reliability.py     failure taxonomy, retries, persistent circuit state, concurrency gates
  ├── cache.py           TTL disk cache (search responses, static reads)

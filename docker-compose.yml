@@ -11,7 +11,7 @@ services:
       IRALENS_API_PORT: "8000"
       IRALENS_API_KEY: ${IRALENS_API_KEY:?Set IRALENS_API_KEY before starting the service}
       IRALENS_HOME: /data
-      IRALENS_SEARCH_ENGINES: duckduckgo,searxng,bing,wikipedia,semantic-search
+      IRALENS_SEARCH_ENGINES: duckduckgo,searxng,bing,mojeek,wikipedia,semantic-search
       IRALENS_SEARXNG_INSTANCES: http://searxng:8080
       IRALENS_ALLOWED_PRIVATE_HOSTS: searxng:8080
       IRALENS_CACHE_ENABLED: "true"
