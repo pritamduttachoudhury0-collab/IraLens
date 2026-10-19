@@ -303,6 +303,10 @@ def score_query(entry: Dict[str, Any], observation: SearchObservation) -> Dict[s
                     break
         if matched_by:
             break
+    paid_attempted = any(
+        outcome.get("engine") == "paid-backup" and outcome.get("status") != "skipped"
+        for outcome in observation.outcomes
+    )
     fresh = None
     recency = entry.get("recency_days")
     if recency:
@@ -328,6 +332,10 @@ def score_query(entry: Dict[str, Any], observation: SearchObservation) -> Dict[s
         "result_count": len(observation.results),
         "available": bool(observation.results),
         "quality_hit": bool(matched_by),
+        # Conservative, query-level definition of paid-key replacement: the
+        # frozen gold predicate is met and the paid backup was not attempted.
+        "paid_attempted": paid_attempted,
+        "free_quality_hit": bool(matched_by) and not paid_attempted,
         "matched_by": matched_by,
         "top5": [{"url": r.get("url", ""), "host": host_of(r.get("url", ""))}
                  for r in top],
@@ -666,6 +674,13 @@ def compute_metrics(*, search: Dict[str, Any], extraction: Dict[str, Any],
         "quality_dev": rate(dev, "quality_hit"),
         "quality_heldout": rate(heldout, "quality_hit"),
         "quality_all": rate(queries, "quality_hit"),
+        # A keyless hit that matches the frozen top-5 gold predicate is a
+        # defensible replacement; a merely nonempty free result is not.
+        "free_replacement_rate": rate(queries, "free_quality_hit"),
+        "free_quality_rate_without_paid": rate(
+            [q for q in queries if not q.get("paid_attempted")], "quality_hit"),
+        "queries_without_paid_attempt": sum(1 for q in queries if not q.get("paid_attempted")),
+        "paid_backup_query_rate": rate(queries, "paid_attempted"),
         "quality_gap_dev_minus_heldout": (
             round((rate(dev, "quality_hit") or 0) - (rate(heldout, "quality_hit") or 0), 4)),
         "quality_by_category": {
@@ -824,12 +839,18 @@ def format_table(payload: Dict[str, Any]) -> str:
             value = f"{value:.4f}"
         lines.append(f"| {verdict['threshold']} | {value} | {verdict['requirement']} | "
                      f"{verdict['status'].upper()} |")
+    replacement = metrics.get("free_replacement_rate")
+    paid_rate = metrics.get("paid_backup_query_rate")
+    replacement_text = "n/a" if replacement is None else f"{replacement * 100:.1f}%"
+    paid_text = "n/a" if paid_rate is None else f"{paid_rate * 100:.1f}%"
     lines += [
         "",
         f"queries: {metrics['queries_total']} "
         f"(dev {metrics['quality_dev']}, held-out {metrics['quality_heldout']} quality) · "
         f"URLs: {len(payload['extraction']['urls'])} · "
         f"generated {payload['meta']['timestamp']} · {payload['meta']['network']} network",
+        f"keyless paid-key replacement: {replacement_text} · paid-backup query rate: {paid_text} "
+        "(gold hit without attempting paid backup; not a generic availability rate)",
     ]
     return "\n".join(lines)
 
@@ -851,6 +872,8 @@ def benchmarks_md_row(payload: Dict[str, Any]) -> str:
         notes.append("FAIL: " + ", ".join(failing))
     if not_run:
         notes.append("not run: " + ", ".join(not_run))
+    notes.append(f"keyless replacement {pct(m.get('free_replacement_rate'))}; "
+                 f"paid-backup query rate {pct(m.get('paid_backup_query_rate'))}")
     return ("| {ts} | {commit} | {network} | {avail} | {qdev} | {qheld} | {indep} | {p50} | {p95} | "
             "{rp95} | {load} | {ext} | {honest} | **{verdict}** | {notes} |").format(
         ts=payload["meta"]["timestamp"][:10],

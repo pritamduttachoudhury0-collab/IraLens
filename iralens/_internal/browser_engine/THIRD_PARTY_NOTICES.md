@@ -5,7 +5,7 @@
 - **Project**: Obscura (`https://github.com/h4ckf0r0day/obscura`)
 - **Copyright**: Copyright (c) 2026 Obscura Contributors (`h4ckf0r0day`)
 - **License**: Apache License, Version 2.0 (`Apache-2.0`)
-- **Revision**: `bd9529418b7fa975b50eabeac415cfaaa865a588` (post-`v0.2.4`)
+- **Revision**: `bd9529418b7fa975b50eabeac415cfaaa865a588` (the `v0.2.5` tag commit; see `UPSTREAM_PROVENANCE.md` for the local patch ledger)
 - **License Text**: See `iralens/_internal/browser_engine/vendor/obscura/LICENSE` and repository root `LICENSE`.
 
 ## 2. Embedded Domain Blocklist Data (`pgl_domains.txt`)
@@ -50,3 +50,13 @@ Per `iralens/_internal/browser_engine/vendor/obscura/deny.toml`, all upstream Ru
 - `url` (MIT OR Apache-2.0) — Copyright The rust-url developers
 - `encoding_rs` (Apache-2.0 OR MIT) — Copyright Mozilla Foundation
 - `psl` (MIT OR Apache-2.0) — Copyright Rushmore Mushambi
+
+## 5. Optional TLS Impersonation Backend (`curl_cffi`)
+
+- **Project**: curl_cffi (`https://github.com/lexiforest/curl_cffi`)
+- **License**: MIT License
+- **Usage**: Optional only, installed through the `iralens[stealth]` extra.
+  When present, the browser transport may use it to reproduce Chrome's
+  TLS/HTTP2 fingerprint for `https://` requests. IraLens does not vendor or
+  redistribute curl_cffi as part of the default installation, and reports
+  the capability as unavailable when it is not installed.

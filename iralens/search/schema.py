@@ -205,6 +205,10 @@ class SearchResponse:
     engine_readiness: Dict[str, Any] = field(default_factory=dict)
     # How much of the question the results actually address.
     coverage: Dict[str, Any] = field(default_factory=dict)
+    # Whether a configured paid key was actually attempted, and the free-only
+    # coverage/trigger that led to it. An absent key is never implied to be a
+    # successful replacement; callers can measure the free result separately.
+    paid_fallback: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SearchResponse":
@@ -223,6 +227,7 @@ class SearchResponse:
             shortfall_reason=data.get("shortfall_reason", ""),
             engine_readiness=data.get("engine_readiness", {}),
             coverage=data.get("coverage", {}),
+            paid_fallback=data.get("paid_fallback", {}),
         )
 
     @property

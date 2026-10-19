@@ -1,5 +1,5 @@
-# Modified by IraLens Contributors (2026-10-17) under Apache-2.0 Section 4(b):
-# Scoped workspace members to the 8 core crates required by IraLens
+# Modified by IraLens Contributors (2026-10-17, version pin 2026-10-19) under
+# Apache-2.0 Section 4(b): scoped workspace members to the 8 core crates required by IraLens
 # (obscura-dom, obscura-ssrf, obscura-net, obscura-js, obscura-browser,
 # obscura-mcp, obscura-cli, obscura), excluding optional rasterization/CDP crates
 # (obscura-render, obscura-cdp, vendor/cosmic-text, vendor/taffy).
@@ -18,7 +18,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.4"
+version = "0.2.5"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/h4ckf0r0day/obscura"

@@ -34,25 +34,59 @@ with the same keys.
 
 ## Engines and the default chain
 
-The default chain is `duckduckgo -> bing -> wikipedia -> semantic-search`:
+The configured general chain is `duckduckgo -> bing -> mojeek -> wikipedia -> semantic-search`:
 
 - **duckduckgo** and **bing** fetch public results pages over direct HTTP
   (no key needed). Bing is experimental.
+- **mojeek** is a tertiary, keyless fallback after DuckDuckGo and Bing. It is
+  normally reached only when an earlier engine fails or the configured
+  independent-engine target has not been met. Its live HTML behavior is still
+  network-dependent; the request has an 8-second cap and the shared circuit
+  breaker applies.
 - **wikipedia** uses Wikimedia's official API with an identifying User-Agent
-  and at least one second between requests. Non-English queries try the detected
-  edition first, then English if no local-edition hits are found. It is a useful
-  supplemental index, not general web search; for procedural/statistical/current
-  queries the ranker caps it at one result.
-- **mojeek** is an additional keyless backend, registered but **opt-in** because
-  its live HTML parser and current terms have not been verified in this environment.
-  Enable via `IRALENS_SEARCH_ENGINES=duckduckgo,mojeek,bing,wikipedia` or an
-  explicit per-call engine list. The normal circuit breaker applies.
+  and at least one second between requests. It tries a detected language
+  edition first, then English if no local-edition hits are found. Detection
+  uses Unicode script plus conservative lexical hints for common Latin-script
+  languages; it is still a heuristic. Wikipedia is supplemental, not general
+  web search; for procedural/statistical/current queries the ranker caps it at
+  one result.
 - **semantic-search** is the optional `mcporter`/Exa bridge, used only when
   installed.
+- On current-event/news-shaped queries, **GDELT DOC 2.0** is routed before
+  the general chain. It is a public, no-key news index that returns direct
+  publisher URLs. Its `seendate` is only an index-seen timestamp, never
+  represented as an article publication date. GDELT's live availability and
+  relevance are network-dependent and must be measured on the operator's
+  network.
+- Other intent-routed public APIs complement the general chain: Crossref +
+  arXiv for scholarly papers, Stack Exchange for software questions, and
+  GitHub's REST API for repository, issue, or release lookups. These are
+  specialist indexes, not general web search. They need no key for public data
+  (GitHub can use an operator-supplied `IRALENS_GITHUB_TOKEN` for its higher
+  authenticated quota). API terms and rate limits apply. Disable specialist
+  routing with `IRALENS_SEARCH_SPECIALIST_ENGINES=false`, or select
+  `options.engines` explicitly to own routing for one request.
 - A configured **private SearXNG** instance is inserted before Bing, and the
   optional **paid-backup** (Brave, Serper, or Tavily) is appended only when
   both its provider and key are configured. No third-party public SearXNG
   host is queried by default.
+
+Query reformulation is **adaptive** by default: IraLens sends the full query
+first, then tries the next focus/jurisdiction/sub-question form only if the
+result set is low/partial coverage or too short. This saves provider calls
+when the first SERP already answers the question. Set
+`IRALENS_SEARCH_ADAPTIVE_QUERIES=false` to restore eager execution of every
+configured reformulation.
+
+The paid backup remains opt-in. By default it runs only when the keyless
+engine chain cannot meet its configured redundancy target. If a paid key is
+configured, the operator can additionally set
+`IRALENS_SEARCH_PAID_FALLBACK_ON_LOW_COVERAGE=true`; after all keyless query
+forms, IraLens then makes **one** paid call only when coverage is `low` (not
+merely when the free sources are partial). The response's `paid_fallback`
+block reports whether a paid call was attempted, its trigger, and the
+keyless-only coverage verdict. Nothing is sent to a paid provider unless its
+provider and key are configured.
 
 The reliability benchmark requires **two engines to succeed on 80%+ of
 queries on their own**, so a single endpoint cannot be the whole system. A
@@ -78,8 +112,10 @@ metadata names are refused even when allowlisted.
 |---|---|
 | `results[]` | Deduplicated, ranked. `score_breakdown` shows relevance, authority, freshness, agreement. |
 | `outcomes[]` | One per engine attempt: `status` (results / empty / failed / skipped), `kind`, `attempts`, `filter_modes`. |
+| `paid_fallback` | Whether a configured paid backup was attempted, why, and the coverage of the free-only result set before that call. `attempted=false` does not by itself mean the free results answered the query; inspect `coverage` too. |
+| `coverage` | Token-boundary-aware subject coverage (`good` / `partial` / `low` / `unknown`); a non-empty result is not necessarily answer-bearing. |
 | `fallbacks[]` | Each switch between engines, with the reason. |
-| `no_results_reason` | `none`, `no_results` (engines answered, nothing matched), or `engines_failed`. |
+| `no_results_reason` | `none`, `low_coverage` (hits do not address the question), `no_results`, `filtered_out`, or `engines_failed`. |
 | `filters.report` | What was post-filtered and how many results were dropped or kept with unknown dates. |
 | `dedup_log[]` | Why two hits were merged. |
 | `cache` | `hit` / `miss` / `bypass` / `refresh`, with age and freshness. |
@@ -90,17 +126,20 @@ metadata names are refused even when allowlisted.
 
 ## Filter support by engine
 
-| Filter | duckduckgo | bing | wikipedia | semantic-search (Exa) | paid-backup |
-|---|---|---|---|---|---|
-| date_from / date_to | post-filtered | post-filtered | post-filtered | post-filtered | post-filtered |
-| include_domains | emulated (`site:`, first domain) + post-filtered | same | post-filtered | post-filtered | post-filtered |
-| exclude_domains | post-filtered | post-filtered | unsupported | post-filtered | post-filtered |
-| file_type | emulated (`filetype:`) + post-filtered | same | unsupported | post-filtered | post-filtered |
-| region | native (`kl`) | unsupported | unsupported | unsupported | unsupported |
-| language | unsupported | native (`setlang`; auto-hint for detected scripts) | native (edition selected; auto-detected first) | unsupported | unsupported |
+| Filter | duckduckgo | bing | mojeek | wikipedia | gdelt | semantic-search (Exa) | paid-backup |
+|---|---|---|---|---|---|---|---|
+| date_from / date_to | post-filtered | post-filtered | post-filtered | post-filtered | native + post-filtered | post-filtered | post-filtered |
+| include_domains | emulated (`site:`, first domain) + post-filtered | same | emulated + post-filtered | post-filtered | post-filtered | post-filtered | post-filtered |
+| exclude_domains | post-filtered | post-filtered | post-filtered | unsupported | post-filtered | post-filtered | post-filtered |
+| file_type | emulated (`filetype:`) + post-filtered | same | emulated + post-filtered | unsupported | post-filtered | post-filtered | post-filtered |
+| region | native (`kl`) | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported |
+| language | unsupported | native (`setlang`; auto-hint) | unsupported | native (edition selected; auto-detected first) | post-filtered | unsupported | post-filtered |
 
 Filters an engine cannot apply are reported `unsupported`, never faked.
-Undated results are kept and counted (`date_unknown_kept`).
+Undated results are kept and counted (`date_unknown_kept`). The intent-routed
+Crossref, arXiv, Stack Exchange, and GitHub adapters post-filter the same
+structured domain/date/file-type constraints; the original `site:` path scope
+is separately enforced by the orchestrator.
 
 ## Failure taxonomy and retries
 
@@ -174,8 +213,13 @@ call retries live. Disable everything with `IRALENS_CACHE_ENABLED=false`.
 Every knob lives in `iralens/settings.py` and reads from `config.yaml` or
 `IRALENS_<KEY>` environment variables, e.g.
 `IRALENS_SEARCH_ENGINES=duckduckgo,bing,wikipedia`,
-`IRALENS_SEARXNG_INSTANCES`, `IRALENS_BACKUP_SEARCH_PROVIDER=brave|serper|tavily`
-with `IRALENS_BACKUP_SEARCH_API_KEY` (never called unless both are set).
+`IRALENS_SEARCH_ADAPTIVE_QUERIES=false` to restore eager reformulation,
+`IRALENS_SEARCH_SPECIALIST_ENGINES=false` to disable intent-routed APIs,
+`IRALENS_SEARXNG_INSTANCES`, or
+`IRALENS_BACKUP_SEARCH_PROVIDER=brave|serper|tavily` with
+`IRALENS_BACKUP_SEARCH_API_KEY` (never called unless both are set).
+Quality-based paid fallback is separately opt-in with
+`IRALENS_SEARCH_PAID_FALLBACK_ON_LOW_COVERAGE=true`.
 
 ## Source policy
 
@@ -188,7 +232,13 @@ source's current terms for your jurisdiction, volume, and use case.
 |---|---|---|---|
 | DuckDuckGo HTML/lite | Requests public results pages and parses HTML. | No provider key; DDG receives the query and caller network identity. | Verify current terms, permitted automation/rate, robots/technical restrictions, caching, and result-display rules. |
 | Bing HTML | Requests public search HTML; parser is experimental. | No provider key; Microsoft receives the query and caller network identity. | Verify current Microsoft/Bing terms and any published API alternatives. |
+| Mojeek HTML | Tertiary public-results fallback; an 8-second cap and circuit breaker apply. | No provider key; Mojeek receives the query and caller network identity. | Verify current terms, permitted automation/rate, caching, and result-display rules. |
 | Wikipedia / MediaWiki API | Official `list=search` API, identifying User-Agent, ≥1 s between calls. | No API key; Wikimedia receives the query. | Verify current API etiquette, rate guidance, attribution, and reuse obligations. |
+| GDELT DOC 2.0 | Public news article-list API, intent-routed for current-event queries, paced at ≥1 s per process. | No API key; GDELT receives the query. | Verify current API limits, terms, attribution, and source reuse obligations; index time is not publication time. |
+| Crossref | Official works API, used only for scholarly-paper intent; paced at ≥1 s per process. | No API key; Crossref receives the subject query. | Review current API etiquette, attribution, and reuse obligations. |
+| arXiv | Official Atom API, used only for scholarly-paper intent; paced at ≥3 s per process. | No API key; arXiv receives the subject query. | Review current API etiquette, attribution, and reuse obligations. |
+| Stack Exchange | Official advanced-search API, used only for technical/software intent; paced at ≥1 s per process. | Public endpoints need no key but have quota limits; Stack Exchange receives the query. | Review current API terms, quota, attribution, and content licensing. |
+| GitHub REST search | Official repository/issue/release endpoints; authenticated code search is deliberately not used. | Public calls need no key (anonymous quota applies); an optional GitHub token raises quota. | Review GitHub API terms, quota, attribution, and content licensing. |
 | SearXNG | Contacted only when an operator configures an instance; the bundled stack runs privately. | Self-hosted or explicitly configured endpoint; forwards to its configured upstream engines. | Review SearXNG and each enabled upstream engine's terms, rate limits, data handling, and deployment jurisdiction. Self-hosting does not grant upstream permission. |
 | Exa bridge | Optional external `mcporter` tool, not installed or invoked by default. | User-configured account/provider. | Review the configured provider contract, retention, quotas, resale, and output terms. |
 | Brave / Serper / Tavily backup | Optional direct provider adapter; not called unless provider and key are configured. | Paid key held in config/environment, sent over HTTPS with a same-origin redirect policy. | Review provider contract, key handling, quotas, data processing, and failover disclosure. |

@@ -2,12 +2,108 @@
 
 All notable changes to this project are documented here, newest first.
 
-## Unreleased
+## 0.3.5 — 2026-10-19
 
-Browser resilience and honest reporting of optional features. This work is
-**not** a new release: the release version remains `0.3.1` by project
-decision, so no version was bumped. Cutting a version for these changes is a
-separate call for the maintainer.
+Browser resilience, a working stealth tier, an Obscura provenance and
+JS-runtime upgrade, broader keyless search, and honest reporting of optional
+features. Live anti-bot effectiveness and real CAPTCHA-solving success remain
+**not verified**; the offline contracts and mocked provider outcomes are
+covered by the test suite.
+
+### Added
+
+- **Stealth mode now exists.** `stealth: true` (or `--stealth` on the
+  engine) turns on a real implementation in the Python/native-V8 tier:
+  - **One identity, everywhere.** A new `StealthProfile`
+    (`iralens/_internal/browser_engine/stealth.py`) describes a single
+    plausible desktop Chrome — user agent, client hints, platform,
+    languages, screen, viewport, core count, memory, GPU, canvas seed — and
+    is pinned to the engine's storage directory, so the identity does not
+    change between pages or between runs.
+  - **Browser-shaped requests.** A new transport
+    (`iralens/_internal/browser_engine/transport.py`) speaks HTTP/1.1 the
+    way Chrome does: one reused connection per origin, the header set and
+    order Chrome sends (`sec-ch-ua*`, `Upgrade-Insecure-Requests`,
+    `Sec-Fetch-*`, `Priority`, …), `Accept-Encoding` advertising only the
+    codecs this process can decode, and transparent gzip/deflate/brotli/zstd
+    decoding. `urllib` is gone from the request path: it forces
+    `Connection: close`, replaces `Accept-Encoding` with `identity`, and
+    cannot keep a connection alive.
+  - **A page that agrees with its headers.** `stealth.js` runs before the
+    page's own scripts and pins what the upstream engine otherwise
+    re-randomizes on every navigation (screen, viewport, core count,
+    memory, canvas), syncs the user agent and client hints with the
+    headers, denies geolocation the way a browser without the permission
+    does, hides the engine's own host globals from reflection APIs, and
+    supplies a 2D canvas where there was none (`getContext("2d")` used to
+    return `null`).
+  - **Challenge handling.** A JavaScript interstitial is waited out (the
+    page's own script sets a clearance cookie; the engine waits for it and
+    refetches). An interactive CAPTCHA is handed to a solving service the
+    operator configured with their own API key (`captcha_provider` +
+    `captcha_api_key`), and the answer is entered into the page the way a
+    browser would. With no service configured, a challenge is reported, not
+    bypassed.
+  - **Optional TLS impersonation.** `pip install "iralens[stealth]"` adds
+    `curl_cffi`, which reproduces Chrome's TLS and HTTP/2 fingerprints for
+    `https://` requests. Without it the capability is reported as
+    unavailable rather than assumed.
+- **The browser tier now stops at a verification page.** A CAPTCHA, a
+  bot-check interstitial, a login wall, or an access block served to the
+  browser raises a typed `verification_required` error instead of being
+  returned to the agent as content. This closes the same hole the static
+  reader closed earlier, and the navigation result carries a `challenge`
+  block saying what was met and what was done about it.
+- **The engine's capability report grew.** `tls_impersonation` and
+  `captcha_solver` are now reported with their real availability, and the
+  `stealth` entry distinguishes *requested*, *supported* and *applied*.
+- **Obscura provenance corrected and JS runtime upgraded.** The vendored
+  revision `bd9529418b7fa975b50eabeac415cfaaa865a588` is the upstream
+  `v0.2.5` tag commit, not a post-`v0.2.4` snapshot; the engine version,
+  prebuilt-binary version and provenance docs now say so. Two post-`v0.2.5`
+  upstream `bootstrap.js` fixes were adopted as documented local patches:
+  same-document fragment navigation (with an IraLens host bridge delivering
+  `hashchange` in the Python/native-V8 tier) and real
+  `HTMLOListElement`/`HTMLLIElement` identity. The WebCrypto AES-KW work was
+  reviewed and rejected for this release because it requires native ops the
+  vendored Rust tree and host bridge do not provide. See
+  `iralens/_internal/browser_engine/UPSTREAM_PROVENANCE.md`.
+
+### Search — keyless coverage iteration
+
+- The first external all-200 datacenter search run on `240ff01` measured a
+  71.5% keyless gold-hit rate (143/200), with no paid-backup calls. This is
+  below the requested 90%; recent-news was 0/25 and non-English 12/25.
+  DuckDuckGo was circuit-open throughout and Bing intermittently so; this is a
+  single network-dependent measurement, not a causal A/B or universal rate.
+- Added intent-routed GDELT DOC 2.0 news search as a public, keyless
+  current-event index. Its index-seen timestamp is retained as provenance and
+  is not mislabeled as article publication time. Live reachability and quality
+  remain to be measured.
+- Expanded local-language routing with conservative Latin-script language
+  hints, Japanese kana precedence, and Ukrainian/Persian script distinctions.
+  These hints steer Wikimedia/Bing queries but are not a general language-ID
+  model.
+- Promoted Mojeek to a tertiary default fallback after DuckDuckGo and Bing;
+  requests are capped at eight seconds and continue through the shared circuit
+  breaker. Its live parser and terms still need network verification.
+- Added intent-routed Crossref, arXiv, Stack Exchange, and GitHub public-API
+  adapters. They are specialist sources, not general indexes, and make no
+  live-availability or 90% quality claim.
+- Reformulation now sends the full query first and stops after adequate
+  coverage/result count; focus, jurisdiction, and decomposed forms are tried
+  only when the initial set is weak or short. The request plan prioritizes
+  those focused forms over generic keyword rewrites.
+- Coverage matching now uses token boundaries, including separately tokenized
+  URL host labels, so substrings such as `kit` in `ticket` cannot count as an
+  answer-bearing match.
+- Paid backup attempts are deferred until keyless query forms finish. The
+  opt-in `search_paid_fallback_on_low_coverage` setting allows one paid call
+  only when the keyless-only coverage verdict is `low`; the response reports
+  the trigger and pre-fallback verdict.
+- The frozen reliability runner reports a conservative `free_replacement_rate`
+  (gold top-5 hit with no paid-backup attempt) and a paid-backup query rate.
+  Neither is gated or claimed as a 90% result until a live labeled run exists.
 
 ### Fixed
 
@@ -86,17 +182,18 @@ separate call for the maintainer.
 
 ### Documentation
 
-- `KNOWN_LIMITATIONS.md`: new section stating that verification pages are
-  reported and never solved, that challenge detection is conservative, and
-  that **stealth is unreachable in every shipped configuration** (it exists
-  only behind an uncompiled Rust `stealth` feature gate).
+- `KNOWN_LIMITATIONS.md`: verification pages are reported by default and are
+  solved only through an operator-configured provider; challenge detection is
+  conservative; stealth is an identity-consistency tier whose limits and
+  optional dependencies are stated explicitly.
 - `docs/security.md`: browser navigation guard, verification-stop control,
-  proxy credentials moved to the environment, and four new known gaps.
-- `README.md`: challenge pages are reported not solved; `stealth` has no
-  effect in this distribution.
-- `BROWSER_RESILIENCE_IMPLEMENTATION_REPORT.md`: full implementation report
+  proxy and solver credentials moved to the environment, and known gaps.
+- `README.md` and `docs/getting-started.md`: how to enable stealth, install
+  the optional `iralens[stealth]` TLS backend, and configure a solver with
+  the operator's own credentials.
+- `BROWSER_RESILIENCE_IMPLEMENTATION_REPORT.md`: implementation report
   separating verified facts from inferred conclusions and untested
-  assumptions.
+  assumptions; `docs/OBSCURA_UPGRADE_REPORT.md` records the upstream audit.
 
 ## 0.3.1 — 2026-10-18
 

@@ -29,14 +29,19 @@ DEFAULT_SEARXNG_INSTANCES: Tuple[str, ...] = ()
 @dataclass(frozen=True)
 class Settings:
     # --- engines / fallback ------------------------------------------------
-    # Keyless sources first. The optional semantic bridge runs last; the
-    # operator-configured SearXNG instance is inserted before Bing, and the
-    # paid backup is appended only when explicitly configured.
-    search_engines: Tuple[str, ...] = ("duckduckgo", "bing", "wikipedia", "semantic-search")
+    # Keyless sources first, with an independent crawler-based fallback before
+    # Wikipedia. The optional semantic bridge runs last; the operator-configured
+    # SearXNG instance is inserted before Bing, and paid backup is opt-in.
+    search_engines: Tuple[str, ...] = ("duckduckgo", "bing", "mojeek", "wikipedia", "semantic-search")
     search_min_engines: int = 2            # engines queried for cross-engine agreement
     search_max_results: int = 8
     search_timeout_seconds: int = 45       # per engine navigation/extraction budget
     search_max_query_chars: int = 400      # longer queries are rejected
+    #: Stop reformulating after the answerability/coverage gate is satisfied.
+    #: If the first SERP is weak or short, the next query form is tried.
+    search_adaptive_queries: bool = True
+    #: Add an official keyless specialist API only when query intent matches it.
+    search_specialist_engines: bool = True
     # --- searxng instance rotation ---------------------------------
     searxng_instances: Tuple[str, ...] = DEFAULT_SEARXNG_INSTANCES
     searxng_cooldown_seconds: float = 600.0   # a failed instance is skipped this long
@@ -47,7 +52,7 @@ class Settings:
     web_host_min_interval_seconds: float = 0.25  # minimum gap between requests to one host
     web_host_max_interval_seconds: float = 5.0   # ceiling for a server's Retry-After
     search_acquire_timeout_seconds: int = 15
-    search_parallel_queries: bool = True   # run reformulated query variants in parallel
+    search_parallel_queries: bool = True   # used when adaptive query planning is disabled
     # --- page reading --------------------------------------------------------
     read_max_bytes: int = 5 * 1024 * 1024        # general response cap
     read_pdf_max_bytes: int = 20 * 1024 * 1024  # only PDF MIME/paths; same time deadline
@@ -85,6 +90,10 @@ class Settings:
     backup_search_provider: str = ""       # brave | serper | tavily; disabled by default
     backup_search_api_key: str = ""        # never returned by doctor/config output
     backup_search_timeout_seconds: int = 15
+    #: Optional quality gate: call the configured paid backup if a completed
+    #: keyless search still has low answer coverage. Off unless the operator
+    #: explicitly enables quality-based paid fallback.
+    search_paid_fallback_on_low_coverage: bool = False
     # --- local OCR for scanned PDFs (system tools are optional) ---------------
     # Try local OCR on scans by default when both host tools exist. No cloud OCR;
     # missing tools produce a typed, actionable error. Opt out with the env key.

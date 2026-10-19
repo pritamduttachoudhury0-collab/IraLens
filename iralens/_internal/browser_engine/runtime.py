@@ -17,7 +17,6 @@ import json
 import os
 import re
 import shutil
-import socket
 import subprocess
 import threading
 import time
@@ -34,17 +33,31 @@ from ...errors import (
     OperationTimeoutError,
     PageUnavailableError,
     SecurityBlockedError,
+    VerificationRequiredError,
 )
 from ...extract import looks_like_pdf, pdf_to_text
+from . import captcha as captcha_mod
 from .cookies import CookieJar
 from .ssrf import allow_private_network, validate_navigation_url
+from .stealth import StealthProfile, load_or_create_profile
+from .transport import (
+    HttpTransport,
+    TransportError,
+    TransportTimeout,
+    accept_encoding_value,
+)
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 VENDOR_OBSCURA_DIR = PACKAGE_DIR / "vendor" / "obscura"
 UPSTREAM_REPOSITORY = "https://github.com/h4ckf0r0day/obscura"
 UPSTREAM_REVISION = "bd9529418b7fa975b50eabeac415cfaaa865a588"
-UPSTREAM_BASE_TAG = "v0.2.4"
-UPSTREAM_BASE_TAG_COMMIT = "1fccab2c1ecd0f7eadc16d7a520ba227f9e7f782"
+#: The vendored revision *is* the upstream v0.2.5 tag commit. (Earlier
+#: releases of IraLens labelled it "post-v0.2.4" because the tag did not
+#: exist yet when the tree was imported; v0.2.5 was tagged at exactly this
+#: commit on 2026-10-17.) Post-tag upstream fixes adopted as local patches
+#: are enumerated in UPSTREAM_PROVENANCE.md.
+UPSTREAM_BASE_TAG = "v0.2.5"
+UPSTREAM_BASE_TAG_COMMIT = "bd9529418b7fa975b50eabeac415cfaaa865a588"
 
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -56,6 +69,20 @@ MAX_SUBRESOURCE_SCRIPTS = 16
 MAX_SUBRESOURCE_SCRIPT_BYTES = 2 * 1024 * 1024
 DEFAULT_V8_TIMEOUT_SEC = 15.0
 DEFAULT_V8_MAX_MEMORY_BYTES = 256 * 1024 * 1024
+
+#: How long the engine waits for a JavaScript interstitial to clear itself
+#: before it reports the challenge. The interstitial's own script sets a
+#: clearance cookie and reloads; the wait is for that to happen.
+DEFAULT_CHALLENGE_WAIT_SECONDS = 8.0
+
+#: A page with less visible text than this is treated as the challenge
+#: itself rather than as a page that happens to carry a widget. Many sites
+#: embed a reCAPTCHA badge on every article; refusing to read those
+#: articles would be worse than the badge.
+CHALLENGE_PAGE_MAX_TEXT = 1000
+
+#: How long a solving service is given to answer.
+DEFAULT_CAPTCHA_TIMEOUT_SECONDS = 120.0
 
 
 def _utc_now_iso() -> str:
@@ -111,6 +138,26 @@ def _load_vendored_js_bundle() -> Tuple[str, str, str]:
 
         _CACHED_BUNDLE = (host_ops_js, bootstrap_js, host_mcp_js)
         return _CACHED_BUNDLE
+
+
+_STEALTH_JS_LOCK = threading.Lock()
+_CACHED_STEALTH_JS: Optional[str] = None
+
+
+def _load_stealth_js() -> str:
+    """Load the page-side stealth script (once per process)."""
+    global _CACHED_STEALTH_JS
+    with _STEALTH_JS_LOCK:
+        if _CACHED_STEALTH_JS is not None:
+            return _CACHED_STEALTH_JS
+        path = PACKAGE_DIR / "stealth.js"
+        if not path.is_file():
+            raise EngineUnavailableError(
+                "Bundled browser engine asset is missing: stealth.js",
+                detail="missing_engine_asset",
+            )
+        _CACHED_STEALTH_JS = path.read_text(encoding="utf-8")
+        return _CACHED_STEALTH_JS
 
 
 class _NodeVmFallbackIsolate:
@@ -280,6 +327,10 @@ class NavigationOutcome:
     ok: bool = True
     error: Optional[str] = None
     warnings: List[str] = field(default_factory=list)
+    #: What happened with an anti-bot challenge on this page, if any. Empty
+    #: when the page carried no challenge. The report names the provider and
+    #: says whether the challenge was cleared, solved, or left standing.
+    challenge: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         out: Dict[str, Any] = {
@@ -300,6 +351,8 @@ class NavigationOutcome:
             out["error"] = self.error
         if self.warnings:
             out["warnings"] = list(self.warnings)
+        if self.challenge:
+            out["challenge"] = dict(self.challenge)
         return out
 
 
@@ -340,15 +393,42 @@ class ObscuraBrowserContext:
         storage_dir: Optional[Path] = None,
         allow_private: bool = False,
         allow_file: bool = False,
+        stealth: bool = False,
+        captcha_provider: Optional[str] = None,
+        captcha_api_key: Optional[str] = None,
+        captcha_timeout: float = DEFAULT_CAPTCHA_TIMEOUT_SECONDS,
+        challenge_wait_seconds: float = DEFAULT_CHALLENGE_WAIT_SECONDS,
     ) -> None:
+        self.stealth = bool(stealth)
         self.user_agent = user_agent or DEFAULT_USER_AGENT
         self.proxy_url = proxy_url
         self.storage_dir = storage_dir
         self.allow_private = allow_private
         self.allow_file = allow_file
+        self.challenge_wait_seconds = float(challenge_wait_seconds)
         self.cookie_jar = CookieJar()
         # origin -> {key: value}
         self.local_storage: Dict[str, Dict[str, str]] = {}
+
+        # Stealth: one identity for the whole session, used by both the HTTP
+        # layer and the page layer so the two cannot disagree.
+        self.profile: Optional[StealthProfile] = None
+        if self.stealth:
+            self.profile = load_or_create_profile(
+                storage_dir, user_agent=user_agent
+            )
+            # The profile is the single source of truth for the user agent
+            # from here on: the headers and the page must not disagree.
+            self.user_agent = self.profile.user_agent
+
+        self.transport = HttpTransport(
+            proxy_url=proxy_url,
+            tls_impersonation=self.stealth,
+            chrome_major=(self.profile.chrome_major if self.profile else None),
+        )
+        self.solver = captcha_mod.build_solver(
+            captcha_provider, captcha_api_key, timeout=captcha_timeout
+        )
 
         if self.storage_dir is not None:
             cookie_file = self.storage_dir / "cookies.json"
@@ -417,6 +497,11 @@ class ObscuraNativeEngine:
         storage_dir: Optional[Path] = None,
         allow_private: bool = False,
         allow_file: bool = False,
+        stealth: bool = False,
+        captcha_provider: Optional[str] = None,
+        captcha_api_key: Optional[str] = None,
+        captcha_timeout: float = DEFAULT_CAPTCHA_TIMEOUT_SECONDS,
+        challenge_wait_seconds: float = DEFAULT_CHALLENGE_WAIT_SECONDS,
     ) -> None:
         self._lock = threading.RLock()
         self.context = ObscuraBrowserContext(
@@ -425,6 +510,11 @@ class ObscuraNativeEngine:
             storage_dir=storage_dir,
             allow_private=allow_private,
             allow_file=allow_file,
+            stealth=stealth,
+            captcha_provider=captcha_provider,
+            captcha_api_key=captcha_api_key,
+            captcha_timeout=captcha_timeout,
+            challenge_wait_seconds=challenge_wait_seconds,
         )
         self._tabs: Dict[str, BrowserTab] = {}
         self._tab_counter = 1
@@ -449,6 +539,62 @@ class ObscuraNativeEngine:
             for tab in list(self._tabs.values()):
                 tab.close()
             self._tabs.clear()
+            try:
+                self.context.transport.close()
+            except Exception:
+                pass
+
+    def _stealth_init_scripts(self) -> List[str]:
+        """The scripts the page realm runs before the document is initialized.
+
+        The profile is handed to the page first, then the stealth script
+        itself, so the script can read it.
+        """
+        profile = self.context.profile
+        if profile is None:
+            return []
+        # A JSON object literal, not a JSON string: the stealth script reads
+        # the fields directly.
+        payload = json.dumps(profile.js_payload())
+        return [
+            "globalThis.__iralens_stealth_profile = " + payload + ";",
+            _load_stealth_js(),
+            "globalThis.__iralens_stealth_install();",
+        ]
+
+    def _request_headers(
+        self,
+        url: str,
+        *,
+        resource_type: str,
+        referer: Optional[str],
+    ) -> List[Tuple[str, str]]:
+        """The header list for one request, in the order it goes on the wire.
+
+        In stealth mode the profile decides: Chrome's header set, Chrome's
+        order, and the brand list the page also reports. Without stealth the
+        engine keeps its historical, deliberately plain header set.
+        """
+        profile = self.context.profile
+        if profile is not None:
+            encoding = accept_encoding_value()
+            if resource_type == "document":
+                return profile.navigation_headers(
+                    url=url,
+                    accept_encoding=encoding,
+                    referer=referer,
+                )
+            return profile.subresource_headers(
+                url,
+                resource_type=resource_type,
+                accept_encoding=encoding,
+                referer=referer,
+            )
+        return [
+            ("User-Agent", self.context.user_agent),
+            ("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"),
+            ("Accept-Language", "en-US,en;q=0.9"),
+        ]
 
     def _fetch_http(
         self,
@@ -459,6 +605,7 @@ class ObscuraNativeEngine:
         headers: Optional[Dict[str, str]] = None,
         timeout: float = 30.0,
         resource_type: str = "document",
+        referer: Optional[str] = None,
     ) -> Tuple[str, int, str, bytes, List[str]]:
         """Perform an SSRF-guarded HTTP request with manual redirect validation.
 
@@ -480,27 +627,23 @@ class ObscuraNativeEngine:
                 [current_url],
             )
 
-        handlers: List[Any] = [_NoRedirectHandler()]
-        if self.context.proxy_url:
-            handlers.append(
-                urllib.request.ProxyHandler(
-                    {"http": self.context.proxy_url, "https": self.context.proxy_url}
-                )
-            )
-        opener = urllib.request.build_opener(*handlers)
-
         req_method = method.upper()
         req_body = body
-        req_headers: Dict[str, str] = {
-            "User-Agent": self.context.user_agent,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
+        req_headers = self._request_headers(
+            current_url, resource_type=resource_type, referer=referer
+        )
         if headers:
-            req_headers.update(headers)
+            # Caller-supplied headers win, but they keep their position at the
+            # end of the list so the browser-shaped prefix stays intact.
+            for key, value in headers.items():
+                req_headers = [
+                    (k, v) for k, v in req_headers if k.lower() != key.lower()
+                ]
+                req_headers.append((key, value))
 
         redirect_chain: List[str] = [current_url]
         deadline = time.monotonic() + max(1.0, float(timeout))
+        transport = self.context.transport
 
         for hop in range(FETCH_REDIRECT_LIMIT + 1):
             remaining = deadline - time.monotonic()
@@ -510,102 +653,48 @@ class ObscuraNativeEngine:
                     detail="navigation_timeout",
                 )
 
+            hop_headers = list(req_headers)
             cookie_hdr = self.context.cookie_jar.cookie_header(current_url)
-            hop_headers = dict(req_headers)
             if cookie_hdr:
-                hop_headers["Cookie"] = cookie_hdr
-            if req_method == "POST" and "Content-Type" not in hop_headers:
-                hop_headers["Content-Type"] = "application/x-www-form-urlencoded"
-
-            req = urllib.request.Request(
-                current_url,
-                data=req_body if req_method not in ("GET", "HEAD") else None,
-                headers=hop_headers,
-                method=req_method,
-            )
-
-            status_code = 200
-            resp_headers: Any = {}
-            raw_chunks: List[bytes] = []
+                hop_headers.append(("Cookie", cookie_hdr))
+            if req_method == "POST" and not any(
+                k.lower() == "content-type" for k, _ in hop_headers
+            ):
+                hop_headers.append(
+                    ("Content-Type", "application/x-www-form-urlencoded")
+                )
 
             try:
-                with opener.open(req, timeout=max(0.5, min(remaining, 30.0))) as resp:
-                    status_code = getattr(resp, "status", None) or resp.getcode() or 200
-                    resp_headers = resp.headers
-                    total = 0
-                    while True:
-                        if time.monotonic() > deadline:
-                            raise OperationTimeoutError(
-                                f"Navigation timeout after {timeout}s",
-                                detail="navigation_timeout",
-                            )
-                        chunk = resp.read(65536)
-                        if not chunk:
-                            break
-                        total += len(chunk)
-                        if total > MAX_NAVIGATION_BODY_BYTES:
-                            raise ExtractionError(
-                                f"Response body exceeded {MAX_NAVIGATION_BODY_BYTES} bytes",
-                                detail="response_too_large",
-                            )
-                        raw_chunks.append(chunk)
-            except urllib.error.HTTPError as http_err:
-                status_code = http_err.code
-                resp_headers = http_err.headers or {}
-                try:
-                    if http_err.fp is not None:
-                        err_body = http_err.fp.read(MAX_NAVIGATION_BODY_BYTES)
-                        if err_body:
-                            raw_chunks.append(err_body)
-                except Exception:
-                    pass
-            except (TimeoutError, socket.timeout) as exc:  # type: ignore[name-defined]
+                response = transport.open(
+                    current_url,
+                    method=req_method,
+                    body=req_body if req_method not in ("GET", "HEAD") else None,
+                    headers=hop_headers,
+                    timeout=max(0.5, min(remaining, 30.0)),
+                )
+            except TransportTimeout as exc:
                 raise OperationTimeoutError(
-                    f"Navigation timeout after {timeout}s: {exc}",
+                    f"Navigation timeout after {timeout}s",
                     detail="navigation_timeout",
                 ) from exc
-            except urllib.error.URLError as exc:
-                reason = exc.reason
-                if isinstance(reason, TimeoutError) or "timed out" in str(reason).lower():
-                    raise OperationTimeoutError(
-                        f"Navigation timeout after {timeout}s: {reason}",
-                        detail="navigation_timeout",
-                    ) from exc
-                raise PageUnavailableError(
-                    f"Network error: {current_url}: {reason}",
-                    detail="network_error",
-                ) from exc
-            except OSError as exc:
-                if "timed out" in str(exc).lower():
-                    raise OperationTimeoutError(
-                        f"Navigation timeout after {timeout}s: {exc}",
-                        detail="navigation_timeout",
-                    ) from exc
+            except TransportError as exc:
                 raise PageUnavailableError(
                     f"Network error: {current_url}: {exc}",
                     detail="network_error",
                 ) from exc
 
+            status_code = response.status
+            body_bytes = response.body
+
             # Store any Set-Cookie headers from this hop
-            set_cookies: List[str] = []
-            if hasattr(resp_headers, "get_all"):
-                set_cookies = resp_headers.get_all("Set-Cookie") or []
-            elif hasattr(resp_headers, "getheaders"):
-                set_cookies = resp_headers.getheaders("Set-Cookie") or []
-            elif isinstance(resp_headers, dict):
-                sc = resp_headers.get("Set-Cookie") or resp_headers.get("set-cookie")
-                if isinstance(sc, list):
-                    set_cookies = sc
-                elif isinstance(sc, str):
-                    set_cookies = [sc]
-            for sc_hdr in set_cookies:
-                self.context.cookie_jar.insert_from_header(sc_hdr, current_url, from_http=True)
+            for sc_hdr in response.header_list("Set-Cookie"):
+                self.context.cookie_jar.insert_from_header(
+                    sc_hdr, current_url, from_http=True
+                )
 
             # Check for HTTP redirect (301, 302, 303, 307, 308)
             if status_code in (301, 302, 303, 307, 308):
-                location = None
-                if hasattr(resp_headers, "get"):
-                    location = resp_headers.get("Location") or resp_headers.get("location")
+                location = response.header("Location")
                 if location:
                     if hop >= FETCH_REDIRECT_LIMIT:
                         raise PageUnavailableError(
@@ -619,8 +708,12 @@ class ObscuraNativeEngine:
                         allow_file=self.context.allow_file,
                     )
                     if _origin_of(next_url) != _origin_of(current_url):
-                        for sensitive in ("Authorization", "authorization", "Proxy-Authorization", "Cookie"):
-                            req_headers.pop(sensitive, None)
+                        for sensitive in ("Authorization", "authorization",
+                                          "Proxy-Authorization", "Cookie"):
+                            req_headers = [
+                                (k, v) for k, v in req_headers
+                                if k.lower() != sensitive.lower()
+                            ]
                     if status_code in (301, 302, 303) and req_method == "POST":
                         req_method = "GET"
                         req_body = None
@@ -628,11 +721,8 @@ class ObscuraNativeEngine:
                     redirect_chain.append(current_url)
                     continue
 
-            content_type = "text/html"
-            if hasattr(resp_headers, "get"):
-                content_type = resp_headers.get("Content-Type") or resp_headers.get("content-type") or "text/html"
+            content_type = response.content_type or "text/html"
 
-            body_bytes = b"".join(raw_chunks)
             self.active_tab.network_requests.append(
                 NetworkEventRecord(
                     url=current_url,
@@ -650,6 +740,153 @@ class ObscuraNativeEngine:
             f"Redirect loop detected (exceeded {FETCH_REDIRECT_LIMIT} redirects)",
             detail="redirect_loop",
         )
+
+    def _page_text_length(self, tab: BrowserTab) -> int:
+        """How much visible text the rendered page has."""
+        try:
+            raw = tab.isolate.eval(
+                "(document.body && document.body.innerText "
+                "? document.body.innerText.length : 0)",
+                timeout_sec=5.0,
+            )
+            return int(raw or 0)
+        except Exception:
+            return 0
+
+    def _challenge_blocks(self, info: captcha_mod.ChallengeInfo, tab: BrowserTab,
+                          *, status_code: int) -> bool:
+        """Whether this challenge stands between the caller and the content.
+
+        A bot-check interstitial *is* the page, so it always blocks. An
+        interactive widget only blocks when the page is essentially the
+        widget: many sites embed a reCAPTCHA badge on every article, and
+        refusing to read those articles would be worse than the badge. A
+        refusing status code also blocks, whatever the page says.
+        """
+        if info.kind in (captcha_mod.KIND_AUTH_REQUIRED, captcha_mod.KIND_ACCESS_DENIED):
+            return True
+        if info.is_interstitial:
+            return True
+        if status_code in (401, 403, 429, 503):
+            return True
+        if info.is_captcha:
+            return self._page_text_length(tab) < CHALLENGE_PAGE_MAX_TEXT
+        return False
+
+    def _handle_challenge(
+        self,
+        tab: BrowserTab,
+        *,
+        html: str,
+        status_code: int,
+        depth: int,
+    ) -> Tuple[Dict[str, Any], Optional["NavigationOutcome"]]:
+        """Detect a challenge on the loaded page and try to get past it.
+
+        Returns `(report, refreshed_outcome)`. The refreshed outcome is
+        present when the challenge was cleared and the page was fetched
+        again. A challenge that could not be cleared is *not* returned as
+        page content: the caller raises a typed verification error instead,
+        because a challenge page is not research content.
+        """
+        info = captcha_mod.detect(
+            html, url=tab.current_url, http_status=status_code
+        )
+        if info is None:
+            return ({"kind": captcha_mod.KIND_NONE, "outcome": captcha_mod.OUTCOME_NONE}, None)
+
+        info.outcome = captcha_mod.OUTCOME_DETECTED
+        if not self._challenge_blocks(info, tab, status_code=status_code):
+            # A widget that sits on an otherwise readable page is not a
+            # reason to refuse the content, and solving it would cost the
+            # operator money for nothing.
+            return ({}, None)
+
+        # 1. A JavaScript interstitial. There is no puzzle to solve: the
+        #    page's own script computes a clearance cookie and reloads. The
+        #    right move is to wait for that and fetch the page again.
+        if info.is_interstitial and self.context.stealth and depth == 0:
+            refreshed = self._await_interstitial(tab, depth=depth)
+            if refreshed is not None:
+                info.outcome = captcha_mod.OUTCOME_CLEARED
+                return (info.to_dict(), refreshed)
+            info.outcome = captcha_mod.OUTCOME_FAILED
+            info.note = (
+                "the interstitial did not clear within "
+                f"{self.context.challenge_wait_seconds:g}s"
+            )
+            return (info.to_dict(), None)
+
+        # 2. An interactive widget. IraLens does not forge an answer; it
+        #    hands the puzzle to the operator's own solving service and
+        #    enters the answer the way a browser would.
+        if info.is_captcha and depth == 0:
+            solver = self.context.solver
+            info.solver = solver.name
+            if not solver.available:
+                info.note = (
+                    "an interactive CAPTCHA is present and no solving service "
+                    "is configured"
+                )
+                return (info.to_dict(), None)
+            try:
+                token = solver.solve(info)
+            except captcha_mod.SolverError as exc:
+                info.outcome = captcha_mod.OUTCOME_FAILED
+                info.note = str(exc)
+                return (info.to_dict(), None)
+            script = captcha_mod.token_injection_script(token, info)
+            try:
+                tab.isolate.eval(script, timeout_sec=10.0)
+            except Exception:
+                info.outcome = captcha_mod.OUTCOME_FAILED
+                info.note = "the solved token could not be entered into the page"
+                return (info.to_dict(), None)
+            info.outcome = captcha_mod.OUTCOME_SOLVED
+            # The widget usually reloads the page once it is satisfied. Give
+            # it a moment, then fetch the page again so the caller gets the
+            # content rather than the challenge.
+            refreshed = self._refetch_after_solve(tab, depth=depth)
+            if refreshed is not None:
+                return (info.to_dict(), refreshed)
+            return (info.to_dict(), None)
+
+        return (info.to_dict(), None)
+
+    def _await_interstitial(
+        self, tab: BrowserTab, *, depth: int
+    ) -> Optional["NavigationOutcome"]:
+        """Wait for a JavaScript interstitial to clear, then fetch again.
+
+        The interstitial's script sets a clearance cookie and reloads. This
+        waits for that cookie to appear and then re-fetches the page, so the
+        caller gets the real content instead of the interstitial.
+        """
+        wait = self.context.challenge_wait_seconds
+        if wait <= 0:
+            return None
+        deadline = time.monotonic() + wait
+        target = tab.current_url
+        before = len(self.context.cookie_jar.all_cookies(target))
+        while time.monotonic() < deadline:
+            time.sleep(0.4)
+            if len(self.context.cookie_jar.all_cookies(target)) <= before:
+                continue
+            try:
+                return self.navigate(target, timeout=30.0, _depth=depth + 1)
+            except Exception:
+                return None
+        return None
+
+    def _refetch_after_solve(
+        self, tab: BrowserTab, *, depth: int
+    ) -> Optional["NavigationOutcome"]:
+        """Fetch the page again after a solved CAPTCHA was entered."""
+        time.sleep(0.5)
+        try:
+            return self.navigate(tab.current_url, timeout=30.0, _depth=depth + 1)
+        except Exception:
+            return None
 
     def _sync_tab_from_v8_state(self, tab: BrowserTab, v8_state: Dict[str, Any]) -> None:
         if not isinstance(v8_state, dict):
@@ -724,6 +961,7 @@ class ObscuraNativeEngine:
                 body=body,
                 timeout=timeout,
                 resource_type="document",
+                referer=tab.current_url if tab.current_url != "about:blank" else "",
             )
 
             ct_lower = (content_type or "").lower()
@@ -806,6 +1044,15 @@ class ObscuraNativeEngine:
                 "externalScripts": external_scripts,
             }
 
+            if self.context.profile is not None:
+                # The stealth layer runs before the engine initializes the
+                # document (so the engine reports this profile's identity)
+                # and again right after (so the values that would otherwise
+                # be re-randomized on every navigation are pinned). Both run
+                # before the page's own scripts.
+                load_payload["initScripts"] = self._stealth_init_scripts()
+                load_payload["postInitScripts"] = ["globalThis.__iralens_stealth_apply();"]
+
             rem_v8 = max(0.2, deadline - time.monotonic())
             raw_v8 = tab.isolate.eval(
                 f"__iralens_load_document({json.dumps(json.dumps(load_payload))})",
@@ -836,6 +1083,40 @@ class ObscuraNativeEngine:
                 assert tab.last_navigation is not None
                 return tab.last_navigation
 
+            # A challenge page is not content. Detect it, try the one thing
+            # that is legitimately possible (let the interstitial clear
+            # itself, or enter an answer a solving service provided), and
+            # otherwise stop with a typed error.
+            challenge_report, refreshed = self._handle_challenge(
+                tab, html=html, status_code=status_code, depth=_depth
+            )
+            if refreshed is not None:
+                refreshed.challenge = dict(challenge_report)
+                tab.last_navigation = refreshed
+                self.context.persist_storage()
+                return refreshed
+            challenge_kind = str(challenge_report.get("kind") or "")
+            if (
+                challenge_kind
+                and challenge_kind != captcha_mod.KIND_NONE
+                and challenge_report.get("outcome")
+                not in (captcha_mod.OUTCOME_CLEARED, captcha_mod.OUTCOME_SOLVED)
+            ):
+                provider = str(challenge_report.get("provider") or "unknown")
+                kind = challenge_kind
+                note = str(challenge_report.get("note") or "")
+                raise VerificationRequiredError(
+                    "the site served an anti-bot challenge to the browser",
+                    hint=(
+                        "interactively verified pages need a solving service "
+                        "(captcha_provider + captcha_api_key) or a different "
+                        "source"
+                    ),
+                    detail=f"{kind}:{provider}" + (f" ({note})" if note else ""),
+                    verdict=captcha_mod.verdict_from_dict(challenge_report),
+                    url=tab.current_url,
+                )
+
             ok = 200 <= status_code < 400
             err_code = f"http_{status_code}" if not ok else None
             outcome = NavigationOutcome(
@@ -851,6 +1132,7 @@ class ObscuraNativeEngine:
                 ok=ok,
                 error=err_code,
                 warnings=warnings,
+                challenge=dict(challenge_report) if challenge_report.get("kind") else {},
             )
             tab.last_navigation = outcome
             self.context.persist_storage()

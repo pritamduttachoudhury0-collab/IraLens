@@ -61,9 +61,9 @@ from .locate import engine_cache_dir, find_engine
 _ORIG_URLOPEN = urllib.request.urlopen
 
 ENGINE_RELEASE_BASE = "https://github.com/h4ckf0r0day/obscura/releases/download"
-ENGINE_VERSION = "0.2.4"
+ENGINE_VERSION = "0.2.5"
 #: The upstream release publishes no checksum asset (checked via the GitHub
-#: API for v0.2.4). Integrity therefore relies on HTTPS + the startup probe
+#: API for v0.2.5). Integrity therefore relies on HTTPS + the startup probe
 #: unless the operator supplies a checksum of their own.
 DOWNLOAD_TIMEOUT = 300
 DOWNLOAD_ATTEMPTS = 3
@@ -253,7 +253,7 @@ def engine_status() -> Dict[str, object]:
         "installed": path is not None,
         "bundled": (VENDOR_OBSCURA_DIR / "Cargo.toml").is_file(),
         "upstream_revision": UPSTREAM_REVISION,
-        "stealth": "off (default)",
+        "stealth": "available (off by default; `iralens configure stealth=true`)",
         "control_host": "127.0.0.1 (localhost only)",
     }
     shim = _default_bin_dir() / "iralens-engine"

@@ -6,6 +6,13 @@
 **Baseline release:** `0.3.1` (commit `d00b621`, tag `v0.3.1`)
 **Work described here:** commits `afc5f0c` and `f0567e4` (both pushed)
 
+> **0.3.5 note (2026-10-19):** this report is the historical record for the
+> 0.3.1 baseline. Its statements that stealth was unreachable described that
+> baseline and are superseded in IraLens 0.3.5, which integrates the stealth
+> tier from `arena/1bcf9252-iralens`. For the current state see
+> `docs/RELEASE_0.3.5_REPORT.md`, `docs/OBSCURA_UPGRADE_REPORT.md`, the
+> changelog, and `KNOWN_LIMITATIONS.md`.
+
 This report distinguishes three things throughout, because the brief requires it:
 
 - **Verified** — observed directly in this sandbox by running code or reading source in this repository.

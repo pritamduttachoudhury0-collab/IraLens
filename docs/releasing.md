@@ -11,12 +11,12 @@ The version is written in four places and they must agree — a test says so
 
 | where | what |
 |---|---|
-| `pyproject.toml` | `version = "0.3.1"` |
-| `iralens/__init__.py` | `__version__ = "0.3.1"` |
+| `pyproject.toml` | `version = "0.3.5"` |
+| `iralens/__init__.py` | `__version__ = "0.3.5"` |
 | `iralens/engine/native.py` | the MCP `clientInfo` version |
 | `README.md` | the version badge |
 
-The changelog gains a section for the version (`## 0.3.1 — <date>`).
+The changelog gains a section for the version (`## 0.3.5 — <date>`).
 
 ## 2. Verify
 
@@ -32,7 +32,7 @@ The changelog gains a section for the version (`## 0.3.1 — <date>`).
 
 ```bash
 .venv/bin/python -m pip install --upgrade build
-.venv/bin/python -m build              # writes dist/iralens-0.3.1.tar.gz and dist/iralens-0.3.1-*.whl
+.venv/bin/python -m build              # writes dist/iralens-0.3.5.tar.gz and dist/iralens-0.3.5-*.whl
 .venv/bin/python -m pip install twine && .venv/bin/python -m twine check dist/*
 cd dist && sha256sum *.tar.gz *.whl > SHA256SUMS && cd ..
 ```
@@ -45,9 +45,9 @@ GitHub release, not committed.
 ### 4a. The GitHub release (no credentials needed beyond the repo)
 
 ```bash
-git tag -a v0.3.1 -m "IraLens 0.3.1"
-git push origin v0.3.1
-gh release create v0.3.1 --title "IraLens 0.3.1" --notes-file notes.md
+git tag -a v0.3.5 -m "IraLens 0.3.5"
+git push origin v0.3.5
+gh release create v0.3.5 --title "IraLens 0.3.5" --notes-file notes.md
 ```
 
 The assets are attached by the `release.yml` workflow, which builds the
@@ -59,7 +59,7 @@ uploads them (with their `SHA256SUMS`) to the release. It runs on the
 The release assets are installable on their own:
 
 ```bash
-pip install https://github.com/pritamduttachoudhury0-collab/IraLens/releases/download/v0.3.1/iralens-0.3.1-py3-none-any.whl
+pip install https://github.com/pritamduttachoudhury0-collab/IraLens/releases/download/v0.3.5/iralens-0.3.5-py3-none-any.whl
 ```
 
 ### 4b. PyPI (needs the project's PyPI account — one step)

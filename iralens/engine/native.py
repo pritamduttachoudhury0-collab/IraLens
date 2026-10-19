@@ -23,7 +23,11 @@ from typing import Any, Dict, List, Optional
 from .. import errors
 from ..proc import utf8_env
 from ..security import public_message
-from .._internal.browser_engine.mcp_server import PROXY_ENV_VAR
+from .._internal.browser_engine.mcp_server import (
+    CAPTCHA_KEY_ENV_VAR,
+    CAPTCHA_PROVIDER_ENV_VAR,
+    PROXY_ENV_VAR,
+)
 from .locate import find_engine
 
 _PROTOCOL_VERSION = "2024-11-05"
@@ -77,6 +81,16 @@ def classify_engine_error(text: str) -> errors.IraLensError:
         return errors.ExtractionError(msg)
     if re.search(r"not found|no element|no match|does not match|no nodes? ", low):
         return errors.ExtractionError(msg)
+    if low.startswith("verificationrequired"):
+        # The browser tier detected a verification page and could not get
+        # past it. That is its own error type: switching transport or
+        # retrying will not complete an interactive check. (Checked before
+        # the generic auth/captcha rule below, which it would otherwise
+        # match.)
+        return errors.VerificationRequiredError(
+            "the site required interactive verification (captcha or bot check)",
+            detail=msg,
+        )
     if re.search(r"auth|login|sign[- ]?in|403|401|forbidden|captcha|challenge|blocked by", low):
         return errors.AuthRequiredError(
             "the site rejected anonymous access (login, captcha, or bot check)", detail=msg
@@ -191,6 +205,14 @@ class BrowserEngine:
             proxy = self.config.get("proxy")
             if proxy:
                 child_extra[PROXY_ENV_VAR] = str(proxy)
+            # The solving service and its key travel in the environment for
+            # the same reason the proxy does: argv is world-readable.
+            captcha_provider = self.config.get("captcha_provider")
+            if captcha_provider:
+                child_extra[CAPTCHA_PROVIDER_ENV_VAR] = str(captcha_provider)
+            captcha_key = self.config.get("captcha_api_key")
+            if captcha_key:
+                child_extra[CAPTCHA_KEY_ENV_VAR] = str(captcha_key)
             ua = self.config.get("user_agent")
             if ua:
                 argv += ["--user-agent", str(ua)]
@@ -220,7 +242,7 @@ class BrowserEngine:
             handshake = self._rpc("initialize", {
                 "protocolVersion": _PROTOCOL_VERSION,
                 "capabilities": {},
-                "clientInfo": {"name": "iralens", "version": "0.3.1"},
+                "clientInfo": {"name": "iralens", "version": "0.3.5"},
             }, timeout=self._handshake_timeout())
             self._record_capabilities(handshake)
         except errors.EngineUnavailableError as exc:
@@ -256,12 +278,20 @@ class BrowserEngine:
             return {"requested": self._wants_stealth(), "supported": None,
                     "active": False,
                     "note": "the engine did not report capabilities"}
-        return {
+        status = {
             "requested": bool(stealth.get("requested")),
             "supported": bool(stealth.get("supported")),
             "active": bool(stealth.get("applied")),
             "note": str(stealth.get("reason") or ""),
         }
+        tls = self.capabilities.get("tls_impersonation")
+        if isinstance(tls, dict):
+            status["tls_impersonation"] = bool(tls.get("supported"))
+        solver = self.capabilities.get("captcha_solver")
+        if isinstance(solver, dict):
+            status["captcha_solver"] = bool(solver.get("supported"))
+            status["captcha_provider"] = str(solver.get("provider") or "")
+        return status
 
     def _wants_stealth(self) -> bool:
         if self.config is None:
@@ -647,6 +677,13 @@ class BrowserEngine:
             # visible wherever engine state is reported.
             if self.capability_warnings:
                 health["warnings"] = list(self.capability_warnings)
+            stealth = self.stealth_status()
+            if stealth.get("requested") or stealth.get("active"):
+                health["stealth"] = {
+                    "active": bool(stealth.get("active")),
+                    "tls_impersonation": bool(stealth.get("tls_impersonation")),
+                    "captcha_solver": bool(stealth.get("captcha_solver")),
+                }
             return health
         from ..proc import probe_command
 

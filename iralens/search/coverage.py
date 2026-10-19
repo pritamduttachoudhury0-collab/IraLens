@@ -144,11 +144,28 @@ def _field(result: Any, name: str) -> str:
     return str(getattr(result, name, "") or "")
 
 
-def _result_text(result: Any) -> str:
+def _result_terms(result: Any) -> set:
+    """The result's normalized tokens, with word boundaries preserved.
+
+    Substring checks let ``kit`` match ``ticket`` and ``glob`` match a
+    different, longer word. That can turn an entity collision into a false
+    coverage pass. Use the same symbol/Unicode-aware tokenizer on both sides
+    of the comparison instead.
+    """
     title = _field(result, "title")
     snippet = _field(result, "snippet")
     url = _field(result, "url")
-    return f"{title} {snippet} {url}".lower()
+    # Dots and slashes are structural in a URL, not part of an entity word:
+    # docs.python.org should contribute the domain labels "docs python org".
+    from urllib.parse import urlsplit
+
+    try:
+        parts = urlsplit(url)
+        url_words = " ".join((parts.hostname or "").replace(".", " ").split())
+        url_words += " " + (parts.path or "").replace("/", " ").replace("_", " ")
+    except ValueError:
+        url_words = url.replace("/", " ").replace("_", " ")
+    return term_set(f"{title} {snippet} {url_words}")
 
 
 def assess_coverage(question: str, results: Iterable[Any]) -> Dict[str, Any]:
@@ -183,8 +200,8 @@ def assess_coverage(question: str, results: Iterable[Any]) -> Dict[str, Any]:
     best_matched = 0
     best_ratio = 0.0
     for result in items:
-        text = _result_text(result)
-        matched = sum(1 for term in distinguishing if term in text)
+        result_terms = _result_terms(result)
+        matched = sum(1 for term in distinguishing if term in result_terms)
         ratio = matched / len(distinguishing)
         if ratio > best_ratio:
             best_ratio = ratio

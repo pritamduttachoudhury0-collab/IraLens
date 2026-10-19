@@ -21,8 +21,9 @@ Unified Internet capabilities
 
 ```
 IraLens facade (core.py) — search(), search_api(), research(), open(), read(), fetch(), …
- ├── search/            schema, reformulation, fallback, filters, dedup, ranking,
- │                      keyless HTTP engines, optional SearXNG / Exa / paid adapters
+ ├── search/            schema, adaptive reformulation, fallback, filters, dedup, ranking,
+ │                      keyless SERPs, intent-routed GDELT/Crossref/arXiv/Stack Exchange/GitHub APIs,
+ │                      optional SearXNG / Exa / paid adapters
  ├── reliability.py     failure taxonomy, retries, persistent circuit state, concurrency gates
  ├── cache.py           TTL disk cache (search responses, static reads)
  ├── content_guard.py   injection / invisible-character advisory flags
@@ -77,9 +78,10 @@ iralens/
 ## Integrated native browser subsystem
 
 IraLens embeds Obscura (`https://github.com/h4ckf0r0day/obscura`, commit
-`bd9529418b7fa975b50eabeac415cfaaa865a588`, base tag `v0.2.4` at
-`1fccab2c1ecd0f7eadc16d7a520ba227f9e7f782`, Apache-2.0) as an internally
-maintained browser subsystem under `iralens/_internal/browser_engine/`:
+`bd9529418b7fa975b50eabeac415cfaaa865a588` — the `v0.2.5` tag commit —
+Apache-2.0, plus four documented local `bootstrap.js` patches) as an
+internally maintained browser subsystem under
+`iralens/_internal/browser_engine/`:
 
 - **Vendored components:** `obscura-ssrf`, `obscura-dom`, `obscura-net`,
   `obscura-js` (`js/bootstrap.js`, `js/indexed_db.js`, `src/markdown.rs`),

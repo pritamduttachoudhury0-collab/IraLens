@@ -152,6 +152,18 @@ def reformulate(
     if swapped != question:
         candidates.append({"text": swapped, "strategy": "synonym"})
 
+    # The request-bearing query should be followed by the variants with the
+    # strongest retrieval intent. In particular, an official/jurisdiction
+    # form and a decomposed sub-question are more informative than a generic
+    # bag-of-words rewrite. With the default three-query budget, keywords used
+    # to crowd those higher-value forms out of the plan.
+    priority = {"original": 0, "focus": 1, "jurisdiction": 2,
+                "sub_question": 3, "keywords": 4, "synonym": 5}
+    candidates = [item for _index, item in sorted(
+        enumerate(candidates),
+        key=lambda pair: (priority.get(pair[1]["strategy"], 99), pair[0]),
+    )]
+
     seen = set()
     out: List[Dict[str, str]] = []
     for cand in candidates:

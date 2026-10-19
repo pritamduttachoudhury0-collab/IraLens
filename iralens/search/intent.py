@@ -22,6 +22,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Tuple
 
+from .querytext import parse_site_scopes
+
 _ERROR_RE = re.compile(
     r"\b(error|exception|traceback|failed|failure|not working|cannot|can't|unable to|"
     r"fix|debug|crash|segfault|timeout after)\b|\bERR_[A-Z_]+|\bE\d{3,}\b", re.IGNORECASE)
@@ -41,6 +43,28 @@ _DEFINITION_RE = re.compile(
     r"capital of|currency of|national \w+ of|how many|how much|when (was|did)|where is)",
     re.IGNORECASE)
 _YEAR_RE = re.compile(r"\b20\d{2}\b")
+
+# Request words that indicate a bibliographic index is likely to outperform a
+# general web SERP. Kept deliberately narrower than generic words such as
+# "research" or "evidence", which often occur in ordinary questions.
+_ACADEMIC_SEARCH_RE = re.compile(
+    r"\b(peer[ -]?reviewed|systematic review|meta-analysis|primary literature|"
+    r"original paper|research paper|journal article|preprint|doi|"
+    r"bibliography|citation|scholarly literature|academic paper)\b|"
+    r"\barxiv\s+\d{4}\.\d{4,5}\b", re.IGNORECASE)
+_GITHUB_SEARCH_RE = re.compile(
+    r"\b(github|repository|repositories|repo|repos|issue|issues|pull request|pull requests|"
+    r"release notes|open regression issue|source code|commit history)\b", re.IGNORECASE)
+_NEWS_SEARCH_RE = re.compile(
+    r"\b(latest|recent|today|current|news|announced|this month|forecast|polls?|earnings|"
+    r"layoffs|outbreak|evacuation|launch schedule|order backlog|election|summit|"
+    r"reporting|alerts?|monetary policy|production decision)\b", re.IGNORECASE)
+_TECHNICAL_SEARCH_RE = re.compile(
+    r"\b(python|javascript|typescript|java|rust|c\+\+|c#|\.net|sql|postgres(?:ql)?|"
+    r"mysql|sqlite|redis|docker|kubernetes|k8s|nginx|linux|git|http|https|tls|ssl|"
+    r"node\.?js|react|vue|svelte|django|fastapi|numpy|pandas|pytest|terraform|"
+    r"webpack|openssl|grpc|graphql|asyncio|stack overflow|stackoverflow)\b|"
+    r"\b(?:ts|e|err)_?\d{3,}\b", re.IGNORECASE)
 
 _INDIAN_STATES = (
     "andhra pradesh", "arunachal pradesh", "Assam", "Bihar", "chhattisgarh", "Goa", "Gujarat",
@@ -111,6 +135,34 @@ def classify_query(question: str) -> QueryIntent:
         kind = "statistic"
     return QueryIntent(answer_type=kind, jurisdiction_label=label,
                        jurisdiction_domains=tuple(domains), preferred_suffixes=tuple(suffixes))
+
+
+def specialist_search_engines(question: str) -> Tuple[str, ...]:
+    """Select no-key official APIs for a query that names their subject area.
+
+    These are additions to, never replacements for, the general web engines:
+    GDELT for current events, Crossref/arXiv for scholarly works, Stack
+    Exchange for software questions, and GitHub for repository lookups. A
+    caller that explicitly supplies ``SearchOptions.engines`` owns the routing
+    decision, so the orchestrator does not call this function for that list.
+    """
+    text = " ".join((question or "").split())
+    low = text.casefold()
+    scopes, _cleaned = parse_site_scopes(text)
+    github_scoped = any(scope.split("/", 1)[0] == "github.com" for scope in scopes)
+    explicit_github = bool(re.search(r"\bgithub\b", low))
+    if github_scoped or (explicit_github and _GITHUB_SEARCH_RE.search(text) and
+                         re.search(r"\b(repository|repositories|repo|repos|pull request|pull requests|"
+                                   r"issue|issues|release|releases|commit|source code)\b", low)):
+        return ("github-search",)
+    if _ACADEMIC_SEARCH_RE.search(text):
+        return ("crossref", "arxiv")
+    routed = []
+    if _NEWS_SEARCH_RE.search(text) or classify_query(text).answer_type == "current_event":
+        routed.append("gdelt")
+    if _TECHNICAL_SEARCH_RE.search(text):
+        routed.append("stackexchange")
+    return tuple(routed)
 
 
 def intent_multiplier(url: str, intent: QueryIntent) -> float:

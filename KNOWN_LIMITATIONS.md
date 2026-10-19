@@ -21,8 +21,8 @@ records at the end show exactly what was exercised and where.
    is less exercised than DuckDuckGo's. Use `--engine duckduckgo` if it
    misbehaves.
 4. **The integrated browser engine ships bundled and is startup-probed.**
-   Core Obscura source (`bd9529418b7fa975b50eabeac415cfaaa865a588`, base tag
-   `v0.2.4`) is vendored under `iralens/_internal/browser_engine/vendor/obscura`
+   Core Obscura source (`bd9529418b7fa975b50eabeac415cfaaa865a588`, the
+   `v0.2.5` tag commit) is vendored under `iralens/_internal/browser_engine/vendor/obscura`
    and runs out of the box via `py_mini_racer`'s isolated V8 runtime without
    runtime downloads from GitHub Releases (`iralens install-engine --status`
    and `iralens doctor` report the live state). Pixel-level GPU rendering
@@ -88,9 +88,23 @@ records at the end show exactly what was exercised and where.
     forwards queries to its enabled upstream engines; their terms, rate
     limits, and availability apply. Review `docs/search.md` (source policy)
     before deployment.
-- **Mojeek is opt-in and not live-verified.** Its HTML parser has offline
-  fixtures only; no claim is made about live markup stability, service terms,
-  result quality, or availability. It is deliberately excluded from defaults.
+- **Mojeek is a tertiary default fallback, but its live behavior remains
+  unverified.** The HTML parser has offline fixtures only; no claim is made
+  about live markup stability, service terms, result quality, or availability.
+  It follows DuckDuckGo and Bing, has an 8-second request cap, and is subject
+  to the shared circuit breaker.
+- **GDELT news search is newly intent-routed and not yet live-validated.** It
+  uses the public DOC 2.0 API with no key, but the datacenter benchmark run at
+  `240ff01` predates this adapter. GDELT's article-index timestamp is not
+  treated as publication time; news freshness remains unknown unless a source
+  reports a publication date.
+- **Live frozen-search results remain below the requested target.** The
+  2026-10-19 datacenter run on `240ff01` scored `free_replacement_rate` 0.715
+  (143/200) with no paid-backup attempts. Recent-news was 0/25 and
+  non-English was 12/25; DuckDuckGo was fully circuit-open and Bing was
+  intermittently circuit-open, including on the five unavailable queries.
+  This is one provider/network-dependent run, not a universal
+  search-quality estimate, and 90% has not been achieved.
 - **A non-empty result set is not an answer.** Every search carries a
   `coverage` verdict: how much of the question the results actually address.
   When the results are generic filler, `no_results_reason` is
@@ -169,23 +183,23 @@ records at the end show exactly what was exercised and where.
 
 ## Reliability and security
 
-23. **Circuit state is local, not distributed.** Engine circuits and
+24. **Circuit state is local, not distributed.** Engine circuits and
     per-instance cooldowns persist in a private SQLite file under
     `IRALENS_HOME/state`; they survive restarts and coordinate local
     processes. Multi-host locking, external health storage, and long
     operational history are not implemented. A read-only state directory
     fails open. Search responses now expose skipped/failed engine details,
     but the live benchmark's DuckDuckGo failure was not re-run after this change.
-24. **Injection flags are heuristic.** They cover common English phrasings,
+25. **Injection flags are heuristic.** They cover common English phrasings,
     miss paraphrases and other languages, and are advisory — not a boundary.
-25. **The private-address check is literal plus fetch-time.** The literal URL
+26. **The private-address check is literal plus fetch-time.** The literal URL
     check covers everything; DNS resolution, answer validation, and redirect
     re-validation cover the fetch path (`security.safe_urlopen`). Page reads
     **and RSS/Atom feeds** use that transport, so both are DNS-pinned across
     redirects. One source still uses its own HTTP client — `transcribe`, which
     downloads audio and posts it to a Whisper endpoint with `requests` — and
     validates only the literal URL; the GitHub API targets are constants.
-26. **The private-host allowlist applies to search transports only.** Page
+27. **The private-host allowlist applies to search transports only.** Page
     reads keep the strict public-URL policy, so a self-hosted SearXNG cannot
     be used as a general reader, and a *search* response linking to private
     hosts still cannot be fetched. Link-local and metadata names are refused
@@ -193,15 +207,20 @@ records at the end show exactly what was exercised and where.
 
 ## Browser resilience, verification, and optional features
 
-28. **Verification pages are reported, never solved.** A CAPTCHA widget, a
-    bot-check interstitial, an authentication wall, or an access-denied page
-    is detected on both the raw response body *and* the extracted text, and
-    raises a typed `verification_required` error. IraLens does not solve,
-    bypass, or interfere with any verification control, and does not retry a
-    challenge through a different transport — a second render cannot clear an
-    interactive check, so the read stops instead. Where a supported
-    authorized human-verification workflow exists it is not wired up, so the
-    result is a clear recoverable failure.
+28. **Verification pages are reported; only an operator-configured solving
+    service is used to answer them.** A CAPTCHA widget, a bot-check
+    interstitial, an authentication wall, or an access-denied page is
+    detected on both the raw response body *and* the extracted text, and
+    raises a typed `verification_required` error. IraLens does not forge a
+    token, break a widget, or interfere with any verification control, and
+    does not retry a challenge through a different transport — a second
+    render cannot clear an interactive check, so the read stops instead. Two
+    things are done with a challenge, both opt-in and both reported: a
+    JavaScript interstitial is *waited out* (the page's own script computes
+    a clearance cookie; the engine waits for it and refetches), and an
+    interactive widget is handed to a solving service the operator
+    configured with their own account and API key. Without such a service a
+    challenge is reported, never bypassed.
 29. **Challenge detection is heuristic and deliberately conservative.**
     Widget identifiers (`cdn-cgi/challenge-platform`, `g-recaptcha`,
     `cf-turnstile`, …) are treated as decisive because they do not occur in
@@ -210,53 +229,74 @@ records at the end show exactly what was exercised and where.
     *phrasing* alone is not enough: it requires corroboration by a provider
     fingerprint, a reference ID, or a refusing status code, and is otherwise
     reported as detected-but-unconfirmed. Novel challenge designs, and
-    challenges served in languages other than English, will be missed.
-30. **Stealth is an upstream capability, not a shipped one.** The vendored
-    Obscura source implements stealth, but only behind a Rust
-    `#[cfg(feature = "stealth")]` gate, `obscura-browser` declares
-    `default = []`, and the optional Rust build does not pass
-    `--features stealth`. The default execution tier is Python plus native
-    V8 and contains no stealth code at all. **Stealth is therefore
-    unreachable in every shipped configuration.** Setting it is accepted,
-    reported, and has no effect. Even where a browser engine does implement
-    stealth, it is a browser-identity consistency measure: it does not solve
-    CAPTCHAs and does not guarantee success against interactive Cloudflare,
-    DataDome, or Akamai challenges.
-31. **Optional features now advertise what they actually do.** The engine
+    challenges served in languages other than English, will be missed. A
+    page that merely *contains* a login widget is also reported as a
+    challenge, even when its article text is readable.
+30. **Stealth is a browser-identity consistency measure, not a
+    guarantee.** The Python/native-V8 tier implements stealth: one stable,
+    internally coherent identity (Chrome-shaped request headers including
+    client hints, a user agent the page agrees with, a screen/GPU/canvas
+    fingerprint that does not change between pages) plus challenge
+    detection and interstitial waiting. It is *not* a promise of success:
+    it does not defeat an interactive challenge on its own, and it does not
+    make the client indistinguishable from a real browser to a commercial
+    bot-detection service. No live test against any bot-detection service
+    was run for this work; the properties asserted are internal consistency
+    (the headers, the client hints and the page agree) and stability (the
+    identity does not change between requests).
+31. **TLS impersonation is an optional extra.** The standard library
+    presents the local OpenSSL ClientHello, which is not a Chrome
+    ClientHello, and a determined detector can tell. `pip install
+    "iralens[stealth]"` adds `curl_cffi`, which reproduces Chrome's TLS and
+    HTTP/2 fingerprints for `https://` requests. Without it the capability
+    is reported as unavailable rather than assumed. Cleartext `http://`
+    requests always use the standard library, because the impersonation
+    backend would attempt an HTTP/2 upgrade (`Upgrade: h2c`) that Chrome
+    never sends.
+32. **The stealth canvas fallback does not render glyphs.** The engine's
+    2D canvas is backed by a host operation that only exists in the Rust
+    tier, so `getContext("2d")` used to return `null` — which tells a
+    fingerprinting script that it is not talking to a browser. The stealth
+    layer supplies a real pixel buffer and a PNG encoder, so the canvas is
+    present, stable and unique per profile; but `fillText` draws nothing, so
+    a page that renders text into a canvas gets an empty area. This is a
+    deliberate, documented limitation: a wrong-but-present canvas beats a
+    missing one for detection, and faking glyphs would be a larger lie.
+33. **Optional features now advertise what they actually do.** The engine
     reports its capabilities in the MCP `initialize` response, including
     whether a feature was *requested*, whether it is *supported*, and
     whether it was *applied*. A requested-but-unavailable feature produces a
     warning on stderr and in `doctor` rather than being silently dropped, or
     refusing to start — taking the browser tier down over a cosmetic option
     would be the worse failure.
-32. **Standing claim: no anti-detection effectiveness is asserted.** No
-    statement is made about Obscura's real-world anti-bot effectiveness. It
-    was evaluated only from the vendored source in this repository; the
-    upstream repository was not fetched, and no live test against any
-    bot-detection service was run.
+34. **Standing claim: no anti-detection effectiveness is asserted.** No
+    statement is made about the real-world anti-bot effectiveness of the
+    stealth tier, of Obscura, or of anything else here. It was evaluated
+    from the source in this repository; the upstream repository was not
+    fetched, and no live test against any bot-detection service was run.
 
 ## Retrieval trust (what the results tell you)
 
-33. **A degraded result set says so.** When an engine is circuit-open or
+35. **A degraded result set says so.** When an engine is circuit-open or
     failed, another engine fills the slots, so the result count stays the
     same while the coverage silently shrinks. Every search result now
     carries a `degradation` block (`degraded`, `engines_served`,
     `engines_impaired`, `reasons`, `filler_risk`) derived from engine
     outcomes. An engine that answered with nothing is *not* counted as
     impaired. `doctor` reports `warn` while any engine is tripped.
-34. **Recency cannot rescue an irrelevant result.** Freshness is held at
+36. **Recency cannot rescue an irrelevant result.** Freshness is held at
     neutral when relevance falls below the gate, so a page published today
     no longer outranks an undated page that actually answers the question.
     The cap only removes upside; it never inflates a score. Gated results
     report `freshness_gated: true`.
-35. **Snippets are chosen for relevance, not length.** Candidate snippets
+37. **Snippets are chosen for relevance, not length.** Candidate snippets
     are scored on query-term coverage and density, penalised for
     marketing/navigation copy, and credited for carrying a figure when the
     question asks for one. When no candidate matches any query term the
     longest is used, so an uninformative choice is at least a deterministic
     one. This is a heuristic: it improves snippet selection, it does not
     guarantee the snippet answers the question.
-36. **Disagreements between sources are surfaced, never adjudicated.**
+38. **Disagreements between sources are surfaced, never adjudicated.**
     Where two different domains state materially different figures sharing a
     unit (more than 5% apart), the response carries a conflict record with
     both sides, their sources and their dates. Detection is **lexical and
@@ -268,54 +308,67 @@ records at the end show exactly what was exercised and where.
 
 ## Still open — not fixed
 
-37. **Retrieval quality on generic, multi-concept queries is unproven and
-    probably weak (the principal remaining gap).** A 10-query product
-    audit found only 2 of 10 queries returned answer-bearing evidence in the
-    top 5, with failures on single-fact lookups, market data, benchmarks,
-    and advisory queries. Queries anchored on a distinctive brand name work
-    well. Nothing in the current pipeline performs concept-level matching;
-    results show per-term matching instead, which is how "Kit" returns an
-    unrelated KIT entity and "Stripe" returns pages about stripes. **This is
-    not fixed and is not claimed to be.** It cannot be measured in an
-    offline environment because it requires live queries against search
-    providers.
-38. **The 12,000-query paired benchmark has still not been run.** Zero
+39. **Retrieval quality on generic, multi-concept queries is still unproven
+    (the principal remaining gap).** A prior 10-query product audit found
+    answer-bearing evidence in the top 5 for only 2 of 10 queries, with
+    failures on single-fact lookups, market data, benchmarks, and advisory
+    queries. Release 0.3.5 adds token-boundary-aware coverage,
+    answerability-gated query expansion, and intent-routed official APIs for
+    scholarly, technical, and GitHub-specific searches. These are real
+    engineering changes, but they do not improve the general indexes' recall
+    and have not been measured against a fresh live gold set. **The earlier
+    2/10 result is not replaced by a newer percentage; 90% is not claimed.**
+40. **The 12,000-query paired benchmark has still not been run.** Zero
     queries have been submitted; the ≥98% acceptance bar is untested and is
     not claimed. This is the same unmet bar recorded in the earlier audits.
-39. **The paired-query audit was performed against `main` at `af0af08`,
+41. **The paired-query audit was performed against `main` at `af0af08`,
     before the 0.3.1 remediation.** Several of its findings (extraction
     flattening, the injection false positive on benign documentation, cache
     TTL and RSS documentation mismatches) are fixed in the 0.3.1 line but
     were published as open because the audited revision predates them. The
     audit should be re-run against current `main` before its severity
     ratings are relied upon.
+42. **The new Crossref, arXiv, Stack Exchange, and GitHub search adapters are
+    specialist sources, not substitutes for a general web index.** Their
+    parsers have deterministic offline fixtures. One read-only GitHub releases
+    smoke (`site:github.com/scipy/scipy latest release`) returned six public
+    API hits, but that is not a quality rate; Crossref/arXiv/Stack Exchange
+    could not be reached here. Live reachability, API quotas, current terms,
+    and top-5 contribution must be verified on an operator-approved network.
+    Provider refusals are surfaced, not routed around.
+43. **The 90% paid-key replacement target is not measured.** `run_benchmark.py`
+    now reports `free_replacement_rate`: a query counts only when its frozen
+    top-5 gold predicate is met without attempting `paid-backup`. This is a
+    quality-based rate, not the fraction of calls that happen not to use a key.
+    It needs a live run on the frozen query set; no replacement percentage is
+    claimed from offline fixtures, a missing key, or an empty provider response.
 
 ## Platform and packaging
 
-27. **Not published to PyPI.** Install from a checkout, or straight from
+44. **Not published to PyPI.** Install from a checkout, or straight from
     GitHub: `pip install "iralens @ git+https://github.com/pritamduttachoudhury0-collab/IraLens.git"`
     gives the latest developed version (README). The release artifacts are
     built and attached to every GitHub release and the publish workflow is
     in the repository, but the upload itself needs the project's PyPI
     account — see `docs/releasing.md` for the one step that is not
     automatable from here.
-28. **The HTTP API is a single node.** No hosted URL, SLA, TLS termination,
+45. **The HTTP API is a single node.** No hosted URL, SLA, TLS termination,
     multi-node health store, or managed uptime. Put a TLS reverse proxy and
     resource limits in front of it for anything beyond local use.
-29. **Docker files are provided, not yet verified on a live host.** Build
+46. **Docker files are provided, not yet verified on a live host.** Build
     the image and start the Compose stack on the target host before relying
     on them. The API itself runs fine without Docker (`iralens serve`).
-30. **Windows setup is untested.** `scripts/setup.ps1` is provided but has
+47. **Windows setup is untested.** `scripts/setup.ps1` is provided but has
     not run on a Windows machine; `scripts/setup.sh` is the tested path
     (Linux/macOS).
-31. **CI verifies Python 3.10 and 3.12** (offline gates on every push and
+48. **CI verifies Python 3.10 and 3.12** (offline gates on every push and
     pull request). The primary development interpreter is 3.11.
-32. **CI runs offline gates only.** The CI workflow runs pytest, ruff, and
+49. **CI runs offline gates only.** The CI workflow runs pytest, ruff, and
     mypy. Live search, browser startup, Docker builds, and multi-day
     monitoring are not exercised in CI.
-33. **`xiaoyuzhou` (podcast) source is not implemented.** No module ships for
+50. **`xiaoyuzhou` (podcast) source is not implemented.** No module ships for
     it; the architecture may grow one later.
-34. **Paid-provider parity is implemented but unmeasured.** The optional
+51. **Paid-provider parity is implemented but unmeasured.** The optional
     benchmark reference phase reports labeled top-5 gold hit rates,
     availability, p50/p95, and domain overlap for both IraLens and a
     configured paid provider — but no provider key has been supplied for a
@@ -383,6 +436,28 @@ Each record states the date, the environment class, and the exact claim.
 package indexes and GitHub — live search engines and arbitrary web pages
 were not reachable there, so anything requiring them is listed as not yet
 verified.
+
+**2026-10-19, restricted egress (keyless retrieval iteration).**
+
+- `.venv/bin/python -m pytest -q` — **843 passed, 14 skipped, 0 failed**.
+  The skips require live-network access.
+- `.venv/bin/ruff check --select E9,F,B .` — clean. `.venv/bin/mypy iralens`
+  — clean (88 source files).
+- `python benchmarks/acceptance_17.py` — **17/17**; `python
+  benchmarks/run_scraping.py` — **12/12**.
+- `python benchmarks/run_audit3000.py --offline-pipeline` — **14,262/14,262
+  clean**. This validates the pipeline only, not provider retrieval.
+- `python benchmarks/run_benchmark.py --self-test` — passed; this validates
+  the harness, not search quality.
+- `python benchmarks/ab_query_forms.py` — coverage agrees with the existing
+  ten hand-labelled provider captures in **10/10** cases. It remains a small
+  demonstration, not a replacement-rate estimate.
+- **Not measured:** live quality of the new specialist APIs; the frozen
+  200-query `free_replacement_rate`; paid-provider parity; and the 90% goal.
+  A single read-only GitHub releases request returned six public results, but
+  that is a smoke test, not a relevance benchmark. Crossref, arXiv, Stack
+  Exchange, and general search-provider egress were not available here. A run
+  on an open, approved network is required.
 
 **2026-10-18, restricted egress (post-audit remediation).**
 

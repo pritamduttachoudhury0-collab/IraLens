@@ -20,6 +20,35 @@ The thresholds (frozen, see `benchmarks/thresholds.json`):
 
 All seven must hold on **3 consecutive full runs** for the benchmark to pass.
 
+## Measuring paid-key replacement
+
+The live `run_benchmark.py` output now includes two query-level metrics:
+
+- **`free_replacement_rate`**: a query counts only when the frozen top-5 gold
+  predicate is met **and** `paid-backup` was not attempted.
+- **`paid_backup_query_rate`**: the share of queries that actually attempted
+  the configured paid backup; a skipped/open paid circuit is not a call.
+
+This is intentionally stricter than "no key was configured" or "a free
+engine returned something". It measures answer-bearing keyless hits on this
+benchmark, not all possible workloads or a universal provider-parity rate.
+The requested 90% goal is **not a frozen acceptance threshold and is not yet
+measured**. Specialist API traffic (Crossref, arXiv, Stack Exchange, GitHub)
+is included when its intent route matches; the quality predicate is still the
+benchmark's frozen label.
+
+Run the search phase on an open, approved network and inspect the recorded
+`metrics` in `results.json`:
+
+```bash
+.venv/bin/python benchmarks/run_benchmark.py --search --split all \
+  --no-benchmarks-md --network home
+```
+
+Configure a paid backup only if you want to measure when the quality fallback
+is actually invoked. Do not count a missing key, an empty result set, or the
+offline pipeline as a successful replacement.
+
 ## The audit-driven suites
 
 The independent audit of 2026-10-17 shipped its own harnesses inside its
@@ -131,6 +160,18 @@ code's control:
 <!-- benchmark-rows -->
 
 ### Run log
+
+**2026-10-19 — external live search-only run on `240ff01` (not a full
+benchmark pass).** All 200 frozen queries ran on a datacenter network at the
+default 2-second pace with cache bypassed and no paid backup configured. The
+measured `free_replacement_rate` was **0.715 (143/200)**; paid-backup query
+rate was **0.0**. Quality was 0.7214 on dev and 0.7000 on held-out, availability
+0.975, recent-news quality 0/25, non-English 12/25, and search p95 1.677 s.
+The run failed availability and quality thresholds; engine redundancy and the
+non-search phases were not run. A nearby `ab54804` baseline recorded 140/200
+quality hits, but DuckDuckGo/Bing circuit state differed between runs, so this
+is not a clean causal A/B. The target 90% remains unachieved; the result JSONs
+were supplied externally and are not committed.
 
 **2026-10-11 — harness validated; thresholds not measurable in a restricted
 environment (not a benchmark row).** The verification environment available

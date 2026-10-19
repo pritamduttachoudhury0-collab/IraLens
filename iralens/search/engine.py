@@ -28,7 +28,7 @@ from .dedup import dedup
 from .engines import LEGACY_ALIASES, build_backends
 from .engines.base import SearchBackend
 from .fallback import run_chain
-from .intent import classify_query, intent_multiplier
+from .intent import classify_query, intent_multiplier, specialist_search_engines
 from .querytext import parse_site_scopes, sanitize_query, term_set
 from .ranking import (
     authority, combine, freshness, relevance, relevance_gate, today_utc,
@@ -90,10 +90,19 @@ class SearchEngine:
         options = options or SearchOptions(max_results=self.settings.search_max_results)
         chain, readiness = self.resolve_chain_with_readiness(options.engines)
 
+        specialist_names = (
+            list(specialist_search_engines(question))
+            if self.settings.search_specialist_engines and not options.engines else []
+        )
         payload = {
             "q": question, "filters": filters.to_dict(), "max": options.max_results,
-            "engines": chain, "reformulate": options.reformulate, "min": self.settings.search_min_engines,
-            "offset": options.offset,
+            "engines": chain, "specialists": specialist_names,
+            "paid_provider": (self.settings.backup_search_provider.strip().lower()
+                              if "paid-backup" in chain else ""),
+            "reformulate": options.reformulate,
+            "adaptive_queries": self.settings.search_adaptive_queries,
+            "paid_fallback_on_low_coverage": self.settings.search_paid_fallback_on_low_coverage,
+            "min": self.settings.search_min_engines, "offset": options.offset,
         }
         ttl = self.settings.cache_search_ttl_seconds
         if options.cache == "use":
@@ -182,50 +191,151 @@ class SearchEngine:
         scope_domains = [scope.split("/", 1)[0] for scope in scope_scopes]
         if scope_domains and not filters.include_domains:
             filters = replace(filters, include_domains=tuple(scope_domains))
+
+        # Intent-matched public APIs complement the general engines on their
+        # own domains (scholarship, code repositories, and software questions).
+        # They are never added when the caller explicitly chooses engines.
+        chain = list(chain)
+        readiness = dict(readiness or {})
+        if self.settings.search_specialist_engines and not options.engines:
+            routed = specialist_search_engines(question)
+            for name in reversed(routed):
+                backend = self.backends.get(name)
+                if backend is None:
+                    continue
+                try:
+                    available, reason = backend.availability()
+                except Exception:  # pragma: no cover - defensive
+                    available, reason = True, ""
+                readiness[name] = {
+                    "available": bool(available), "reason": reason,
+                    "paginated": bool(getattr(backend, "paginated", False)),
+                    "intent_routed": True,
+                }
+                if available and name not in chain:
+                    chain.insert(0, name)
+
         if options.reformulate:
             queries = _reformulate(question, self.settings.reformulate_max_queries,
                                    self.synonyms if self.synonyms is not None else _default_synonyms())
         else:
             queries = [{"text": question, "strategy": "original"}]
 
+        # A configured paid backup is deferred until all keyless query forms
+        # have had a chance to answer. That prevents a multi-form search from
+        # spending the key once per variant. Unless the operator opts into
+        # quality-based fallback, it is called only when the free engine set
+        # cannot meet its configured redundancy target.
+        paid_configured = "paid-backup" in chain
+        defer_paid = paid_configured and not options.engines
+        search_chain = [name for name in chain if not (defer_paid and name == "paid-backup")]
+
         all_hits: List[SearchHit] = []
-        outcomes = []
+        outcomes: List[Any] = []
         fallbacks: List[Dict[str, str]] = []
-        used_queries: List[Dict[str, str]] = list(queries)
+        used_queries: List[Dict[str, str]] = []
         unique_urls = set()
 
         def _one(q: Dict[str, str]):
             return run_chain(
-                q["text"], filters, options.max_results, chain, self.backends, context,
+                q["text"], filters, options.max_results, search_chain, self.backends, context,
                 min_engines=self.settings.search_min_engines, policy=self.policy,
                 breaker=self.breaker, site_gate=self.site_gate,
                 offset=options.offset,
             )
 
-        # Query variants run concurrently when allowed. Browser-backed
-        # engines serialize their navigations on the shared engine inside
-        # fetch_rendered_html; independent backends (CLI bridges) run truly in
-        # parallel. Results are merged in query order, so output is
-        # deterministic either way.
-        if self.settings.search_parallel_queries and len(queries) > 1:
-            workers = min(len(queries), max(1, self.settings.search_max_concurrent))
-            with ThreadPoolExecutor(max_workers=workers) as pool:
-                chain_results = list(pool.map(_one, queries))
-        else:
-            chain_results = []
-            for q in queries:
-                chain_results.append(_one(q))
-                for h in chain_results[-1].hits:
-                    key = canonical_url(h.url)
-                    if key:
-                        unique_urls.add(key)
-                if len(unique_urls) >= options.max_results:
-                    break
-            used_queries = used_queries[: len(chain_results)]
-        for chain_result in chain_results:
+        def _append(q: Dict[str, str], chain_result: Any) -> None:
+            used_queries.append(q)
             all_hits.extend(chain_result.hits)
             outcomes.extend(chain_result.outcomes)
             fallbacks.extend(chain_result.fallbacks)
+            for hit in chain_result.hits:
+                key = canonical_url(hit.url)
+                if key:
+                    unique_urls.add(key)
+
+        def _filtered_preview(hits: List[SearchHit]) -> List[SearchHit]:
+            public, _rejected = self._public_only([replace(hit) for hit in hits])
+            kept, _report = self._post_filter(public, filters, scope_scopes)
+            if options.exclude_urls:
+                excluded = {canonical_url(str(url)) or str(url) for url in options.exclude_urls}
+                kept = [hit for hit in kept
+                        if (canonical_url(hit.url) or hit.url) not in excluded]
+            return kept
+
+        def _needs_more_queries() -> bool:
+            current = _filtered_preview(all_hits)
+            if not current:
+                return True
+            coverage_now = assess_coverage(question, current)
+            if coverage_now.get("status") in ("low", "partial"):
+                return True
+            current_urls = {canonical_url(hit.url) or hit.url for hit in current}
+            return len(current_urls) < options.max_results
+
+        if self.settings.search_adaptive_queries and options.reformulate and len(queries) > 1:
+            # Search the full query first. Only spend requests on focus,
+            # jurisdiction, or decomposed forms when that first result set is
+            # weak or too short. Query order and stopping are deterministic.
+            for query_form in queries:
+                if used_queries and not _needs_more_queries():
+                    break
+                _append(query_form, _one(query_form))
+        elif self.settings.search_parallel_queries and len(queries) > 1:
+            # Compatibility mode for deployments that explicitly turn
+            # adaptive planning off: retain the previous eager-parallel plan.
+            workers = min(len(queries), max(1, self.settings.search_max_concurrent))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                chain_results = list(pool.map(_one, queries))
+            for query_form, chain_result in zip(queries, chain_results, strict=False):
+                _append(query_form, chain_result)
+        else:
+            for query_form in queries:
+                _append(query_form, _one(query_form))
+                if len(unique_urls) >= options.max_results:
+                    break
+
+        # Compute the free-only verdict before an optional, explicitly enabled
+        # quality fallback. Cloned hits keep the later security normalization
+        # and URL unwrapping from mutating the evidence used for this decision.
+        preview_filtered = _filtered_preview(all_hits)
+        free_coverage = assess_coverage(question, preview_filtered)
+        paid_outcomes = [o for o in outcomes if o.engine == "paid-backup"]
+        paid_attempted = any(o.status in ("results", "empty", "failed") for o in paid_outcomes)
+        paid_fallback: Dict[str, Any] = {
+            "configured": paid_configured,
+            "attempted": paid_attempted,
+            "trigger": ("explicit_engine" if paid_attempted and options.engines else
+                        "keyless_chain_exhausted" if paid_attempted else
+                        "not_configured" if not paid_configured else "not_needed"),
+            "free_coverage": free_coverage,
+        }
+        free_result_engines = {
+            o.engine for o in outcomes
+            if o.engine != "paid-backup" and o.status == "results"
+        }
+        redundancy_shortfall = len(free_result_engines) < max(1, self.settings.search_min_engines)
+        needs_quality_fallback = (
+            self.settings.search_paid_fallback_on_low_coverage
+            and free_coverage.get("status") == "low"
+        )
+        if (defer_paid and not paid_attempted
+                and (redundancy_shortfall or needs_quality_fallback)):
+            trigger = "low_coverage" if needs_quality_fallback else "keyless_chain_exhausted"
+            paid_form = {"text": question, "strategy": "paid_fallback_" + trigger}
+            paid_result = run_chain(
+                question, filters, options.max_results, ["paid-backup"], self.backends,
+                context, min_engines=1, policy=self.policy, breaker=self.breaker,
+                site_gate=self.site_gate, offset=options.offset,
+            )
+            _append(paid_form, paid_result)
+            paid_fallback["attempted"] = any(
+                o.status in ("results", "empty", "failed") for o in paid_result.outcomes
+            )
+            paid_fallback["trigger"] = trigger
+        elif (defer_paid and not paid_attempted and paid_configured
+              and free_coverage.get("status") == "low"):
+            paid_fallback["trigger"] = "low_coverage_not_enabled"
 
         public_hits, rejected = self._public_only(all_hits)
         filtered, filter_report = self._post_filter(public_hits, filters, scope_scopes)
@@ -306,6 +416,10 @@ class SearchEngine:
         # being addressed. The verdict travels with the results.
         if coverage.get("status") == "low" and results:
             summary += f"; coverage: {coverage.get('note')}"
+        if paid_fallback.get("attempted"):
+            summary += f"; paid fallback attempted ({paid_fallback.get('trigger')})"
+        elif paid_fallback.get("trigger") == "low_coverage_not_enabled":
+            summary += "; low coverage; paid quality fallback is not enabled"
         not_configured = sorted(
             name for name, info in (readiness or {}).items()
             if not info.get("available"))
@@ -326,6 +440,7 @@ class SearchEngine:
             summary=summary,
             engine_readiness=readiness or {},
             coverage=coverage,
+            paid_fallback=paid_fallback,
         )
 
     # --------------------------------------------------------- filtering

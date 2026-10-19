@@ -37,6 +37,11 @@ def _cfg(tmp_path: Path, **overrides: Any) -> Config:
     return cfg
 
 
+#: Server-hit counter for the `/fragments` fixture: proves in-document
+#: fragment navigations never reach the network.
+_FRAGMENT_HITS: Dict[str, int] = {"count": 0}
+
+
 class _FixtureHandler(http.server.BaseHTTPRequestHandler):
     server_version = "IraLensFixtureHTTP/1.0"
 
@@ -264,6 +269,36 @@ window.renderAppDashboard = function(rootEl) {
             self._send(200, "<html><head><title>Slow</title></head><body>Slow response</body></html>")
             return
 
+        if path == "/fragments":
+            # Counts real server hits so a test can prove that a fragment
+            # navigation stayed in the document instead of refetching.
+            _FRAGMENT_HITS["count"] += 1
+            self._send(
+                200,
+                """<!DOCTYPE html>
+<html>
+<head><title>Fragment Fixture</title></head>
+<body>
+  <h1 id="section-1">Section One</h1>
+  <p id="hash-state">initial</p>
+  <a id="hash-link" href="#section-1">Back to section one</a>
+  <a id="page-link" href="/index">Leave this page</a>
+  <ol id="ranked" start="3" reversed>
+    <li value="7">Seventh place item</li>
+    <li>Plain item</li>
+  </ol>
+  <h1 id="section-2">Section Two</h1>
+  <script>
+    window.__docMarker = "loaded";
+    window.addEventListener("hashchange", function () {
+      document.getElementById("hash-state").textContent = "changed:" + location.hash;
+    });
+  </script>
+</body>
+</html>""",
+            )
+            return
+
         self._send(404, "Not Found")
 
     def do_POST(self) -> None:  # noqa: N802
@@ -414,6 +449,51 @@ def test_real_browser_basic_navigation_and_extraction(
         assert extracted["features"] == ["Navigation", "Extraction", "Interaction"]
 
 
+def test_real_browser_stealth_reaches_the_engine_subprocess(
+    tmp_path: Path, allow_local_fixture: None, fixture_server: Tuple[str, Any]
+) -> None:
+    """`stealth: true` must survive the trip through the driver.
+
+    The flag crosses two processes (the driver and the engine subprocess),
+    so a test that only calls the engine in-process would not notice it
+    being dropped on the way.
+    """
+    base_url, _ = fixture_server
+    with IraLens(_cfg(tmp_path, allow_private=True, stealth=True)) as hil:
+        hil.open(f"{base_url}/index", mode="browser")
+        status = hil.engine().stealth_status()
+        assert status["requested"] is True
+        assert status["supported"] is True
+        assert status["active"] is True
+        # The page agrees with the identity the engine claims to have.
+        seen = hil.engine().call("browser_evaluate", {
+            "expression": (
+                "JSON.stringify({ua: navigator.userAgent, "
+                "platform: navigator.platform, "
+                "screen: [screen.width, screen.height].join('x'), "
+                "cores: navigator.hardwareConcurrency, "
+                "memory: navigator.deviceMemory})"
+            ),
+        })
+        assert "Chrome" in seen["ua"]
+        assert seen["platform"] == "Win32"
+        assert seen["cores"] in (4, 8, 10, 12, 16)
+        assert seen["memory"] in (4, 8)
+        assert "x" in seen["screen"]
+
+
+def test_real_browser_without_stealth_keeps_the_default_identity(
+    tmp_path: Path, allow_local_fixture: None, fixture_server: Tuple[str, Any]
+) -> None:
+    """Stealth is opt-in: not asking for it must not change the engine."""
+    base_url, _ = fixture_server
+    with IraLens(_cfg(tmp_path, allow_private=True)) as hil:
+        hil.open(f"{base_url}/index", mode="browser")
+        status = hil.engine().stealth_status()
+        assert status["requested"] is False
+        assert status["active"] is False
+
+
 def test_real_browser_js_dependent_rendering_and_auto_fallback(
     tmp_path: Path, allow_local_fixture: None, fixture_server: Tuple[str, Any]
 ) -> None:
@@ -449,6 +529,80 @@ def test_real_browser_javascript_evaluation(
             "({title: document.title, badges: document.querySelectorAll('.badge').length, sum: [10, 20, 12].reduce((a,b) => a+b, 0)})"
         )
         assert computed == {"title": "SPA Dashboard Ready", "badges": 1, "sum": 42}
+
+
+def test_adopted_upstream_fixes_fragment_navigation_and_list_identity(
+    tmp_path: Path, allow_local_fixture: None, fixture_server: Tuple[str, Any]
+) -> None:
+    """Two upstream fixes adopted post-v0.2.5 must work in the JS tier.
+
+    (a) Same-document fragment navigation (upstream 8a7aa8c3/fb23f18b):
+        setting `location.hash` or activating `<a href="#...">` keeps the
+        document and its JS state alive, fires `hashchange`, and never
+        re-requests the page from the server; a cross-path link is still a
+        real navigation.
+    (b) Ordered-list identity (upstream 2f302d9b): `HTMLOListElement` and
+        `HTMLLIElement` are real interfaces reflecting `start`, `reversed`
+        and `value` instead of aliasing `Element`.
+
+    See UPSTREAM_PROVENANCE.md, "Local patches to bootstrap.js".
+    """
+    base_url, _ = fixture_server
+    with IraLens(_cfg(tmp_path, allow_private=True)) as hil:
+        hil.navigate(f"{base_url}/fragments")
+        hits_after_load = _FRAGMENT_HITS["count"]
+        assert hits_after_load >= 1
+        assert hil.evaluate_js("window.__docMarker") == "loaded"
+
+        # (a) location.hash stays in-document: state survives, hashchange
+        # fires, the server sees nothing.
+        hil.evaluate_js("location.hash = '#section-2'")
+        assert hil.evaluate_js("window.__docMarker") == "loaded"
+        assert hil.evaluate_js("location.hash") == "#section-2"
+        assert (
+            hil.evaluate_js("document.getElementById('hash-state').textContent")
+            == "changed:#section-2"
+        )
+        assert _FRAGMENT_HITS["count"] == hits_after_load
+
+        # Activating <a href="#section-1"> behaves the same way.
+        hil.click("#hash-link")
+        assert hil.evaluate_js("window.__docMarker") == "loaded"
+        assert hil.evaluate_js("location.hash") == "#section-1"
+        assert (
+            hil.evaluate_js("document.getElementById('hash-state').textContent")
+            == "changed:#section-1"
+        )
+        assert _FRAGMENT_HITS["count"] == hits_after_load
+
+        # A cross-path link is still a real navigation that reloads. (The
+        # shared V8 isolate retains custom globals across documents, so the
+        # assertion checks the new document, not `window.__docMarker`.)
+        hil.click("#page-link")
+        current = hil.engine().current_url_title()
+        assert current["url"].endswith("/index")
+        assert current["title"] == "IraLens Local Fixture Home"
+        assert hil.evaluate_js("document.getElementById('hash-state') === null") is True
+
+        # (b) ordered-list element identity and attribute reflection.
+        hil.navigate(f"{base_url}/fragments")
+        ident = hil.evaluate_js(
+            "JSON.stringify({"
+            " ol: document.getElementById('ranked') instanceof HTMLOListElement,"
+            " li: document.querySelector('#ranked li') instanceof HTMLLIElement,"
+            " tag: Object.prototype.toString.call(document.getElementById('ranked')),"
+            " start: document.getElementById('ranked').start,"
+            " reversed: document.getElementById('ranked').reversed,"
+            " value: document.querySelector('#ranked li').value"
+            "})"
+        )
+        data = json.loads(ident) if isinstance(ident, str) else ident
+        assert data["ol"] is True
+        assert data["li"] is True
+        assert data["tag"] == "[object HTMLOListElement]"
+        assert data["start"] == 3
+        assert data["reversed"] is True
+        assert data["value"] == 7
 
 
 def test_real_browser_click_and_form_interaction(
