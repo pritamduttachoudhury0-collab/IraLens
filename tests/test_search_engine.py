@@ -232,11 +232,12 @@ def test_default_chain_uses_no_public_searx_and_includes_official_api_and_paid_o
     # opt-in. Whether they can actually serve is a separate question —
     # an engine whose optional prerequisite is missing is "not configured",
     # not "failing".
-    assert Settings().search_engines == ("duckduckgo", "bing", "wikipedia", "semantic-search")
+    assert Settings().search_engines == (
+        "duckduckgo", "bing", "mojeek", "wikipedia", "semantic-search")
 
     engine = SearchEngine(Settings(), backends=build_backends())
     chain, readiness = engine.resolve_chain_with_readiness()
-    assert chain[:3] == ["duckduckgo", "bing", "wikipedia"]
+    assert chain[:4] == ["duckduckgo", "bing", "mojeek", "wikipedia"]
     assert "semantic-search" in readiness
     if shutil.which("mcporter"):
         assert "semantic-search" in chain

@@ -109,4 +109,8 @@ can call `/v1/search` with `query` and parse the normalized IraLens schema.
 The protocol is not byte-for-byte compatible with Brave, Tavily, Google CSE,
 or every Serper feature. Search quality, freshness, uptime, capacity, support,
 terms compliance, and semantic parity are not guaranteed; run the comparison
-benchmark before relying on a swap.
+benchmark before relying on a swap. The structured response's `paid_fallback`
+block records whether a configured paid backup was attempted and the
+keyless-only coverage before that decision. The frozen benchmark reports a
+`free_replacement_rate` only for a gold top-5 hit with no paid-backup attempt;
+that metric requires a live run and is not currently measured at 90%.
