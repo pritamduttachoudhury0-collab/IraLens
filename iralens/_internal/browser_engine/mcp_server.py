@@ -22,6 +22,7 @@ from ...errors import (
     OperationTimeoutError,
     PageUnavailableError,
     SecurityBlockedError,
+    VerificationRequiredError,
 )
 from .runtime import (
     UPSTREAM_BASE_TAG,
@@ -36,8 +37,28 @@ from .runtime import (
 #: exposure but still not zero, so keep it out of logs either way.
 PROXY_ENV_VAR = "IRALENS_ENGINE_PROXY"
 
+#: The solving-service provider and the operator's key travel the same way
+#: as the proxy: through the environment, never through argv.
+CAPTCHA_PROVIDER_ENV_VAR = "IRALENS_ENGINE_CAPTCHA_PROVIDER"
+CAPTCHA_KEY_ENV_VAR = "IRALENS_ENGINE_CAPTCHA_KEY"
+
 ENGINE_SERVER_NAME = "iralens-browser-engine"
 ENGINE_SERVER_VERSION = f"0.2.4+rev.{UPSTREAM_REVISION[:12]}"
+
+
+def _tls_impersonation_available() -> bool:
+    """Whether the optional TLS impersonation backend is installed.
+
+    Checked with ``find_spec`` rather than an import: the answer is needed
+    for the capability report, and importing the backend costs a native
+    library load in every process that only wanted the report.
+    """
+    import importlib.util
+
+    try:
+        return importlib.util.find_spec("curl_cffi") is not None
+    except Exception:
+        return False
 
 #: What this build actually implements, as opposed to what the vendored
 #: upstream source is capable of. The distinction matters: the vendored
@@ -47,38 +68,68 @@ ENGINE_SERVER_VERSION = f"0.2.4+rev.{UPSTREAM_REVISION[:12]}"
 #: therefore *upstream*, not *present*. Advertising it as available would
 #: let a caller believe requests are protected when they are not.
 #:
-#: Even where stealth is compiled in, it is a browser-identity consistency
-#: measure. It does not solve CAPTCHAs and does not guarantee success
-#: against interactive Cloudflare / DataDome / Akamai challenges.
+#: The Python tier now has its own stealth implementation, and it is
+#: described here for what it is: a browser-identity consistency measure
+#: (one stable, coherent identity across the request, the response headers
+#: and the page) plus challenge *handling*. It does not solve CAPTCHAs by
+#: itself: an interactive widget is handed to a solving service the
+#: operator configured, and without one it is reported, not bypassed.
 ENGINE_CAPABILITIES: Dict[str, Any] = {
     "stealth": {
-        "supported": False,
+        "supported": True,
         "tier": "python-native-v8",
         "reason": (
-            "stealth is implemented in the vendored Rust crate "
-            "obscura-browser behind the 'stealth' cargo feature, which this "
-            "distribution does not compile; the Python/native-V8 tier has no "
-            "stealth implementation"
+            "stealth keeps one coherent browser identity across the whole "
+            "session: Chrome-shaped request headers (including client hints), "
+            "a user agent the page agrees with, a stable screen/GPU/canvas "
+            "fingerprint, and challenge detection with interstitial waiting"
         ),
     },
     "javascript_rendering": {"supported": True},
     "proxy": {"supported": True},
     "tracker_blocking": {"supported": False},
+    "tls_impersonation": {
+        "supported": _tls_impersonation_available(),
+        "reason": (
+            "TLS/HTTP2 fingerprint impersonation needs the optional "
+            "curl_cffi backend (pip install \"iralens[stealth]\"); without it "
+            "the transport presents the standard library's TLS fingerprint"
+        ),
+    },
+    "captcha_solver": {
+        "supported": False,
+        "reason": (
+            "interactive CAPTCHAs are handed to a solving service the "
+            "operator configured; without a provider and an API key they are "
+            "reported, never bypassed"
+        ),
+    },
 }
 
 
-def _stealth_notice() -> str:
-    """The diagnostic shown when `--stealth` is requested but unsupported."""
+def _stealth_notice(applied: bool = True) -> str:
+    """The diagnostic shown when `--stealth` is requested."""
     info = ENGINE_CAPABILITIES["stealth"]
+    if applied:
+        return (
+            f"{ENGINE_SERVER_NAME}: stealth mode is active ({info['tier']}). "
+            "It keeps one coherent browser identity and handles JavaScript "
+            "interstitials; it does not solve CAPTCHAs on its own, and it "
+            "does not guarantee success against interactive challenges."
+        )
     return (
-        f"{ENGINE_SERVER_NAME}: --stealth was requested but is not supported by "
-        f"this build ({info['tier']}); continuing without it. {info['reason']}. "
-        "Note that stealth, where available, does not solve CAPTCHAs and does "
-        "not guarantee success against interactive challenges."
+        f"{ENGINE_SERVER_NAME}: --stealth was requested but could not be "
+        f"applied in this build ({info['tier']}). {info['reason']}."
     )
 
 
-def capabilities_payload(stealth_requested: bool = False) -> Dict[str, Any]:
+def capabilities_payload(
+    stealth_requested: bool = False,
+    *,
+    stealth_applied: bool = False,
+    tls_impersonation: bool = False,
+    captcha_provider: str = "",
+) -> Dict[str, Any]:
     """Capabilities for the `initialize` response.
 
     A requested-but-unsupported feature is reported explicitly rather than
@@ -87,7 +138,10 @@ def capabilities_payload(stealth_requested: bool = False) -> Dict[str, Any]:
     """
     payload = {name: dict(value) for name, value in ENGINE_CAPABILITIES.items()}
     payload["stealth"]["requested"] = bool(stealth_requested)
-    payload["stealth"]["applied"] = False
+    payload["stealth"]["applied"] = bool(stealth_applied)
+    payload["tls_impersonation"]["supported"] = bool(tls_impersonation)
+    payload["captcha_solver"]["supported"] = bool(captcha_provider)
+    payload["captcha_solver"]["provider"] = captcha_provider
     return payload
 
 
@@ -422,6 +476,12 @@ def _format_error_for_mcp(exc: BaseException) -> str:
             return f"SSRFBlocked: {msg}"
         if isinstance(exc, OperationTimeoutError):
             return f"NavigationTimeout: {msg}"
+        if isinstance(exc, VerificationRequiredError):
+            # A verification page is not a network failure: it is a page the
+            # origin refused to serve without an interactive check. The
+            # driver maps this marker onto the shared taxonomy. (Checked
+            # before PageUnavailableError, which it subclasses.)
+            return f"VerificationRequired: {msg}"
         if isinstance(exc, PageUnavailableError):
             return f"NetworkError: {msg}"
         if isinstance(exc, ExtractionError):
@@ -444,7 +504,7 @@ def _serialize_tool_output(val: Any) -> str:
 
 
 def run_mcp_stdio_loop(engine: ObscuraNativeEngine,
-                       *, stealth_requested: bool = False) -> int:
+                       *, capabilities: Optional[Dict[str, Any]] = None) -> int:
     """Run the JSON-RPC 2.0 MCP server loop over stdin/stdout."""
     try:
         for raw_line in sys.stdin:
@@ -482,7 +542,7 @@ def run_mcp_stdio_loop(engine: ObscuraNativeEngine,
                             "name": ENGINE_SERVER_NAME,
                             "version": ENGINE_SERVER_VERSION,
                         },
-                        "engineCapabilities": capabilities_payload(stealth_requested),
+                        "engineCapabilities": capabilities or capabilities_payload(),
                     },
                 }
             elif method == "ping":
@@ -569,12 +629,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_fetch.add_argument("--timeout", type=float, default=30.0, help="Navigation timeout in seconds.")
     p_fetch.add_argument("--allow-private", action="store_true", help="Allow loopback/private IPs.")
+    p_fetch.add_argument(
+        "--stealth", action="store_true", help="Enable the stealth browser identity."
+    )
 
     p_scrape = sub.add_parser("scrape", help="Extract elements matching a CSS selector as JSON.")
     p_scrape.add_argument("url", help="Target URL.")
     p_scrape.add_argument("--selector", required=True, help="CSS selector to extract.")
     p_scrape.add_argument("--timeout", type=float, default=30.0, help="Navigation timeout in seconds.")
     p_scrape.add_argument("--allow-private", action="store_true", help="Allow loopback/private IPs.")
+    p_scrape.add_argument(
+        "--stealth", action="store_true", help="Enable the stealth browser identity."
+    )
     return parser
 
 
@@ -589,11 +655,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
 
     stealth_requested = bool(getattr(args, "stealth", False))
-    if stealth_requested:
-        # Loud, not fatal: a caller who believes stealth is on must be told it
-        # is not, but refusing to start would take the whole browser tier down
-        # over an optional cosmetic flag.
-        print(_stealth_notice(), file=sys.stderr)
 
     if args.subcommand in (None, "mcp"):
         # Explicit --proxy wins; env is the safe channel used by the parent.
@@ -603,17 +664,38 @@ def main(argv: Optional[List[str]] = None) -> int:
                 args.proxy = env_proxy
         raw_storage = getattr(args, "storage_dir", None)
         storage_dir = Path(str(raw_storage)).expanduser() if raw_storage else None
+        captcha_provider = os.environ.get(CAPTCHA_PROVIDER_ENV_VAR, "").strip()
+        captcha_key = os.environ.get(CAPTCHA_KEY_ENV_VAR, "").strip()
         engine = ObscuraNativeEngine(
             user_agent=getattr(args, "user_agent", None),
             proxy_url=getattr(args, "proxy", None),
             storage_dir=storage_dir,
             allow_private=bool(getattr(args, "allow_private", False)),
             allow_file=bool(getattr(args, "allow_file", False)),
+            stealth=stealth_requested,
+            captcha_provider=captcha_provider or None,
+            captcha_api_key=captcha_key or None,
         )
-        return run_mcp_stdio_loop(engine, stealth_requested=stealth_requested)
+        applied = stealth_requested and engine.context.profile is not None
+        if stealth_requested:
+            # Loud: a caller who believes stealth is on must be able to see
+            # that it is, and what it does not cover.
+            print(_stealth_notice(applied), file=sys.stderr)
+        capabilities = capabilities_payload(
+            stealth_requested,
+            stealth_applied=applied,
+            tls_impersonation=engine.context.transport.tls_impersonation,
+            captcha_provider=(
+                engine.context.solver.name if engine.context.solver.available else ""
+            ),
+        )
+        return run_mcp_stdio_loop(engine, capabilities=capabilities)
 
     if args.subcommand == "fetch":
-        engine = ObscuraNativeEngine(allow_private=bool(args.allow_private))
+        engine = ObscuraNativeEngine(
+            allow_private=bool(args.allow_private),
+            stealth=bool(getattr(args, "stealth", False)),
+        )
         try:
             outcome = engine.navigate(args.url, timeout=args.timeout)
             if args.format == "markdown":
@@ -634,7 +716,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             engine.close()
 
     if args.subcommand == "scrape":
-        engine = ObscuraNativeEngine(allow_private=bool(args.allow_private))
+        engine = ObscuraNativeEngine(
+            allow_private=bool(args.allow_private),
+            stealth=bool(getattr(args, "stealth", False)),
+        )
         try:
             outcome = engine.navigate(args.url, timeout=args.timeout)
             items = engine.dispatch_tool("browser_extract", {"selector": args.selector})

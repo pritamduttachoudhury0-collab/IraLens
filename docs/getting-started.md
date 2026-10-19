@@ -70,7 +70,7 @@ fresh install:
 | Research mode | yes | Quality depends on reachable search sources; output is leads, not verdicts. |
 | GitHub source | yes | Public data without credentials; `gh` CLI unlocks private repos and code search. |
 | RSS / V2EX | yes | Public feeds only. |
-| Browser engine (JS rendering, automation) | after `iralens install-engine` | Pinned release, startup-probed at install; stealth off; localhost-only control. |
+| Browser engine (JS rendering, automation) | after `iralens install-engine` | Pinned release, startup-probed at install; stealth off by default; localhost-only control. |
 | YouTube | when `yt-dlp` is installed | Bundled as a dependency; outages surface as honest health status. |
 | Twitter/X, Reddit, Bilibili, XiaoHongShu, LinkedIn, Xueqiu, Boss直聘, Facebook, Instagram | with your credentials/tools | Each source reports honest health with multi-backend fallbacks; no auto-login. |
 | Podcast transcription | when `groq_key` is configured | `iralens configure groq_key=...`. |
@@ -87,6 +87,38 @@ iralens configure groq_key=...            # transcription
 iralens configure stealth=true            # engine anti-detection (off by default)
 iralens configure proxy=http://...        # engine proxy
 ```
+
+### Stealth, and answering a challenge
+
+`stealth=true` gives the browser engine one coherent identity for the whole
+session: Chrome-shaped request headers (including client hints), a user
+agent the page agrees with, and a screen/GPU/canvas fingerprint that does
+not change between pages. It also waits out a JavaScript interstitial (the
+kind of "Just a moment" page that clears itself once the script runs).
+
+It does **not** forge challenge tokens. An interactive CAPTCHA is only
+answered if you configure a solving service with your own account and key:
+
+```bash
+iralens configure captcha_provider=2captcha     # or: anticaptcha
+iralens configure captcha_api_key=...           # your key; never logged
+```
+
+The key travels to the engine through the environment, never on a command
+line, and it is only ever sent to the solving service you named. With no
+provider or no key, a challenge is reported as a typed
+`verification_required` error instead of being returned as if it were
+content.
+
+For Chrome's TLS and HTTP/2 fingerprints on `https://` requests, install the
+optional backend:
+
+```bash
+pip install "iralens[stealth]"
+```
+
+Without it the engine still works and reports the capability as
+unavailable rather than pretending.
 
 Search/read tuning via environment, examples:
 

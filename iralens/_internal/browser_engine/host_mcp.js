@@ -292,8 +292,28 @@
       }
 
       globalThis.__documentReadyState__ = "loading";
+      // Host-provided scripts. The "init" ones run before the document is
+      // initialized, so the engine can be told which identity to report
+      // (the stealth layer uses this); the "post-init" ones run immediately
+      // afterwards and before the page's own scripts.
+      const initScripts = payload.initScripts || [];
+      for (let i = 0; i < initScripts.length; i++) {
+        try {
+          (0, eval)(initScripts[i]);
+        } catch (err) {
+          state.consoleMessages.push(`[error] Init script error: ${err?.message || err}`);
+        }
+      }
       globalThis.__obscura_init = state.savedObscuraInit;
       globalThis.__obscura_init();
+      const postInitScripts = payload.postInitScripts || [];
+      for (let i = 0; i < postInitScripts.length; i++) {
+        try {
+          (0, eval)(postInitScripts[i]);
+        } catch (err) {
+          state.consoleMessages.push(`[error] Post-init script error: ${err?.message || err}`);
+        }
+      }
 
       // Execute connected <script> elements in document order if scripting is enabled
       const externalMap = payload.externalScripts || {};

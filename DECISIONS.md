@@ -244,6 +244,43 @@ with stealth features OFF unless explicitly enabled, enforces SSRF validation
 on every navigation and redirect hop, bounds V8 script execution (15 s
 timeout, 256 MB heap cap), and communicates over stdio pipes only.
 
+**One identity, not a bag of tricks.** Anti-bot systems do not look for one
+magic property; they compare the request (header set, order, casing,
+connection reuse, TLS), the response headers, and what the page's own
+JavaScript can observe — and they compare them with what the same client did
+a minute ago. So the stealth tier owns exactly one object, a
+`StealthProfile`, and every layer reads from it: the HTTP layer sends the
+header set Chrome would send in the order Chrome sends it, the page layer
+reports the same screen, GPU, core count and memory, and the brand list in
+`Sec-CH-UA` is the brand list `navigator.userAgentData` reports. The
+profile is pinned to the engine's storage directory, so a browser that
+changes its fingerprint on every start is not produced. A layer that invents
+its own values is how a "stealth" implementation becomes a fingerprint.
+
+**Stealth is opt-in, and it says what it is.** It is off unless
+`stealth: true` is configured. It is a browser-identity consistency
+measure: it does not forge challenge tokens, does not break widgets, and
+does not promise success against a commercial bot-detection service. The
+capability report distinguishes *requested*, *supported* and *applied*, and
+the optional back ends (TLS impersonation, CAPTCHA solving) are reported as
+unavailable when they are not installed or configured, rather than assumed.
+
+**Challenges are answered by a human's own service, or not at all.** A
+JavaScript interstitial is handled by doing what a browser does: run the
+page's script, wait for the clearance cookie, fetch again. An interactive
+CAPTCHA is a puzzle for a person, so IraLens hands it to a solving service
+the operator configured with their own account and API key, and enters the
+answer the way a browser would. Without such a service the challenge is
+reported as a typed `verification_required` error — never returned as if it
+were content, and never retried through another transport, because a second
+render cannot complete an interactive check.
+
+**A challenge page is not content.** This rule is unchanged, and it now
+applies to the browser tier as well as the static reader: a page that
+carries a CAPTCHA, a bot-check interstitial, a login wall, or an access
+block raises a typed error instead of being handed to the agent as
+evidence.
+
 ## Research
 
 **Deterministic core; LLM is an optional adapter.** Planning, claim

@@ -690,6 +690,12 @@ class WebSource(Source):
                     "truncated": max_chars > 0 and len(content) >= max_chars,
                     "title_source": title_source,
                 }
+                # When the page met a challenge, say so: whether it was
+                # cleared, solved, or left standing is part of how this read
+                # happened.
+                challenge = nav_dict.get("challenge")
+                if isinstance(challenge, dict) and challenge.get("kind"):
+                    metadata["challenge"] = challenge
                 if title_clipped:
                     metadata["title_truncated"] = True
                 if status_code is not None:
