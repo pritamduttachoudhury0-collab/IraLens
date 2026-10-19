@@ -4,10 +4,58 @@ All notable changes to this project are documented here, newest first.
 
 ## Unreleased
 
-Browser resilience and honest reporting of optional features. This work is
-**not** a new release: the release version remains `0.3.1` by project
-decision, so no version was bumped. Cutting a version for these changes is a
-separate call for the maintainer.
+Browser resilience, a working stealth tier, and honest reporting of optional
+features. This work is **not** a new release: the release version remains
+`0.3.1` by project decision, so no version was bumped. Cutting a version for
+these changes is a separate call for the maintainer.
+
+### Added
+
+- **Stealth mode now exists.** `stealth: true` (or `--stealth` on the
+  engine) turns on a real implementation in the Python/native-V8 tier:
+  - **One identity, everywhere.** A new `StealthProfile`
+    (`iralens/_internal/browser_engine/stealth.py`) describes a single
+    plausible desktop Chrome — user agent, client hints, platform,
+    languages, screen, viewport, core count, memory, GPU, canvas seed — and
+    is pinned to the engine's storage directory, so the identity does not
+    change between pages or between runs.
+  - **Browser-shaped requests.** A new transport
+    (`iralens/_internal/browser_engine/transport.py`) speaks HTTP/1.1 the
+    way Chrome does: one reused connection per origin, the header set and
+    order Chrome sends (`sec-ch-ua*`, `Upgrade-Insecure-Requests`,
+    `Sec-Fetch-*`, `Priority`, …), `Accept-Encoding` advertising only the
+    codecs this process can decode, and transparent gzip/deflate/brotli/zstd
+    decoding. `urllib` is gone from the request path: it forces
+    `Connection: close`, replaces `Accept-Encoding` with `identity`, and
+    cannot keep a connection alive.
+  - **A page that agrees with its headers.** `stealth.js` runs before the
+    page's own scripts and pins what the upstream engine otherwise
+    re-randomizes on every navigation (screen, viewport, core count,
+    memory, canvas), syncs the user agent and client hints with the
+    headers, denies geolocation the way a browser without the permission
+    does, hides the engine's own host globals from reflection APIs, and
+    supplies a 2D canvas where there was none (`getContext("2d")` used to
+    return `null`).
+  - **Challenge handling.** A JavaScript interstitial is waited out (the
+    page's own script sets a clearance cookie; the engine waits for it and
+    refetches). An interactive CAPTCHA is handed to a solving service the
+    operator configured with their own API key (`captcha_provider` +
+    `captcha_api_key`), and the answer is entered into the page the way a
+    browser would. With no service configured, a challenge is reported, not
+    bypassed.
+  - **Optional TLS impersonation.** `pip install "iralens[stealth]"` adds
+    `curl_cffi`, which reproduces Chrome's TLS and HTTP/2 fingerprints for
+    `https://` requests. Without it the capability is reported as
+    unavailable rather than assumed.
+- **The browser tier now stops at a verification page.** A CAPTCHA, a
+  bot-check interstitial, a login wall, or an access block served to the
+  browser raises a typed `verification_required` error instead of being
+  returned to the agent as content. This closes the same hole the static
+  reader closed earlier, and the navigation result carries a `challenge`
+  block saying what was met and what was done about it.
+- **The engine's capability report grew.** `tls_impersonation` and
+  `captcha_solver` are now reported with their real availability, and the
+  `stealth` entry distinguishes *requested*, *supported* and *applied*.
 
 ### Fixed
 

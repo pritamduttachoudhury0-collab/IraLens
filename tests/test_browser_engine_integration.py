@@ -414,6 +414,51 @@ def test_real_browser_basic_navigation_and_extraction(
         assert extracted["features"] == ["Navigation", "Extraction", "Interaction"]
 
 
+def test_real_browser_stealth_reaches_the_engine_subprocess(
+    tmp_path: Path, allow_local_fixture: None, fixture_server: Tuple[str, Any]
+) -> None:
+    """`stealth: true` must survive the trip through the driver.
+
+    The flag crosses two processes (the driver and the engine subprocess),
+    so a test that only calls the engine in-process would not notice it
+    being dropped on the way.
+    """
+    base_url, _ = fixture_server
+    with IraLens(_cfg(tmp_path, allow_private=True, stealth=True)) as hil:
+        hil.open(f"{base_url}/index", mode="browser")
+        status = hil.engine().stealth_status()
+        assert status["requested"] is True
+        assert status["supported"] is True
+        assert status["active"] is True
+        # The page agrees with the identity the engine claims to have.
+        seen = hil.engine().call("browser_evaluate", {
+            "expression": (
+                "JSON.stringify({ua: navigator.userAgent, "
+                "platform: navigator.platform, "
+                "screen: [screen.width, screen.height].join('x'), "
+                "cores: navigator.hardwareConcurrency, "
+                "memory: navigator.deviceMemory})"
+            ),
+        })
+        assert "Chrome" in seen["ua"]
+        assert seen["platform"] == "Win32"
+        assert seen["cores"] in (4, 8, 10, 12, 16)
+        assert seen["memory"] in (4, 8)
+        assert "x" in seen["screen"]
+
+
+def test_real_browser_without_stealth_keeps_the_default_identity(
+    tmp_path: Path, allow_local_fixture: None, fixture_server: Tuple[str, Any]
+) -> None:
+    """Stealth is opt-in: not asking for it must not change the engine."""
+    base_url, _ = fixture_server
+    with IraLens(_cfg(tmp_path, allow_private=True)) as hil:
+        hil.open(f"{base_url}/index", mode="browser")
+        status = hil.engine().stealth_status()
+        assert status["requested"] is False
+        assert status["active"] is False
+
+
 def test_real_browser_js_dependent_rendering_and_auto_fallback(
     tmp_path: Path, allow_local_fixture: None, fixture_server: Tuple[str, Any]
 ) -> None:

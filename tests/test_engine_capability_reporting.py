@@ -8,7 +8,10 @@ having the flag: the operator cannot correct a behaviour they cannot see.
 
 These tests assert the contract that replaced it — the engine advertises what
 it actually implements, and a requested-but-absent feature is reported
-instead of being dropped. They are offline and deterministic.
+instead of being dropped. The facts have moved on since the contract was
+written: the Python tier now implements stealth, and the TLS impersonation
+and CAPTCHA-solver back ends are optional, so their availability is
+reported rather than assumed. They are offline and deterministic.
 """
 
 from __future__ import annotations
@@ -22,8 +25,9 @@ from iralens.engine.native import BrowserEngine
 
 
 # --------------------------------------------------------------- payload unit
-def test_stealth_is_advertised_as_unsupported():
-    assert mcp_server.ENGINE_CAPABILITIES["stealth"]["supported"] is False
+def test_stealth_is_advertised_as_supported():
+    """The Python tier implements stealth; the report says so."""
+    assert mcp_server.ENGINE_CAPABILITIES["stealth"]["supported"] is True
 
 
 def test_supported_capabilities_are_advertised_as_supported():
@@ -36,12 +40,21 @@ def test_unrequested_stealth_reports_requested_false():
     assert payload["stealth"]["applied"] is False
 
 
-def test_requested_stealth_is_recorded_even_though_it_cannot_be_applied():
+def test_requested_stealth_is_recorded_as_applied():
     """The caller must be able to distinguish 'off' from 'unavailable'."""
+    payload = mcp_server.capabilities_payload(
+        stealth_requested=True, stealth_applied=True
+    )
+    assert payload["stealth"]["requested"] is True
+    assert payload["stealth"]["applied"] is True
+    assert payload["stealth"]["supported"] is True
+
+
+def test_requested_but_unapplied_stealth_is_still_reported():
+    """A build that cannot apply stealth must not claim it did."""
     payload = mcp_server.capabilities_payload(stealth_requested=True)
     assert payload["stealth"]["requested"] is True
     assert payload["stealth"]["applied"] is False
-    assert payload["stealth"]["supported"] is False
 
 
 def test_payload_is_a_copy_not_the_shared_constant():
@@ -56,8 +69,16 @@ def test_payload_is_a_copy_not_the_shared_constant():
 def test_stealth_notice_states_it_does_not_defeat_captchas():
     """Marketing restraint is part of the contract, not an aside."""
     notice = mcp_server._stealth_notice().lower()
-    assert "not supported" in notice
     assert "captcha" in notice
+    assert "active" in notice
+
+
+def test_the_optional_back_ends_report_their_availability():
+    """Optional is not the same as absent: the report says which."""
+    payload = mcp_server.capabilities_payload(stealth_requested=True)
+    assert "supported" in payload["tls_impersonation"]
+    assert "supported" in payload["captcha_solver"]
+    assert payload["captcha_solver"]["provider"] == ""
 
 
 # ------------------------------------------------------------ end-to-end CLI
@@ -88,8 +109,8 @@ def test_requesting_stealth_is_reported_not_swallowed():
     result = json.loads(out.strip().splitlines()[0])["result"]
     stealth = result["engineCapabilities"]["stealth"]
     assert stealth["requested"] is True
-    assert stealth["applied"] is False
-    assert stealth["supported"] is False
+    assert stealth["applied"] is True
+    assert stealth["supported"] is True
     # And it is said out loud, so an operator watching stderr sees it too.
     assert "stealth" in err.lower()
 

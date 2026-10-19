@@ -253,7 +253,7 @@ def engine_status() -> Dict[str, object]:
         "installed": path is not None,
         "bundled": (VENDOR_OBSCURA_DIR / "Cargo.toml").is_file(),
         "upstream_revision": UPSTREAM_REVISION,
-        "stealth": "off (default)",
+        "stealth": "available (off by default; `iralens configure stealth=true`)",
         "control_host": "127.0.0.1 (localhost only)",
     }
     shim = _default_bin_dir() / "iralens-engine"

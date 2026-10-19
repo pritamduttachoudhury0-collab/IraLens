@@ -82,7 +82,7 @@ repository, but the upload needs the project's PyPI account
 | **Search** | Keyless engine chain (DuckDuckGo, Bing — experimental — Wikimedia official API, optional self-hosted SearXNG), ranked results with per-engine outcomes, cross-engine dedup, explainable scores, and honest `engines_failed` reporting instead of invented results. |
 | **Page reading** | Any URL through specialized readers → fast local static extraction → local browser fallback for JS-heavy pages, with typed errors (`http_403`, `soft_404`, `antibot_challenge`, …) that say exactly what happened. |
 | **Documents** | PDF text extraction with ligature/hyphen normalization and a 20 MB cap; scanned PDFs get automatic **local** OCR when `pdftoppm` + `tesseract` are installed — never uploaded. |
-| **Browser** | Integrated native browser engine (`iralens._internal.browser_engine`, V8 + HTML5 DOM): navigate, snapshot, click, fill, extract, evaluate JS, tabs, RFC 6265 cookies, storage state. Bundled out of the box with zero runtime binary downloads; stealth off; stdio-only control. |
+| **Browser** | Integrated native browser engine (`iralens._internal.browser_engine`, V8 + HTML5 DOM): navigate, snapshot, click, fill, extract, evaluate JS, tabs, RFC 6265 cookies, storage state. Bundled out of the box with zero runtime binary downloads; optional stealth tier (one coherent browser identity, off by default); stdio-only control. |
 | **API** | Single-node HTTP service (`iralens serve`): native `/v1/search` and `/v1/read`, a Serper-compatible `/search` for a base-URL swap, authenticated metrics, mandatory token on non-loopback binds. |
 | **Research mode** | Bounded multi-round runs that plan queries, read top sources, flag possible contradictions, and return cited statements with a provenance graph and a replayable trace — deterministic by default. |
 | **Safety** | SSRF guards on every URL and inside the engine, DNS-pinned fetches, content-injection flags that demote but never silently drop, credentials in owner-only config scrubbed from all output. |
@@ -254,9 +254,12 @@ Sites that answer with a CAPTCHA, a bot check, a login wall, or an
 access-denied page are **reported, not solved**: the read stops with a typed
 `verification_required` error instead of returning the challenge page as if
 it were content, and it is not retried through another transport. The
-optional `stealth` setting is accepted and reported but has no effect in
-this distribution — the underlying capability exists only behind an
-uncompiled Rust feature gate. See the
+optional `stealth` setting keeps one coherent browser identity across the
+whole session — Chrome-shaped request headers, a user agent the page agrees
+with, a fingerprint that does not change between pages — and waits out a
+JavaScript interstitial. It does not forge challenge tokens; an interactive
+CAPTCHA is only answered when you configure a solving service with your own
+account and key. See the
 [security model](docs/security.md) and the full list of limits in
 [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
 

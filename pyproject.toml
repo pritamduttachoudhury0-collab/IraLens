@@ -29,6 +29,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.5", "mypy>=1.10"]
+# Optional: TLS/HTTP2 fingerprint impersonation for the browser engine's
+# stealth tier. Without it the engine still works and reports the
+# capability as unavailable rather than pretending.
+stealth = ["curl_cffi>=0.7"]
 
 [project.scripts]
 iralens = "iralens.cli:main"

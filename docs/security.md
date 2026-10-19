@@ -46,7 +46,15 @@ internal targets.
    login wall, or access-denied page is detected and raised as
    `verification_required` rather than returned as content. It is never retried
    through another transport, and only the page's marker phrase and provider
-   name are retained — never page content.
+   name are retained — never page content. This applies to the browser tier
+   as well as the static reader: a challenge page that renders cleanly is
+   still a challenge page. A JavaScript interstitial is waited out (the
+   page's own script computes a clearance cookie; the engine waits for it
+   and refetches the page), and an interactive widget is only answered when
+   the operator configured a solving service with their own account and API
+   key — the key reaches that service and nothing else, and the provider,
+   the outcome and the site key are reported. Without a configured service,
+   a challenge is reported and never bypassed.
 6. **Third-party reader (opt-in).** Reads are local-first: direct fetch
    plus local extraction, no third party. Only if you opt in
    (`IRALENS_READ_REMOTE_READER_ENABLED=1`) does the remote reader

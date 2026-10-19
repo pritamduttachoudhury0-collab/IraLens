@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Proxy settings must never be readable by other local accounts.
+"""Secrets must never be readable by other local accounts.
 
-A proxy URL routinely embeds credentials (`http://user:pass@host:8080`).
-Passing it as a command-line argument published those credentials to every
-user on the machine, because `/proc/<pid>/cmdline` is world-readable while
-`/proc/<pid>/environ` is not.
+A proxy URL routinely embeds credentials (`http://user:pass@host:8080`),
+and a solving-service API key is a secret outright. Passing either as a
+command-line argument published it to every user on the machine, because
+`/proc/<pid>/cmdline` is world-readable while `/proc/<pid>/environ` is not.
 
-This module pins the contract: the proxy travels to the engine through its
-environment, never through argv. Tests are offline and deterministic.
+This module pins the contract: the proxy and the key travel to the engine
+through its environment, never through argv. Tests are offline and
+deterministic.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from iralens._internal.browser_engine import mcp_server
 from iralens.engine.native import BrowserEngine
 
 SECRET_PROXY = "http://alice:s3cr3t@proxy.internal:8080"
+SECRET_KEY = "s3cr3t-solving-key-0001"
 
 
 class _Cfg(dict):
@@ -108,3 +110,22 @@ def test_explicit_flag_still_wins_over_environment(monkeypatch):
     monkeypatch.setenv(mcp_server.PROXY_ENV_VAR, SECRET_PROXY)
     argv = mcp_server.build_parser().parse_args(["mcp", "--proxy", "http://other:1@h:2"])
     assert argv.proxy == "http://other:1@h:2"
+
+
+# ------------------------------------------------------- the solving key
+def test_the_solving_service_key_travels_in_the_environment(monkeypatch):
+    """A key on the command line would be world-readable, like the proxy."""
+    captured = _capture_spawn(
+        monkeypatch,
+        _Cfg(stealth="true", captcha_provider="2captcha", captcha_api_key=SECRET_KEY),
+    )
+    argv = " ".join(str(a) for a in captured["argv"])
+    assert SECRET_KEY not in argv
+    assert "--captcha" not in argv
+    assert captured["env"].get(mcp_server.CAPTCHA_KEY_ENV_VAR) == SECRET_KEY
+    assert captured["env"].get(mcp_server.CAPTCHA_PROVIDER_ENV_VAR) == "2captcha"
+
+
+def test_a_missing_key_means_no_solver_is_configured(monkeypatch):
+    captured = _capture_spawn(monkeypatch, _Cfg(stealth="true"))
+    assert mcp_server.CAPTCHA_KEY_ENV_VAR not in captured["env"]
