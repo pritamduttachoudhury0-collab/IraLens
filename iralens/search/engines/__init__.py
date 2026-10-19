@@ -6,12 +6,16 @@ from __future__ import annotations
 from typing import Dict
 
 from .base import SearchBackend
+from .arxiv import ArxivBackend
 from .bing import BingBackend
+from .crossref import CrossrefBackend
 from .duckduckgo import DuckDuckGoBackend
+from .github import GitHubSearchBackend
 from .exa import ExaBackend
 from .mojeek import MojeekBackend
 from .paid_backup import PaidSearchBackupBackend
 from .searxng import SearxngBackend
+from .stackexchange import StackExchangeBackend
 from .wikipedia import WikipediaBackend
 
 #: Legacy names from the IraLens `search(backend=...)` API map to chains.
@@ -28,7 +32,9 @@ def build_backends() -> Dict[str, SearchBackend]:
     # Mojeek is registered so it can be enabled by name, but it is NOT in the
     # default Settings.search_engines chain (opt-in, not live-verified).
     backends = (ExaBackend(), DuckDuckGoBackend(), SearxngBackend(), BingBackend(),
-                WikipediaBackend(), PaidSearchBackupBackend(), MojeekBackend())
+                WikipediaBackend(), PaidSearchBackupBackend(), MojeekBackend(),
+                CrossrefBackend(), ArxivBackend(), StackExchangeBackend(),
+                GitHubSearchBackend())
     return {b.name: b for b in backends}
 
 

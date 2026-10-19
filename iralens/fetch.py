@@ -29,6 +29,7 @@ from .errors import (
     IraLensError,
     OperationTimeoutError,
     PageUnavailableError,
+    RateLimitedError,
     classify_http_status,
 )
 from .security import safe_urlopen
@@ -89,6 +90,26 @@ def _classify_http_error(exc: urllib.error.HTTPError) -> IraLensError:
                 retry_after = float(str(raw).strip())
             except (TypeError, ValueError):
                 retry_after = None
+        # A number of official APIs report exhausted quotas as HTTP 403,
+        # distinguished from an access denial by this structural header.
+        # Treat it as a rate limit so the engine circuit can back off rather
+        # than misdiagnosing it as an ordinary forbidden resource.
+        try:
+            remaining = headers.get("X-RateLimit-Remaining")
+            reset = headers.get("X-RateLimit-Reset")
+        except Exception:
+            remaining = reset = None
+        if exc.code == 403 and str(remaining or "").strip() == "0":
+            if retry_after is None and reset:
+                try:
+                    retry_after = max(0.0, float(reset) - time.time())
+                except (TypeError, ValueError):
+                    retry_after = None
+            return RateLimitedError(
+                "the origin API rate limit was reached",
+                hint="wait for the provider quota to reset before retrying",
+                detail="http_403_rate_limited", retry_after=retry_after,
+            )
     return classify_http_status(exc.code, layer="origin", retry_after=retry_after)
 
 

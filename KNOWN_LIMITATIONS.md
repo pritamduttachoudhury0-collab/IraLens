@@ -268,17 +268,16 @@ records at the end show exactly what was exercised and where.
 
 ## Still open — not fixed
 
-37. **Retrieval quality on generic, multi-concept queries is unproven and
-    probably weak (the principal remaining gap).** A 10-query product
-    audit found only 2 of 10 queries returned answer-bearing evidence in the
-    top 5, with failures on single-fact lookups, market data, benchmarks,
-    and advisory queries. Queries anchored on a distinctive brand name work
-    well. Nothing in the current pipeline performs concept-level matching;
-    results show per-term matching instead, which is how "Kit" returns an
-    unrelated KIT entity and "Stripe" returns pages about stripes. **This is
-    not fixed and is not claimed to be.** It cannot be measured in an
-    offline environment because it requires live queries against search
-    providers.
+37. **Retrieval quality on generic, multi-concept queries is still unproven
+    (the principal remaining gap).** A prior 10-query product audit found
+    answer-bearing evidence in the top 5 for only 2 of 10 queries, with
+    failures on single-fact lookups, market data, benchmarks, and advisory
+    queries. The current branch adds token-boundary-aware coverage,
+    answerability-gated query expansion, and intent-routed official APIs for
+    scholarly, technical, and GitHub-specific searches. These are real
+    engineering changes, but they do not improve the general indexes' recall
+    and have not been measured against a fresh live gold set. **The earlier
+    2/10 result is not replaced by a newer percentage; 90% is not claimed.**
 38. **The 12,000-query paired benchmark has still not been run.** Zero
     queries have been submitted; the ≥98% acceptance bar is untested and is
     not claimed. This is the same unmet bar recorded in the earlier audits.
@@ -289,6 +288,20 @@ records at the end show exactly what was exercised and where.
     were published as open because the audited revision predates them. The
     audit should be re-run against current `main` before its severity
     ratings are relied upon.
+40. **The new Crossref, arXiv, Stack Exchange, and GitHub search adapters are
+    specialist sources, not substitutes for a general web index.** Their
+    parsers have deterministic offline fixtures. One read-only GitHub releases
+    smoke (`site:github.com/scipy/scipy latest release`) returned six public
+    API hits, but that is not a quality rate; Crossref/arXiv/Stack Exchange
+    could not be reached here. Live reachability, API quotas, current terms,
+    and top-5 contribution must be verified on an operator-approved network.
+    Provider refusals are surfaced, not routed around.
+41. **The 90% paid-key replacement target is not measured.** `run_benchmark.py`
+    now reports `free_replacement_rate`: a query counts only when its frozen
+    top-5 gold predicate is met without attempting `paid-backup`. This is a
+    quality-based rate, not the fraction of calls that happen not to use a key.
+    It needs a live run on the frozen query set; no replacement percentage is
+    claimed from offline fixtures, a missing key, or an empty provider response.
 
 ## Platform and packaging
 
@@ -383,6 +396,28 @@ Each record states the date, the environment class, and the exact claim.
 package indexes and GitHub — live search engines and arbitrary web pages
 were not reachable there, so anything requiring them is listed as not yet
 verified.
+
+**2026-10-19, restricted egress (keyless retrieval iteration).**
+
+- `.venv/bin/python -m pytest -q` — **843 passed, 14 skipped, 0 failed**.
+  The skips require live-network access.
+- `.venv/bin/ruff check --select E9,F,B .` — clean. `.venv/bin/mypy iralens`
+  — clean (88 source files).
+- `python benchmarks/acceptance_17.py` — **17/17**; `python
+  benchmarks/run_scraping.py` — **12/12**.
+- `python benchmarks/run_audit3000.py --offline-pipeline` — **14,262/14,262
+  clean**. This validates the pipeline only, not provider retrieval.
+- `python benchmarks/run_benchmark.py --self-test` — passed; this validates
+  the harness, not search quality.
+- `python benchmarks/ab_query_forms.py` — coverage agrees with the existing
+  ten hand-labelled provider captures in **10/10** cases. It remains a small
+  demonstration, not a replacement-rate estimate.
+- **Not measured:** live quality of the new specialist APIs; the frozen
+  200-query `free_replacement_rate`; paid-provider parity; and the 90% goal.
+  A single read-only GitHub releases request returned six public results, but
+  that is a smoke test, not a relevance benchmark. Crossref, arXiv, Stack
+  Exchange, and general search-provider egress were not available here. A run
+  on an open, approved network is required.
 
 **2026-10-18, restricted egress (post-audit remediation).**
 

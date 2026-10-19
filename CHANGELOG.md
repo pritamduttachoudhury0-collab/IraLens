@@ -9,6 +9,26 @@ Browser resilience and honest reporting of optional features. This work is
 decision, so no version was bumped. Cutting a version for these changes is a
 separate call for the maintainer.
 
+### Search — keyless coverage iteration
+
+- Added intent-routed Crossref, arXiv, Stack Exchange, and GitHub public-API
+  adapters. They are specialist sources, not general indexes, and make no
+  live-availability or 90% quality claim.
+- Reformulation now sends the full query first and stops after adequate
+  coverage/result count; focus, jurisdiction, and decomposed forms are tried
+  only when the initial set is weak or short. The request plan prioritizes
+  those focused forms over generic keyword rewrites.
+- Coverage matching now uses token boundaries, including separately tokenized
+  URL host labels, so substrings such as `kit` in `ticket` cannot count as an
+  answer-bearing match.
+- Paid backup attempts are deferred until keyless query forms finish. The
+  opt-in `search_paid_fallback_on_low_coverage` setting allows one paid call
+  only when the keyless-only coverage verdict is `low`; the response reports
+  the trigger and pre-fallback verdict.
+- The frozen reliability runner reports a conservative `free_replacement_rate`
+  (gold top-5 hit with no paid-backup attempt) and a paid-backup query rate.
+  Neither is gated or claimed as a 90% result until a live labeled run exists.
+
 ### Fixed
 
 - **A verification page could be returned as research content.** A CAPTCHA

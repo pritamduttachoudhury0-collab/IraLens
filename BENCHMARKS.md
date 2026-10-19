@@ -20,6 +20,35 @@ The thresholds (frozen, see `benchmarks/thresholds.json`):
 
 All seven must hold on **3 consecutive full runs** for the benchmark to pass.
 
+## Measuring paid-key replacement
+
+The live `run_benchmark.py` output now includes two query-level metrics:
+
+- **`free_replacement_rate`**: a query counts only when the frozen top-5 gold
+  predicate is met **and** `paid-backup` was not attempted.
+- **`paid_backup_query_rate`**: the share of queries that actually attempted
+  the configured paid backup; a skipped/open paid circuit is not a call.
+
+This is intentionally stricter than "no key was configured" or "a free
+engine returned something". It measures answer-bearing keyless hits on this
+benchmark, not all possible workloads or a universal provider-parity rate.
+The requested 90% goal is **not a frozen acceptance threshold and is not yet
+measured**. Specialist API traffic (Crossref, arXiv, Stack Exchange, GitHub)
+is included when its intent route matches; the quality predicate is still the
+benchmark's frozen label.
+
+Run the search phase on an open, approved network and inspect the recorded
+`metrics` in `results.json`:
+
+```bash
+.venv/bin/python benchmarks/run_benchmark.py --search --split all \
+  --no-benchmarks-md --network home
+```
+
+Configure a paid backup only if you want to measure when the quality fallback
+is actually invoked. Do not count a missing key, an empty result set, or the
+offline pipeline as a successful replacement.
+
 ## The audit-driven suites
 
 The independent audit of 2026-10-17 shipped its own harnesses inside its

@@ -15,6 +15,7 @@ from iralens.errors import (
     ExtractionError,
     OperationTimeoutError,
     PageUnavailableError,
+    RateLimitedError,
     SecurityBlockedError,
 )
 from iralens.fetch import fetch_search_page, fetch_url_text
@@ -116,6 +117,18 @@ def test_http_errors_classified_by_status(monkeypatch, code, detail):
     with pytest.raises(PageUnavailableError) as exc:
         fetch_url_text("https://example.org/x")
     assert exc.value.detail == detail
+
+
+def test_403_with_empty_rate_limit_header_is_typed_as_rate_limited(monkeypatch):
+    err = urllib.error.HTTPError(
+        "https://api.github.com/search/repositories", 403, "Forbidden",
+        {"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "2000000000"}, None,
+    )
+    _patch(monkeypatch, error=err)
+    with pytest.raises(RateLimitedError) as exc:
+        fetch_url_text("https://api.github.com/search/repositories")
+    assert exc.value.detail == "http_403_rate_limited"
+    assert exc.value.retry_after is not None and exc.value.retry_after > 0
 
 
 def test_timeout_is_operation_timeout(monkeypatch):
