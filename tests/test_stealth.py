@@ -347,14 +347,52 @@ def test_the_tls_profile_matches_the_claimed_chrome_version():
     """The TLS fingerprint carries a Chrome version of its own.
 
     If it disagrees with the user agent, the client contradicts itself in
-    a way a detector can see.
+    a way a detector can see. The mapping depends on the optional
+    ``curl_cffi`` backend: without it the honest answer is the generic
+    ``"chrome"`` profile; with it the closest available version is chosen.
+    Both states are part of the contract and are tested explicitly.
     """
+    import importlib.util
+    import typing
+
     from iralens._internal.browser_engine.transport import _curl_impersonation_target
 
-    assert _curl_impersonation_target(145) == "chrome145"
-    fallback = _curl_impersonation_target(144)
-    assert fallback.startswith("chrome")
-    assert int(fallback[len("chrome"):]) <= 144
+    try:
+        from curl_cffi.requests.impersonate import (  # type: ignore
+            BrowserTypeLiteral,
+        )
+
+        available = [str(item) for item in typing.get_args(BrowserTypeLiteral)]
+    except Exception:
+        available = []
+    backend_installed = importlib.util.find_spec("curl_cffi") is not None
+
+    if not backend_installed or not available:
+        # No optional backend: the transport must fall back to the generic
+        # profile name rather than inventing a version-specific one.
+        assert _curl_impersonation_target(145) == "chrome"
+        assert _curl_impersonation_target(None) == "chrome"
+        return
+
+    # An exact match must be preferred when the backend offers one.
+    versions = sorted(
+        int(name[len("chrome"):])
+        for name in available
+        if name.startswith("chrome")
+        and name[len("chrome"):].isdigit()
+    )
+    assert versions, "curl_cffi advertises no versioned chrome profiles"
+    exact = versions[-1]
+    assert _curl_impersonation_target(exact) == f"chrome{exact}"
+
+    # A version the backend does not offer falls back to the closest older
+    # profile (a slightly older Chrome is a smaller lie than a newer one);
+    # below the oldest available profile it clamps to the oldest.
+    older = _curl_impersonation_target(exact - 1)
+    assert older.startswith("chrome")
+    assert int(older[len("chrome"):]) <= exact - 1
+    assert _curl_impersonation_target(1) == f"chrome{versions[0]}"
+    assert _curl_impersonation_target(None) == f"chrome{exact}"
 
 
 def test_the_impersonation_backend_decodes_the_body(server: str):

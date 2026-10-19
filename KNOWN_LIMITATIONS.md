@@ -183,23 +183,23 @@ records at the end show exactly what was exercised and where.
 
 ## Reliability and security
 
-23. **Circuit state is local, not distributed.** Engine circuits and
+24. **Circuit state is local, not distributed.** Engine circuits and
     per-instance cooldowns persist in a private SQLite file under
     `IRALENS_HOME/state`; they survive restarts and coordinate local
     processes. Multi-host locking, external health storage, and long
     operational history are not implemented. A read-only state directory
     fails open. Search responses now expose skipped/failed engine details,
     but the live benchmark's DuckDuckGo failure was not re-run after this change.
-24. **Injection flags are heuristic.** They cover common English phrasings,
+25. **Injection flags are heuristic.** They cover common English phrasings,
     miss paraphrases and other languages, and are advisory — not a boundary.
-25. **The private-address check is literal plus fetch-time.** The literal URL
+26. **The private-address check is literal plus fetch-time.** The literal URL
     check covers everything; DNS resolution, answer validation, and redirect
     re-validation cover the fetch path (`security.safe_urlopen`). Page reads
     **and RSS/Atom feeds** use that transport, so both are DNS-pinned across
     redirects. One source still uses its own HTTP client — `transcribe`, which
     downloads audio and posts it to a Whisper endpoint with `requests` — and
     validates only the literal URL; the GitHub API targets are constants.
-26. **The private-host allowlist applies to search transports only.** Page
+27. **The private-host allowlist applies to search transports only.** Page
     reads keep the strict public-URL policy, so a self-hosted SearXNG cannot
     be used as a general reader, and a *search* response linking to private
     hosts still cannot be fetched. Link-local and metadata names are refused
@@ -328,7 +328,7 @@ records at the end show exactly what was exercised and where.
     were published as open because the audited revision predates them. The
     audit should be re-run against current `main` before its severity
     ratings are relied upon.
-40. **The new Crossref, arXiv, Stack Exchange, and GitHub search adapters are
+42. **The new Crossref, arXiv, Stack Exchange, and GitHub search adapters are
     specialist sources, not substitutes for a general web index.** Their
     parsers have deterministic offline fixtures. One read-only GitHub releases
     smoke (`site:github.com/scipy/scipy latest release`) returned six public
@@ -336,7 +336,7 @@ records at the end show exactly what was exercised and where.
     could not be reached here. Live reachability, API quotas, current terms,
     and top-5 contribution must be verified on an operator-approved network.
     Provider refusals are surfaced, not routed around.
-41. **The 90% paid-key replacement target is not measured.** `run_benchmark.py`
+43. **The 90% paid-key replacement target is not measured.** `run_benchmark.py`
     now reports `free_replacement_rate`: a query counts only when its frozen
     top-5 gold predicate is met without attempting `paid-backup`. This is a
     quality-based rate, not the fraction of calls that happen not to use a key.
@@ -345,30 +345,30 @@ records at the end show exactly what was exercised and where.
 
 ## Platform and packaging
 
-27. **Not published to PyPI.** Install from a checkout, or straight from
+44. **Not published to PyPI.** Install from a checkout, or straight from
     GitHub: `pip install "iralens @ git+https://github.com/pritamduttachoudhury0-collab/IraLens.git"`
     gives the latest developed version (README). The release artifacts are
     built and attached to every GitHub release and the publish workflow is
     in the repository, but the upload itself needs the project's PyPI
     account — see `docs/releasing.md` for the one step that is not
     automatable from here.
-28. **The HTTP API is a single node.** No hosted URL, SLA, TLS termination,
+45. **The HTTP API is a single node.** No hosted URL, SLA, TLS termination,
     multi-node health store, or managed uptime. Put a TLS reverse proxy and
     resource limits in front of it for anything beyond local use.
-29. **Docker files are provided, not yet verified on a live host.** Build
+46. **Docker files are provided, not yet verified on a live host.** Build
     the image and start the Compose stack on the target host before relying
     on them. The API itself runs fine without Docker (`iralens serve`).
-30. **Windows setup is untested.** `scripts/setup.ps1` is provided but has
+47. **Windows setup is untested.** `scripts/setup.ps1` is provided but has
     not run on a Windows machine; `scripts/setup.sh` is the tested path
     (Linux/macOS).
-31. **CI verifies Python 3.10 and 3.12** (offline gates on every push and
+48. **CI verifies Python 3.10 and 3.12** (offline gates on every push and
     pull request). The primary development interpreter is 3.11.
-32. **CI runs offline gates only.** The CI workflow runs pytest, ruff, and
+49. **CI runs offline gates only.** The CI workflow runs pytest, ruff, and
     mypy. Live search, browser startup, Docker builds, and multi-day
     monitoring are not exercised in CI.
-33. **`xiaoyuzhou` (podcast) source is not implemented.** No module ships for
+50. **`xiaoyuzhou` (podcast) source is not implemented.** No module ships for
     it; the architecture may grow one later.
-34. **Paid-provider parity is implemented but unmeasured.** The optional
+51. **Paid-provider parity is implemented but unmeasured.** The optional
     benchmark reference phase reports labeled top-5 gold hit rates,
     availability, p50/p95, and domain overlap for both IraLens and a
     configured paid provider — but no provider key has been supplied for a
