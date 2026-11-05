@@ -173,6 +173,31 @@ quality hits, but DuckDuckGo/Bing circuit state differed between runs, so this
 is not a clean causal A/B. The target 90% remains unachieved; the result JSONs
 were supplied externally and are not committed.
 
+> **Note (2026-11-04): the recent-news pipeline was rebuilt after this run.**
+> The 0/25 above is a historical measurement of the *old* code (GDELT-only,
+> no publication dates, no news ranking). News queries now route keyless news
+> RSS feeds plus a corrected GDELT adapter, detect time windows, verify real
+> publication dates against publisher pages, and rank with a news-aware
+> profile — all covered by offline regression tests. A new live /25 is **not
+> claimed here**: this environment has no outbound access to the news
+> providers. Measure it on a connected host with
+> `python benchmarks/run_recent_news.py` (it reports blocked runs honestly
+> rather than fabricating a score). See `KNOWN_LIMITATIONS.md`.
+
+> **Note (2026-11-05): archive and regional lanes added, also not live-measured.**
+> Historical news had no source at all — every news index above holds a rolling
+> recent window, so "climate policy in 2019" could not return anything.
+> Archive-shaped queries now route to **publisher sitemaps**, and regional
+> queries read **curated publisher feeds** directly (including Assam /
+> Northeast India outlets). Results are additionally grouped into stories with
+> an event timeline and coverage-trend signals. These lanes are covered by 72
+> offline tests (parsers, bounds, routing, failure paths) and **no live score is
+> claimed for them either** — the same egress restriction applies. The historical
+> 0/25 is preserved unchanged; it is a measurement of the old code, not a
+> prediction about the new code. See `KNOWN_LIMITATIONS.md` →
+> "News, archive and story-level lanes" for the real bounds (3 publishers,
+> 6 sitemap fetches, 4 feeds per query) and what they cannot find.
+
 **2026-10-11 — harness validated; thresholds not measurable in a restricted
 environment (not a benchmark row).** The verification environment available
 at the time allowed outbound access only to package indexes and GitHub;

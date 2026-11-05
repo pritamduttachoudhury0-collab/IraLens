@@ -157,9 +157,23 @@ def specialist_search_engines(question: str) -> Tuple[str, ...]:
         return ("github-search",)
     if _ACADEMIC_SEARCH_RE.search(text):
         return ("crossref", "arxiv")
-    routed = []
-    if _NEWS_SEARCH_RE.search(text) or classify_query(text).answer_type == "current_event":
-        routed.append("gdelt")
+    routed: list[str] = []
+    from .news import detect_news_intent
+    news_intent = detect_news_intent(text)
+    if news_intent.is_archive:
+        # An archive question cannot be answered by a rolling news index:
+        # GDELT DOC and the news feeds simply do not hold 2019. Publisher
+        # sitemaps do, so they lead, with the publisher feeds as a second lane.
+        routed.extend(("sitemaps", "publisher-feeds"))
+    elif _NEWS_SEARCH_RE.search(text) or classify_query(text).answer_type == "current_event" \
+            or news_intent.is_news:
+        # Keyless news-discovery feeds first: they carry the publisher's own
+        # publication date (pubDate) and a direct article URL, which the
+        # general SERP engines and GDELT's index-seen time do not. The curated
+        # publisher feeds reach local/regional outlets the global indexes miss,
+        # and GDELT adds broad international coverage. The general engines still
+        # run alongside these, so a news query never depends on one provider.
+        routed.extend(("bing-news", "google-news", "publisher-feeds", "gdelt"))
     if _TECHNICAL_SEARCH_RE.search(text):
         routed.append("stackexchange")
     return tuple(routed)

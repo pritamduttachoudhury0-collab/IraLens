@@ -16,7 +16,7 @@ from datetime import date
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlsplit
 
-from ...errors import IraLensError, SourceUnavailableError
+from ...errors import IraLensError, RateLimitedError, SourceUnavailableError
 from ...fetch import fetch_url_text
 from ...reliability import HOST_RATE_LIMITER
 from ...search.schema import SearchFilters, SearchHit
@@ -26,6 +26,17 @@ ENDPOINT = "https://api.gdeltproject.org/api/v2/doc/doc"
 _HOST = "api.gdeltproject.org"
 _MAX_RESPONSE_BYTES = 3 * 1024 * 1024
 _USER_AGENT = "IraLens/0.3.5 (https://github.com/pritamduttachoudhury0-collab/IraLens)"
+#: The public DOC API's published rate limit is one request every 5 seconds.
+#: Pacing faster than this violates the provider's terms and earns a block.
+_MIN_INTERVAL_SECONDS = 5.0
+#: GDELT signals rate limiting as an HTTP 200 *plain-text* notice (not a 429),
+#: e.g. "Please limit requests to one every 5 seconds". Detect it so the chain
+#: backs off instead of misreading the notice as malformed JSON.
+_RATE_LIMIT_NOTICE = re.compile(
+    r"limit\s+requests|one\s+every\s+\d+\s+seconds|too\s+many\s+requests|"
+    r"rate\s+limit|please\s+wait|slow\s+down",
+    re.IGNORECASE,
+)
 
 
 def _clean(value: Any, limit: int = 500) -> str:
@@ -120,23 +131,42 @@ class GdeltBackend(SearchBackend):
             params["startdatetime"] = filters.date_from.replace("-", "") + "000000"
         if filters.date_to:
             params["enddatetime"] = filters.date_to.replace("-", "") + "235959"
+        # A news-shaped query with no explicit date window still deserves a
+        # recency-bounded search: GDELT's `timespan` limits the index window so
+        # a "latest news" question is not answered from years of archive. It is
+        # additive and only applied when the caller set no date filter, so the
+        # explicit-date contract (startdatetime/enddatetime) is untouched.
+        if not filters.date_from and not filters.date_to:
+            from ..news import detect_news_intent
+            news_intent = detect_news_intent(query)
+            if news_intent.is_news:
+                days = max(1, min(365, news_intent.effective_window_days()))
+                params["timespan"] = f"{days}d"
         url = ENDPOINT + "?" + urllib.parse.urlencode(params)
-        HOST_RATE_LIMITER.set_interval(_HOST, 1.0)
+        HOST_RATE_LIMITER.set_interval(_HOST, _MIN_INTERVAL_SECONDS)
         HOST_RATE_LIMITER.wait(_HOST)
         try:
             text = fetch_url_text(
                 url, timeout=timeout, max_bytes=_MAX_RESPONSE_BYTES,
                 headers={"Accept": "application/json", "User-Agent": _USER_AGENT},
             )
-            payload = json.loads(text)
         except IraLensError:
             raise
-        except ValueError as exc:
-            raise SourceUnavailableError("GDELT returned an invalid response",
-                                         detail="invalid_json") from exc
         except Exception as exc:
             raise SourceUnavailableError("GDELT news search request failed",
                                          detail=type(exc).__name__) from exc
+        # GDELT returns its rate-limit notice as HTTP 200 plain text. Detect it
+        # before attempting JSON so the chain sees a rate-limit (wait), not a
+        # malformed-response failure.
+        stripped = (text or "").strip()
+        if stripped and not stripped.startswith(("{", "[")) and _RATE_LIMIT_NOTICE.search(stripped):
+            raise RateLimitedError("GDELT rate limit reached", detail="rate_limit_notice",
+                                   hint="Wait at least 5 seconds between GDELT requests.")
+        try:
+            payload = json.loads(text)
+        except ValueError as exc:
+            raise SourceUnavailableError("GDELT returned an invalid response",
+                                         detail="invalid_json") from exc
         if not isinstance(payload, dict) or not isinstance(payload.get("articles"), list):
             raise SourceUnavailableError("GDELT returned an invalid response",
                                          detail="invalid_json_shape")

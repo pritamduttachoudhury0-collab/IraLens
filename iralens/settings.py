@@ -67,6 +67,51 @@ class Settings:
     weight_agreement: float = 0.2
     freshness_half_life_days: float = 365.0
     neutral_freshness: float = 0.5         # used when a result has no date
+    # --- recent news ---------------------------------------------------------
+    #: News questions decay much faster than evergreen ones: a 30-day-old
+    #: article is stale for "latest news", while a 365-day half-life made every
+    #: dated page look equally fresh. This half-life applies only when the
+    #: query is classified as news/current-event.
+    news_freshness_half_life_days: float = 7.0
+    #: Route the keyless news-discovery feeds (Bing News RSS, Google News RSS)
+    #: and GDELT for news-shaped queries. They return publisher publication
+    #: dates the general SERP engines do not.
+    news_engines_enabled: bool = True
+    #: Read curated publisher feeds directly for news queries. This is the lane
+    #: that reaches local and regional outlets (e.g. Assam / Northeast India)
+    #: that global news indexes surface late or never.
+    news_publisher_feeds_enabled: bool = True
+    #: Use publisher sitemaps for archive-shaped questions ("in 2019",
+    #: "between 2019 and 2021"). Every rolling news index is recent-only, so
+    #: without this lane a historical news question has no source at all.
+    news_archive_enabled: bool = True
+    #: Build story clusters, an event timeline and trend signals for news
+    #: queries, so the caller gets "one story, eight outlets" instead of eight
+    #: near-identical links.
+    news_events_enabled: bool = True
+    #: Lookback window for trend (coverage-velocity) signals, in days.
+    news_trend_window_days: int = 2
+    #: Read the top publisher pages to corroborate the feed's publication date
+    #: against the page's own metadata before presenting a result as fresh.
+    news_verify_dates: bool = True
+    #: How many top news candidates to read for date/topic verification.
+    news_verify_top_n: int = 4
+    #: News ranking weight profile. For a news question, recency is part of
+    #: relevance, so freshness carries far more weight than for an evergreen
+    #: query (0.35 vs 0.20) and decays on the short news half-life. Publisher
+    #: credibility (source_quality) replaces most of the domain-suffix
+    #: authority signal, and cross-engine agreement matters less because news
+    #: feeds surface distinct articles. The relevance gate still runs on PURE
+    #: relevance, so a fresh but off-topic page can never be rescued by recency.
+    #: These weights sum to 1.0 and apply only to news-classified queries.
+    news_weight_relevance: float = 0.40
+    news_weight_freshness: float = 0.35
+    news_weight_authority: float = 0.08
+    news_weight_agreement: float = 0.07
+    #: Weight of the source-credibility factor in news ranking (the fifth
+    #: factor). Bounded so an established/primary publisher settles a near-tie
+    #: but never outranks a clearly more relevant article.
+    news_source_quality_weight: float = 0.10
     #: Relevance below which freshness is not allowed to lift a result.
     #: Without this, a dated but unrelated page outranks an undated
     #: relevant one: freshness decays toward 1.0 for anything published

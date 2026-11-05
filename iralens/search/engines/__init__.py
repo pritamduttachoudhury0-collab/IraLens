@@ -14,6 +14,9 @@ from .github import GitHubSearchBackend
 from .gdelt import GdeltBackend
 from .exa import ExaBackend
 from .mojeek import MojeekBackend
+from .news_rss import BingNewsBackend, GoogleNewsBackend
+from .publisher_feeds import PublisherFeedsBackend
+from .sitemaps import SitemapsBackend
 from .paid_backup import PaidSearchBackupBackend
 from .searxng import SearxngBackend
 from .stackexchange import StackExchangeBackend
@@ -30,12 +33,15 @@ LEGACY_ALIASES: Dict[str, tuple] = {
 
 
 def build_backends() -> Dict[str, SearchBackend]:
-    # Mojeek is registered so it can be enabled by name, but it is NOT in the
-    # default Settings.search_engines chain (opt-in, not live-verified).
+    # Mojeek is part of the default Settings.search_engines chain as a fallback
+    # general engine (see settings.py). It is registered here like every other
+    # backend; whether it runs is decided by the configured chain, not here.
     backends = (ExaBackend(), DuckDuckGoBackend(), SearxngBackend(), BingBackend(),
                 WikipediaBackend(), PaidSearchBackupBackend(), MojeekBackend(),
                 CrossrefBackend(), ArxivBackend(), StackExchangeBackend(),
-                GitHubSearchBackend(), GdeltBackend())
+                GitHubSearchBackend(), GdeltBackend(),
+                BingNewsBackend(), GoogleNewsBackend(),
+                PublisherFeedsBackend(), SitemapsBackend())
     return {b.name: b for b in backends}
 
 

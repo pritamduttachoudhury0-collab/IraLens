@@ -95,6 +95,11 @@ _CAPTCHA_MARKERS: Tuple[Tuple[str, str], ...] = (
     ("challenges.cloudflare.com/turnstile", "turnstile"),
     ("cf-turnstile", "turnstile"),
     ("turnstile.do/turnstile", "turnstile"),
+    # PerimeterX / HUMAN "Press & Hold": an interactive widget, so a person
+    # can clear it. Its container and script are identifiers, not prose.
+    ("px-captcha", "perimeterx"),
+    ("captcha-delivery.com", "datadome"),
+    ("geo.captcha-delivery.com", "datadome"),
 )
 
 # Provider challenge/interstitial scripts. Decisive like a widget identifier,
@@ -107,6 +112,14 @@ _CHALLENGE_MARKERS: Tuple[Tuple[str, str], ...] = (
     ("cdn-cgi/challenge-platform", "cloudflare"),
     ("__cf_chl_", "cloudflare"),
     ("_incapsula_resource", "imperva"),
+    ("_pxhd", "perimeterx"),
+    ("_px3", "perimeterx"),
+    ("/px/client/main.min.js", "perimeterx"),
+    ("x-kpsdk-ct", "kasada"),
+    ("x-kpsdk-cd", "kasada"),
+    ("sucuri_cloudproxy", "sucuri"),
+    ("token.awswaf.com", "aws-waf"),
+    ("challenge.js", "aws-waf"),
 )
 
 # Interstitial phrasing. Weaker than widget identifiers because marketing
@@ -125,6 +138,28 @@ _BOT_PHRASES: Tuple[str, ...] = (
     "unusual traffic from your computer network",
     "request blocked by administrative rules",
     "automated access is prohibited",
+    # The "prove you are not a robot" family. These are refusals to serve the
+    # page until a human acts; IraLens reports them, it does not defeat them.
+    "prove you are not a robot",
+    "prove you're not a robot",
+    "prove that you are not a robot",
+    "prove you are human",
+    "confirm you are human",
+    "confirm you are a human",
+    "verify you are a human",
+    "verify that you are human",
+    "are you a robot",
+    "i am not a robot",
+    "i'm not a robot",
+    "press and hold to confirm",
+    "press & hold to confirm",
+    "pardon our interruption",
+    "please verify you are a human",
+    "unusual activity from your",
+    "we believe you are using automation tools",
+    "access to this page has been denied",
+    "complete the captcha",
+    "solve the captcha",
 )
 
 _PROVIDER_FINGERPRINTS: Tuple[Tuple[str, str], ...] = (
@@ -137,6 +172,14 @@ _PROVIDER_FINGERPRINTS: Tuple[Tuple[str, str], ...] = (
     ("imperva", "imperva"),
     ("incapsula", "imperva"),
     ("x-datadome", "datadome"),
+    ("perimeterx", "perimeterx"),
+    ("x-px-", "perimeterx"),
+    ("kasada", "kasada"),
+    ("x-kpsdk", "kasada"),
+    ("sucuri", "sucuri"),
+    ("x-sucuri-id", "sucuri"),
+    ("awswaf", "aws-waf"),
+    ("x-amzn-waf", "aws-waf"),
 )
 
 _AUTH_PHRASES: Tuple[str, ...] = (

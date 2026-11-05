@@ -47,7 +47,18 @@ class Group:
     merged_urls: List[str] = field(default_factory=list)
 
 
-def dedup(hits: List[SearchHit], threshold: float) -> Tuple[List[Group], List[Dict[str, Any]]]:
+def dedup(hits: List[SearchHit], threshold: float, *,
+          syndication: bool = False) -> Tuple[List[Group], List[Dict[str, Any]]]:
+    """Merge duplicate hits into one group per page.
+
+    Pass 1: identical canonical URL. Pass 2: near-duplicate titles on the same
+    registrable host. Pass 3 (only when ``syndication=True``, i.e. a news
+    query): the same wire story carried by *different* outlets. Pass 3 is
+    deliberately conservative — it requires a very high title similarity after
+    stripping outlet/boilerplate words, and it keeps the copy on the most
+    credible / primary publisher. It is off for non-news searches so two
+    genuinely different pages that happen to share a title are never merged.
+    """
     log: List[Dict[str, Any]] = []
     groups: Dict[str, Group] = {}
     order: List[str] = []
@@ -92,4 +103,36 @@ def dedup(hits: List[SearchHit], threshold: float) -> Tuple[List[Group], List[Di
         else:
             target.hits.extend(group.hits)
             target.merged_urls.append(group.hits[0].url)
+
+    # Pass 3 (news only): cross-host syndication. The same wire story carried
+    # by several outlets shares a normalized title key. Merge only very high
+    # similarity, and keep the copy on the most credible / primary publisher so
+    # the reader lands on the original source, not a syndicated reprint.
+    if syndication and len(survivors) > 1:
+        from .news import looks_syndicated, source_quality
+
+        def _cred(group: Group) -> float:
+            return source_quality(group.hits[0].url)
+
+        merged_any = True
+        while merged_any:
+            merged_any = False
+            for i in range(len(survivors)):
+                if merged_any:
+                    break
+                for j in range(i + 1, len(survivors)):
+                    a, b = survivors[i], survivors[j]
+                    if registrable_host(a.hits[0].url) == registrable_host(b.hits[0].url):
+                        continue  # same-host near-dups already handled in pass 2
+                    if not looks_syndicated(a.hits[0].title, b.hits[0].title, threshold=0.85):
+                        continue
+                    # Keep the more credible / primary publisher's copy.
+                    keep, drop = (a, b) if _cred(a) >= _cred(b) else (b, a)
+                    keep.hits.extend(drop.hits)
+                    keep.merged_urls.append(drop.hits[0].url)
+                    log.append({"action": "merge", "reason": "syndication",
+                                "kept": keep.hits[0].url, "merged": drop.hits[0].url})
+                    survivors.remove(drop)
+                    merged_any = True
+                    break
     return survivors, log

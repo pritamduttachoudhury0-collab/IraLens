@@ -38,6 +38,60 @@ records at the end show exactly what was exercised and where.
    a challenge. The browser engine, when installed, is the rendered
    fallback.
 
+## News, archive and story-level lanes
+
+The archive lane (publisher sitemaps), the curated publisher feeds, and the
+story/timeline/trend view were ported from PyNewsBrowser (MIT) as native
+modules. Their parsers, bounds, routing and failure paths are covered offline
+(72 tests). The limits below are real and not yet measured away.
+
+1. **No live end-to-end validation of the new lanes.** The work environment's
+   egress allowlist blocks every publisher, sitemap and feed host, so no live
+   archive result, regional result or trend is claimed. Run
+   `benchmarks/run_recent_news.py` on a connected host to measure it.
+2. **The archive lane is a sample, not a complete archive.** It reads at most
+   3 publishers, 6 sitemap fetches each, depth 2, 5 child indexes, 4 MB per
+   document. A relevant 2019 article on a publisher outside that sample, or
+   deeper in a large sitemap tree, will not be found. It is bounded on purpose:
+   an unbounded crawl is not polite and not predictable.
+3. **Sitemap coverage varies by publisher.** Some publishers do not publish
+   `news:publication_date`, so only `lastmod` is available. That is reported as
+   a **revision** date and never promoted to a publication date, which means
+   such an article can be found but not confidently dated.
+4. **Sitemap titles may be absent.** When a sitemap has no `news:title`, the
+   title is derived from the URL slug. That is a readable label, not a
+   publisher-authored headline, and it is not a claim about the article's
+   contents.
+5. **The curated feed pack is 22 feeds, chosen by hand.** It is not a directory
+   of world media. Regional selection covers the packs that exist (including
+   Assam / Northeast India); a region with no pack falls back to general feeds.
+6. **A feed is a firehose of the latest items, not a search index.** The query
+   filter runs over the items the feed currently exposes (up to 60 per feed,
+   4 feeds per query). A relevant story that has already scrolled off the feed
+   is not retrievable this way.
+7. **Story clustering is lexical, not semantic.** It folds English inflections
+   and compares headline words. Two outlets describing one event in genuinely
+   different words can end up as two stories; two different events with
+   near-identical headlines can merge. The threshold is exposed and the
+   cluster's member URLs are always returned so the grouping can be checked.
+8. **Trend scores are a visible heuristic, not a measurement of popularity.**
+   They combine distinct-publisher count, recency and story count. They are
+   not an official "trending" list, not a probability, and not comparable
+   across queries. Every signal carries the counts it came from. When no
+   dated recent coverage exists the window is labelled `undated/all-results`
+   rather than silently pretending to be a 48-hour trend.
+9. **Timelines only use publication dates.** Stories without one are counted
+   and reported as excluded; they are never placed on the timeline by guess.
+10. **Human-verification walls are reported, not defeated.** Detection covers
+    reCAPTCHA, hCaptcha, Turnstile, Cloudflare, PerimeterX/HUMAN, DataDome,
+    Imperva, Kasada, Sucuri, AWS WAF and the "prove you are not a robot"
+    wording family. A confident detection raises `verification_required` with
+    the provider and marker; the other publishers in the query still get read.
+    Detection is deliberately conservative — an article *about* bot checks is
+    not treated as a wall — which means an unusual wall with no provider
+    fingerprint and a 200 status may be reported as unconfident rather than
+    blocked.
+
 ## Research quality
 
 6. **Claims are heuristic.** Claims are whole sentences that share a term
@@ -93,11 +147,24 @@ records at the end show exactly what was exercised and where.
   about live markup stability, service terms, result quality, or availability.
   It follows DuckDuckGo and Bing, has an 8-second request cap, and is subject
   to the shared circuit breaker.
-- **GDELT news search is newly intent-routed and not yet live-validated.** It
-  uses the public DOC 2.0 API with no key, but the datacenter benchmark run at
-  `240ff01` predates this adapter. GDELT's article-index timestamp is not
-  treated as publication time; news freshness remains unknown unless a source
-  reports a publication date.
+- **The recent-news pipeline was rebuilt and is offline-tested, but not yet
+  live-validated.** News-shaped queries now route keyless news-discovery feeds
+  (Bing News RSS, Google News RSS) plus GDELT, detect explicit time windows
+  (today / last 24 hours / last 7 days), extract and verify real publication
+  dates from publisher pages, keep publication / updated / index-seen /
+  retrieval dates separate, dedupe syndicated copies, and rank with a short
+  news freshness half-life behind a pure-relevance gate. GDELT now paces at its
+  published 5-second limit and classifies its HTTP-200 rate-limit notice as a
+  rate limit (not malformed JSON). This is covered by offline regression tests
+  (`tests/test_recent_news.py`, `tests/test_news_security.py`,
+  `tests/test_gdelt.py`). **A live /25 score is not claimed**: the environment
+  used for this work has no outbound access to the news providers, so
+  `benchmarks/run_recent_news.py` reports the run as blocked rather than
+  fabricating a number. GDELT's article-index timestamp is still never treated
+  as publication time; a date stays unknown unless a source establishes it.
+  Run `python benchmarks/run_recent_news.py` on a host with provider access to
+  measure the genuine score. Note the feed providers' terms: Bing/Google News
+  RSS are for personal, non-commercial feed-reader-style use.
 - **Live frozen-search results remain below the requested target.** The
   2026-10-19 datacenter run on `240ff01` scored `free_replacement_rate` 0.715
   (143/200) with no paid-backup attempts. Recent-news was 0/25 and
@@ -556,3 +623,10 @@ ranking delta, clean-environment install). Interim suite runs grew from
 - Public SearXNG instances bundled as defaults.
 - Auto-login to platforms; authenticated sources use credentials or browser
   sessions you provide.
+- **Defeating CAPTCHAs, "prove you are not a robot" checks, or bot walls.**
+  These are the site owner's access control. IraLens detects, classifies and
+  reports them, then uses a different source. It does not solve them, forge
+  tokens, or spoof fingerprints to get around them. (The separate opt-in
+  solving integration uses the *operator's own* account and API key, is off by
+  default, and reports exactly what it did — that is the operator answering a
+  challenge on their own behalf, not IraLens defeating one.)

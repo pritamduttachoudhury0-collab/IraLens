@@ -396,6 +396,19 @@ def read_direct(
         html = body.decode("utf-8", errors="replace")
         text = html_to_markdown(html)
         title = extract_title(html)
+        # Publication and modification dates from the page's *own* metadata
+        # (JSON-LD, article meta, <time datetime>), kept separate and never
+        # invented. Carried to the artifact so a news read can corroborate a
+        # feed's pubDate against the publisher page. A malformed page must not
+        # break the read, so extraction is best-effort.
+        try:
+            from ..search.news import extract_article_dates
+            article_dates = extract_article_dates(html)
+            if isinstance(_DIRECT_META_LOCAL.last, dict) and (
+                    article_dates.published_at or article_dates.modified_at):
+                _DIRECT_META_LOCAL.last["article_dates"] = article_dates.to_dict()
+        except Exception:
+            pass
         # The <title> (or first <h1>) is trustworthy page metadata. It is
         # carried to the artifact builder explicitly instead of being
         # re-derived from the markdown, where a page whose blocks failed to
@@ -681,6 +694,22 @@ class WebSource(Source):
                 if sec_flags:
                     warnings.extend(f"security:{f}" for f in sec_flags)
 
+                # Publication/modification dates from the *rendered* DOM. The
+                # markdown conversion drops JSON-LD/meta/<time>, so a JS-heavy
+                # article would otherwise lose its date evidence. Read the same
+                # components the static path reads, judged by the same rules.
+                # Best-effort: a renderer that cannot evaluate JS must not break
+                # the read; the date then stays unknown, never invented.
+                browser_article_dates: Optional[Dict[str, Any]] = None
+                try:
+                    from ..search.news import DOM_DATE_COMPONENTS_JS, article_dates_from_dom
+                    dom_payload = engine.evaluate_js(DOM_DATE_COMPONENTS_JS)
+                    dates = article_dates_from_dom(dom_payload)
+                    if dates.published_at or dates.modified_at:
+                        browser_article_dates = dates.to_dict()
+                except Exception:
+                    browser_article_dates = None
+
                 metadata: Dict[str, Any] = {
                     "requested_url": safe_url,
                     "final_url": final_url,
@@ -690,6 +719,8 @@ class WebSource(Source):
                     "truncated": max_chars > 0 and len(content) >= max_chars,
                     "title_source": title_source,
                 }
+                if browser_article_dates:
+                    metadata["article_dates"] = browser_article_dates
                 # When the page met a challenge, say so: whether it was
                 # cleared, solved, or left standing is part of how this read
                 # happened.
@@ -726,6 +757,11 @@ class WebSource(Source):
                              "fallback_result": "kept_static_text"})
                         static_artifact.provenance["fallback"] = {
                             "reason": "js_shell", "result": "kept_static_text"}
+                        # The static text is kept, but a date the rendered DOM
+                        # revealed (and the static shell lacked) is still real
+                        # evidence — do not drop it with the browser text.
+                        if browser_article_dates and "article_dates" not in static_artifact.metadata:
+                            static_artifact.metadata["article_dates"] = browser_article_dates
                         return static_artifact
                     provenance["fallback"] = {"reason": "js_shell", "result": "browser_text"}
                 return Artifact(
@@ -805,6 +841,11 @@ def _static_artifact(url: str, markdown: str, *, cache: dict, flags=None,
         metadata["status_code"] = status_code
     if content_type is not None:
         metadata["content_type"] = content_type
+    # Publication/modification dates read from the page's own metadata. Kept
+    # separate from the retrieval time (the artifact's retrieved_at) and from
+    # any search-index discovery date, so a consumer can tell them apart.
+    if isinstance(direct_meta.get("article_dates"), dict):
+        metadata["article_dates"] = direct_meta["article_dates"]
     if max_chars:
         metadata["max_chars"] = max_chars
     # Reported whenever it is known, not only when the content was cut: a

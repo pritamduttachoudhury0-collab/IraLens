@@ -2,6 +2,158 @@
 
 All notable changes to this project are documented here, newest first.
 
+## Unreleased
+
+Recent-news retrieval rebuilt, **archive and regional news lanes added**,
+browser-engine lifecycle hardened, and the news attack surface pinned with
+security regressions. Everything below is covered by the offline suite;
+**live provider validation is still pending** (the work environment had no
+outbound access to the news providers, so no live /25 score is claimed).
+
+### Added — archive, regional and story-level news
+
+Capabilities adapted from PyNewsBrowser (MIT, (c) 2026 PyNewsBrowser
+contributors), ported as native IraLens modules rather than vendored as a
+dependency, so they inherit IraLens's SSRF guard, host pacing, typed failures
+and cache. Each ported module carries the attribution.
+
+- **Archive lane** (`iralens/search/engines/sitemaps.py`). "climate policy in
+  2019", "between 2019 and 2021", "from 2018-03 to 2018-09" and "since
+  2018-03-01" now route to publisher sitemaps instead of rolling news indexes.
+  Every recent-news source holds a recent window only, which is why historical
+  news had no source at all. Bounded crawl (3 publishers, 6 fetches, depth 2,
+  5 child indexes, 4 MB cap), `robots.txt`-declared sitemap preferred, 1 s
+  per-host pacing.
+- **`is_archive` news intent.** A span ending in the current year is not an
+  archive question. A bare "history" is not either: "history of the roman
+  empire" stays an encyclopedia query, and "latest news on the history of AI"
+  stays a news query.
+- **Flat freshness for archive queries.** For "in 2019" a 2019 article is the
+  correct answer; the 7-day news half-life would have ranked it last.
+- **Curated publisher feeds** (`sources_pack.py`, `engines/publisher_feeds.py`).
+  22 feeds with region/topic selection, read directly and in parallel across
+  distinct hosts (4 per query). This is the lane that reaches Assam and
+  Northeast India outlets, which global indexes surface late or never.
+- **Story clusters, event timelines and trend signals**
+  (`iralens/search/events.py`), exposed as `SearchResponse.events` and
+  `SearchResponse.trends` through the API, CLI and MCP. Eight copies of one wire
+  report become one story; timelines are ordered by publication dates only and
+  state how many stories were excluded; trend scores carry the counts they were
+  computed from. All entry points take an injectable `today`.
+- **Wider human-verification detection** (`iralens/challenge.py`): the
+  "prove you are not a robot" / "verify you are a human" wording family,
+  PerimeterX/HUMAN "Press & Hold", DataDome, Kasada, Sucuri and AWS WAF, added
+  to the existing reCAPTCHA/hCaptcha/Turnstile/Cloudflare/Imperva coverage.
+  Detection and typed reporting only — **no bypass**.
+- **Challenge detection on the keyless fetch path** (`fetch_url_text(...,
+  detect_challenge=True)`), used by the sitemap, publisher-feed and news-RSS
+  lanes. An HTML verification wall becomes a typed `verification_required`
+  error instead of being parsed as content. Only HTML is inspected, so a feed
+  whose article title mentions a block page is not misread.
+- **`contrib/pynewsbrowser/`** — a standalone SSRF fix offered to the upstream
+  project, whose `/api/read?url=` and learned URL templates fetched any
+  caller-supplied URL with `follow_redirects=True`. Includes the guard, a
+  patch, 25 upstream tests and a write-up. Not on IraLens's runtime path.
+
+### Fixed — archive, regional and story-level news
+
+- **Sitemap `lastmod` is no longer promoted to a publication date.** A page
+  edited in 2026 is not a page published in 2026. The ported source conflated
+  them; the port keeps `publication_date` → `published_at` and `lastmod` →
+  `modified_at`, with `date_kind` and a `date_is_revision_only` flag.
+- **Sitemap fetch budget now counts attempts, not successes.** Counting only
+  successes let a publisher whose sitemaps all fail be walked one request at a
+  time through an arbitrarily long index — the bound was decorative.
+- **Unreadable sitemaps are a typed failure, not an empty archive.** Previously
+  every fetch error was swallowed and the lane returned `[]`, which reads as
+  "no historical coverage exists". A readable index whose children all fail is
+  now also a failure. A genuinely empty sitemap stays a quiet zero.
+- **A verification wall stays typed through the sitemap lane** instead of being
+  flattened into a generic outage.
+- **Archive domains are deduplicated.** The ported source took `[:3]` of a list
+  where one publisher appears twice, spending the domain budget on two
+  publishers.
+- **Hyphenated URL slugs are tokenized before matching.** `term_set` keeps
+  `climate-old-story` as one token, so naive sitemap-URL matching silently
+  returned nothing.
+- **Story clustering folds English inflections.** "floods displace thousands"
+  and "thousands displaced" are one story; "RBI holds rates" and "RBI cuts
+  rates" stay separate.
+- **`cluster_results(threshold=...)` is honoured.** The parameter was accepted
+  and ignored, and the syndication shortcut bypassed it entirely.
+- **Containment is no longer reported as exact similarity.** A headline that
+  merely contains another no longer scores 1.0.
+
+### Added
+
+- **Recent-news pipeline.** News-shaped queries now route keyless
+  news-discovery feeds — Bing News RSS and Google News RSS
+  (`iralens/search/engines/news_rss.py`) — alongside GDELT. They carry the
+  publisher's own `pubDate` and a direct article URL, which the general SERP
+  engines and GDELT's index-seen time do not.
+- **News intelligence** (`iralens/search/news.py`): explicit time-window
+  detection (today / yesterday / last 24 hours / last 7 days / this month,
+  numeric and word forms), wire-timestamp normalization (RFC 822, ISO 8601,
+  GDELT compact, epoch), publisher-page publication-date extraction (JSON-LD →
+  article meta → `<time datetime>`), bounded source-credibility and
+  primary-publisher signals, and cross-domain syndication keys.
+- **Four-way date separation.** Publication, updated, index-discovery, and
+  retrieval dates are kept apart end to end. An unestablished publication date
+  stays `unknown`; it is never substituted with another date. Read artifacts
+  now carry `article_dates` metadata, and ranked news results carry
+  `date_confidence` and a `news_verification` record.
+- **News date/topic verification.** The orchestrator reads the top publisher
+  pages (`news_verify_top_n`), corroborates the feed date against the page's
+  own metadata, checks topic match, and marks unreadable pages unverified
+  rather than presenting them as confirmed fresh.
+- **Publication dates from Obscura-rendered pages.** The browser read path now
+  extracts publication/modification dates from the *rendered DOM* (JSON-LD,
+  meta, `<time>`) via a bounded, read-only JS snippet, using the same priority
+  and normalization as the static path. Previously a JS-heavy article rendered
+  by the browser lost its date evidence (markdown drops meta/JSON-LD), so it
+  could not be date-verified. The date still stays unknown — never invented —
+  when the renderer cannot establish it.
+- **News-aware ranking.** A dedicated news weight profile (freshness 0.35 on a
+  7-day half-life, publisher credibility as its own factor) behind a
+  *pure-relevance* gate, so recency never rescues an off-topic result.
+- **`SearchResponse.news` diagnostics** and an honest recent-news benchmark
+  reporter (`benchmarks/run_recent_news.py`) that reuses the frozen 25-query
+  gold predicate and reports blocked runs as blocked — never a fabricated
+  score.
+- **Regression tests:** `tests/test_recent_news.py`, `tests/test_news_security.py`
+  (SSRF via feed/click-wrapper URLs incl. cloud-metadata, injection flagging),
+  expanded `tests/test_gdelt.py`, and browser-engine lifecycle concurrency
+  tests in `tests/test_engine_lifecycle.py`.
+- **`HOW_IT_WORKS.md`** — a plain-English walkthrough for non-programmers.
+
+### Fixed
+
+- **GDELT provider contract.** Pacing corrected from 1 s to the published
+  5-second limit; the HTTP-200 plain-text rate-limit notice is now classified
+  as `RateLimitedError` (wait) instead of `invalid_json`; a news query with no
+  explicit date window gets a gated recency `timespan` (the raw-query and
+  explicit-date contracts are unchanged).
+- **Browser-engine double-spawn race.** `start()` now serializes
+  check-and-spawn-and-handshake under a reentrant lifecycle lock, so concurrent
+  callers cannot orphan a second child.
+- **Zombie processes.** `close()` and `_terminate()` now `wait()` after
+  `kill()`, reaping a child that would not exit instead of leaving a zombie.
+- **Test-harness teardown errors.** `tests/conftest.py` restores source
+  singletons in the right order relative to pytest's `monkeypatch` undo,
+  eliminating two baseline teardown errors under pytest 9. No assertions were
+  weakened.
+
+### Changed
+
+- News routing for news-shaped queries is now
+  `("bing-news", "google-news", "gdelt")` (was GDELT-only); the corresponding
+  routing test asserts the stronger contract.
+- Documentation reconciled with the implementation: the stale Mojeek
+  "not in default chain" comment, the README bundled-vs-optional browser
+  wording, and the recent-news entries in `KNOWN_LIMITATIONS.md` /
+  `BENCHMARKS.md` (historical measurements preserved; rebuild noted; live
+  validation marked pending).
+
 ## 0.3.5 — 2026-10-19
 
 Browser resilience, a working stealth tier, an Obscura provenance and
