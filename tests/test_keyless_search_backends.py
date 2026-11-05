@@ -41,10 +41,42 @@ def test_specialist_routes_require_a_matching_search_intent():
     assert specialist_search_engines(
         "nginx reverse proxy websocket version specific known issue") == ("stackexchange",)
     assert specialist_search_engines("GitHub API rate limits official policy") == ()
-    assert specialist_search_engines("latest news about central bank policy") == ("gdelt",)
-    assert specialist_search_engines("weather forecast for the next storm") == ("gdelt",)
-    assert specialist_search_engines("Python latest version release notes") == ("gdelt", "stackexchange")
+    # News-shaped queries route the keyless news-discovery feeds (which carry
+    # the publisher's own publication date), the curated publisher feeds (which
+    # reach local/regional outlets), then GDELT's broad international index.
+    # The dated feeds come first so a dated publisher article is discoverable
+    # even when the general SERP engines return undated hits.
+    assert specialist_search_engines("latest news about central bank policy") == (
+        "bing-news", "google-news", "publisher-feeds", "gdelt")
+    assert specialist_search_engines("weather forecast for the next storm") == (
+        "bing-news", "google-news", "publisher-feeds", "gdelt")
+    assert specialist_search_engines("Python latest version release notes") == (
+        "bing-news", "google-news", "publisher-feeds", "gdelt", "stackexchange")
     assert specialist_search_engines("capital of Assam") == ()
+
+
+def test_archive_questions_route_to_sitemaps_not_rolling_news_indexes():
+    """A historical question must not be sent to recent-only indexes.
+
+    GDELT DOC and the news feeds hold a rolling recent window; asking them for
+    2019 returns nothing, which is how historical news scored 0/25. Publisher
+    sitemaps still list the old articles, so they lead the archive route.
+    """
+    for question in ("climate policy in 2019",
+                     "oil prices between 2019 and 2021",
+                     "trade war from 2018-03 to 2018-09",
+                     "historical reporting on the floods"):
+        routed = specialist_search_engines(question)
+        assert routed[0] == "sitemaps", (question, routed)
+        assert "publisher-feeds" in routed
+        assert "gdelt" not in routed and "bing-news" not in routed, (question, routed)
+
+
+def test_current_year_is_not_treated_as_an_archive_question():
+    # "in 2026" is this year: it is a news question, not an archive dig.
+    routed = specialist_search_engines("in 2026 election news")
+    assert "sitemaps" not in routed
+    assert "bing-news" in routed
 
 
 def test_crossref_parser_preserves_doi_abstract_and_publication_date():

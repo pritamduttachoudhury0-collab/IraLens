@@ -32,10 +32,19 @@ def snapshot_source_singletons() -> list:
 
 
 def restore_source_singletons(snapshot: list) -> None:
-    """Put every source object back exactly as `snapshot` found it."""
+    """Put every source object back exactly as `snapshot` found it.
+
+    Deletion is tolerant: a test may have patched an instance attribute via
+    ``monkeypatch``, whose own teardown also removes it. Deleting an attribute
+    that is already gone must not raise, or the guard turns a clean test into
+    a teardown error (pytest 9 records instance-shadow patches as deletions).
+    """
     for source, attributes in snapshot:
         for name in [n for n in vars(source) if n not in attributes]:
-            delattr(source, name)
+            try:
+                delattr(source, name)
+            except AttributeError:
+                pass
         for name, value in attributes.items():
             setattr(source, name, value)
 
@@ -51,10 +60,20 @@ class SourceRegistryGuard:
 
 
 @pytest.fixture(autouse=True)
-def pristine_sources():
-    """Every test starts and ends with the source registry as it was."""
+def pristine_sources(monkeypatch):
+    """Every test starts and ends with the source registry as it was.
+
+    ``monkeypatch`` is requested so that, at teardown, the test's own patches
+    are undone *before* the guard restores the snapshot. Otherwise the guard
+    deletes an instance attribute (e.g. a stubbed ``read_url``) and pytest's
+    later ``monkeypatch.undo()`` tries to delete the same attribute again,
+    raising ``AttributeError`` and turning a passing test into a teardown
+    error. Undoing first consumes the monkeypatch stack; its automatic
+    teardown is then a harmless no-op.
+    """
     guard = SourceRegistryGuard()
     yield guard
+    monkeypatch.undo()
     guard.restore()
 
 

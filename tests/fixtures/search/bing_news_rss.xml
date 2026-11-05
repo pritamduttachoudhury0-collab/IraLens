@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:News="http://schemas.microsoft.com/News/2010">
+  <channel>
+    <title>Federal Reserve interest rate decision - Bing News</title>
+    <link>https://www.bing.com/news/search?q=Federal+Reserve+interest+rate+decision&amp;format=rss</link>
+    <description>Search results</description>
+    <item>
+      <title>Federal Reserve makes interest rate decision ahead of midterms</title>
+      <link>http://www.bing.com/news/apiclick.aspx?ref=FexRss&amp;url=https%3a%2f%2fwww.foxbusiness.com%2feconomy%2ffederal-reserve-interest-rate-decision-october-28-2026&amp;c=15402686928659694849&amp;mkt=en-us</link>
+      <description>Federal Reserve policymakers left interest rates unchanged at their October meeting while inflation remains elevated.</description>
+      <pubDate>Wed, 28 Oct 2026 11:00:00 GMT</pubDate>
+      <News:Source>Fox Business</News:Source>
+    </item>
+    <item>
+      <title>Federal Reserve holds interest rates steady despite inflation concerns</title>
+      <link>http://www.bing.com/news/apiclick.aspx?ref=FexRss&amp;url=https%3a%2f%2fwww.usatoday.com%2fstory%2fmoney%2feconomy%2f2026%2f10%2f28%2ffederal-reserve-october-interest-rate-decision--live%2f92441632007%2f&amp;c=6736893885980283694&amp;mkt=en-us</link>
+      <description>Forecasters expect Federal Reserve officials to hold their benchmark for short-term interest rates steady.</description>
+      <pubDate>Wed, 28 Oct 2026 14:27:00 GMT</pubDate>
+      <News:Source>USA TODAY</News:Source>
+    </item>
+    <item>
+      <title>Shutdown clouds Federal Reserve interest rate cut decision</title>
+      <link>http://www.bing.com/news/apiclick.aspx?ref=FexRss&amp;url=https%3a%2f%2fwww.thestreet.com%2ffed%2fshutdown-clouds-federal-reserve-interest-rate-cut-decision&amp;c=1105464997854100&amp;mkt=en-us</link>
+      <description>The CME Group FedWatch Tool shows a 97.8% chance of a quarter-percentage point reduction.</description>
+      <pubDate>Mon, 27 Oct 2025 15:37:00 GMT</pubDate>
+      <News:Source>TheStreet</News:Source>
+    </item>
+    <item>
+      <title>Missing link item should be skipped</title>
+      <description>No link here.</description>
+      <pubDate>Wed, 28 Oct 2026 11:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

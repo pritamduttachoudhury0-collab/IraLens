@@ -106,6 +106,65 @@ consulted **only by search transports**. Page reads stay strict, so a
 private URL that appears in a search result is still blocked; link-local and
 metadata names are refused even when allowlisted.
 
+## News and archive lanes
+
+News-shaped and archive-shaped queries are routed to additional keyless lanes
+*before* the general chain. The general engines still run alongside them, so a
+news answer never depends on one provider.
+
+| Lane | Name | What it returns | Why it exists |
+|---|---|---|---|
+| Bing News RSS | `bing-news` | Direct publisher URL + publisher `pubDate` | The general SERP engines return undated hits. |
+| Google News RSS | `google-news` | Recent headlines; newer links stay Google redirects | Breadth. Encrypted article links are **not** decoded into guessed publisher URLs. |
+| Curated publisher feeds | `publisher-feeds` | The publisher's own feed, read directly | Global indexes reach small regional outlets late or never. Region/topic selected; includes Assam / Northeast India packs. |
+| GDELT DOC 2.0 | `gdelt` | Direct publisher URLs, no publication date | Broad international coverage. `seendate` is index-seen, never a publication date. |
+| Publisher sitemaps | `sitemaps` | Old articles, with `news:publication_date` when present | **Archive questions.** Every lane above holds a rolling recent window, so "in 2019" had no source at all. |
+
+Routing:
+
+- News query → `bing-news`, `google-news`, `publisher-feeds`, `gdelt`.
+- Archive query → `sitemaps`, `publisher-feeds`. Detected from an older named
+  span: "in 2019", "between 2019 and 2021", "from 2018-03 to 2018-09",
+  "since 2018-03-01". A span ending in the current year is *not* archive, and a
+  bare "history" is not either — "history of the roman empire" stays a general
+  query.
+- Archive queries hold freshness **flat**. For "in 2019" a 2019 article is the
+  correct answer; the news half-life would otherwise rank it last.
+
+Bounds (deliberate, and the reason the lanes are polite and predictable):
+
+| Lane | Bound |
+|---|---|
+| `sitemaps` | 3 publishers, 6 fetch **attempts** each, depth 2, 5 child indexes, 4 MB/document, 1 s per host. `robots.txt` read first; its declared `Sitemap:` preferred. |
+| `publisher-feeds` | 4 feeds per query, up to 60 items parsed per feed, 3 MB/feed, parallel across *distinct* hosts, 1 s per host. |
+
+Both are `paginated = False`: an offset is refused rather than silently
+returning page 1 again.
+
+### Dates in these lanes
+
+A sitemap can carry two different dates and they are never conflated:
+
+| Sitemap field | Maps to | `date_kind` |
+|---|---|---|
+| `news:publication_date` | `published_at` | `publication` |
+| `lastmod` | `modified_at` | `revision` (only when no publication date) |
+
+A page edited in 2026 is not a page published in 2026. A `lastmod`-only row is
+flagged `raw.date_is_revision_only` and is never presented as published then.
+When a sitemap gives no `news:title`, the title is derived from the URL slug —
+a readable label, not a publisher-authored headline.
+
+### Failure honesty
+
+- Every fetch failing is a typed `source_unavailable`, never an empty success
+  that reads as "no coverage exists".
+- One dead feed or one unreachable publisher does not empty the lane.
+- An HTML human-verification wall raises `verification_required` with the
+  provider and marker. It is **not** bypassed, and the other publishers still
+  get read. Only HTML is inspected, so a feed whose article title mentions a
+  block page is not misread.
+
 ## Reading a `SearchResponse`
 
 | Field | Meaning |
@@ -123,6 +182,9 @@ metadata names are refused even when allowlisted.
 | `degraded` / `degradation` | Boolean plus answered, failed and skipped engine names and skip reasons; a successful query can still be degraded. |
 | `shortfall_reason` | `capped`, `deduped`, `filtered`, or `exhausted` when fewer than the requested result count is returned; no results are never padded. |
 | `results[].date_evidence` | Date provenance (`snippet_iso`, `snippet_written`, `url_path`) when a result date was extracted locally; blank when supplied only by the engine or unknown. |
+| `news` | News diagnostics: `is_news`, `is_archive`, the detected window and its evidence, `with_publication_date`, `pages_read`, `dates_corroborated`, `topic_matched`, `high_confidence_dates`. Empty for non-news queries. |
+| `events` | Story-level view: `clusters[]` (member `urls`, distinct `sources`, `first_report`, `latest_update`, `primary_url`), plus `story_count`, `source_count`, `dated_story_count` and a `note` explaining any exclusion. Publication dates only. Empty for non-news queries. |
+| `trends[]` | Coverage signals: `topic`, `score`, `window`, `source_count`, `story_count`, `evidence[]` (the counts behind the score), `representative_urls`. A visible heuristic — not an official trending list, not a probability, not comparable across queries. |
 
 ## Filter support by engine
 
@@ -220,6 +282,19 @@ Every knob lives in `iralens/settings.py` and reads from `config.yaml` or
 `IRALENS_BACKUP_SEARCH_API_KEY` (never called unless both are set).
 Quality-based paid fallback is separately opt-in with
 `IRALENS_SEARCH_PAID_FALLBACK_ON_LOW_COVERAGE=true`.
+
+News lanes have their own switches. Turning one off means the lane is simply
+not routed — it is never reported as a failure:
+
+| Setting | Default | Effect |
+|---|---|---|
+| `news_engines_enabled` | `true` | Route Bing/Google News RSS. |
+| `news_publisher_feeds_enabled` | `true` | Read curated publisher feeds (the regional lane). |
+| `news_archive_enabled` | `true` | Use publisher sitemaps for archive questions. With this off, a historical news question has no archive source. |
+| `news_events_enabled` | `true` | Build `events` and `trends` for news queries. |
+| `news_trend_window_days` | `2` | Lookback window for coverage-velocity signals. |
+| `news_verify_dates` | `true` | Read the top publisher pages to corroborate dates. |
+| `news_verify_top_n` | `4` | How many pages to read for verification. |
 
 ## Source policy
 

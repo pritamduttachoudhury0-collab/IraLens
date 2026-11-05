@@ -1,0 +1,85 @@
+--- PyNewsBrowser/src/pynewsbrowser/http.py	2026-11-05 01:20:43.616201114 +0000
++++ /home/user/_attachments/PyNewsBrowser/src/pynewsbrowser/http.py	2026-11-05 01:20:51.188300221 +0000
+@@ -17,6 +17,7 @@
+ import httpx
+ 
+ from .config import Settings
++from .safeurl import SafeRedirects, normalize_public_http_url
+ from .utils import sha1
+ 
+ 
+@@ -71,7 +72,8 @@
+     async def start(self) -> None:
+         if self._client is None:
+             self._client = httpx.AsyncClient(
+-                follow_redirects=True,
++                # Redirects are followed manually so every hop is re-validated.
++                follow_redirects=False,
+                 timeout=self.settings.timeout,
+                 headers={"User-Agent": self.settings.user_agent,
+                          "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
+@@ -158,6 +160,10 @@
+                   use_cache: bool = True, respect_robots: bool | None = None,
+                   retries: int = 2, timeout: float | None = None) -> HttpResponse:
+         await self.start()
++        # SSRF guard: this method is reachable from /api/read?url= and from
++        # learned URL templates, so the target must be a clean public HTTP(S)
++        # URL before any request is made.
++        url = normalize_public_http_url(url)
+         if use_cache:
+             cached = self._cache_get(url)
+             if cached is not None:
+@@ -172,7 +178,8 @@
+                 async with self._sem:
+                     await self._throttle(url)
+                     t0 = time.monotonic()
+-                    r = await self.client.get(url, headers=headers, timeout=timeout or self.settings.timeout)
++                    r = await SafeRedirects(self.client).get(
++                        url, headers=headers, timeout=timeout or self.settings.timeout)
+                     elapsed = int((time.monotonic() - t0) * 1000)
+                 if r.status_code in (429, 500, 502, 503, 504) and attempt < retries:
+                     retry_after = r.headers.get("Retry-After")
+@@ -208,6 +215,7 @@
+                         respect_robots: bool = False, timeout: float | None = None) -> HttpResponse:
+         """Small POST helper for form-encoded resolver endpoints. Not cached."""
+         await self.start()
++        url = normalize_public_http_url(url)
+         if respect_robots and not await self._robots_allowed(url):
+             raise RobotsBlocked(url)
+         async with self._sem:
+--- PyNewsBrowser/src/pynewsbrowser/webapp.py	2026-11-05 01:20:43.616201114 +0000
++++ /home/user/_attachments/PyNewsBrowser/src/pynewsbrowser/webapp.py	2026-11-05 01:19:11.362994204 +0000
+@@ -9,6 +9,7 @@
+ 
+ from .browser import NewsBrowser
+ from .config import Settings
++from .safeurl import UnsafeURLError, normalize_public_http_url
+ from .models import Mode, NewsQuery
+ from .newsops import OperationStore
+ 
+@@ -78,6 +79,13 @@
+ 
+     @app.get("/api/read")
+     async def read(url: str, render: str = "auto"):
++        # This endpoint takes a caller-supplied URL. Without this check the
++        # server can be pointed at cloud metadata or its own private network.
++        try:
++            url = normalize_public_http_url(url)
++        except UnsafeURLError:
++            return JSONResponse({"error": "only public HTTP(S) URLs are allowed"},
++                                status_code=400)
+         article = await browser.read_async(url, render=render)
+         return JSONResponse(article.to_dict())
+ 
+--- PyNewsBrowser/src/pynewsbrowser/newsops/learn.py	2026-11-05 01:20:43.616201114 +0000
++++ /home/user/_attachments/PyNewsBrowser/src/pynewsbrowser/newsops/learn.py	2026-11-05 01:20:35.740098122 +0000
+@@ -76,6 +76,9 @@
+ 
+ async def learn_json_search(name: str, url_template: str, examples: list[dict[str, Any]], client: HttpClient,
+                             held_out: dict[str, Any] | None = None, notes: str = "") -> OperationSpec:
++    from ..safeurl import normalize_public_http_url
++    # The template is a URL the tool will later fetch on the operator's behalf.
++    normalize_public_http_url(url_template.replace("{query}", "example"))
+     if "{query}" not in url_template and not any("{" in url_template for _ in [0]):
+         raise ValueError("url_template must contain at least one parameter slot such as {query}")
+     samples = []

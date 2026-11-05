@@ -152,6 +152,12 @@ class BrowserEngine:
         self._reader: Optional[threading.Thread] = None
         self._stderr_tail: List[str] = []
         self._lock = threading.Lock()
+        # Lifecycle lock: serializes start()/close() so two concurrent callers
+        # cannot both observe "not running" and spawn two children (one becomes
+        # an orphan). Reentrant because close() calls back into call()->start();
+        # it is distinct from _lock (the RPC lock) and always acquired before it,
+        # so the two locks can never deadlock.
+        self._lifecycle_lock = threading.RLock()
         self._restored_state = False
         self._startup_failure: Optional[errors.EngineUnavailableError] = None
         #: What the running engine reported in its `initialize` response.
@@ -185,6 +191,15 @@ class BrowserEngine:
         return _HANDSHAKE_TIMEOUT
 
     def start(self) -> None:
+        # Serialize the whole check-and-spawn-and-handshake sequence. Without
+        # this, two concurrent callers (the search thread pool runs browser
+        # reads in parallel) could both see "not running" and each spawn a
+        # child, orphaning one. The handshake stays inside the lock so a second
+        # caller waits for the engine to be ready, then sees running and returns.
+        with self._lifecycle_lock:
+            self._start_locked()
+
+    def _start_locked(self) -> None:
         if self.running:
             return
         if self._startup_failure is not None:
@@ -312,10 +327,20 @@ class BrowserEngine:
                 proc.kill()
             except Exception:
                 pass
+            # Reap the killed child so it does not linger as a zombie.
+            try:
+                proc.wait(timeout=2)
+            except Exception:
+                pass
 
     def close(self, *, persist_state: bool = True) -> None:
+        with self._lifecycle_lock:
+            self._close_locked(persist_state=persist_state)
+
+    def _close_locked(self, *, persist_state: bool = True) -> None:
         self._startup_failure = None
-        if not self._proc:
+        proc = self._proc
+        if not proc:
             return
         if persist_state:
             try:
@@ -330,11 +355,21 @@ class BrowserEngine:
         except Exception:
             pass
         try:
-            if self._proc.stdin:
-                self._proc.stdin.close()
-            self._proc.wait(timeout=5)
+            if proc.stdin:
+                proc.stdin.close()
+            proc.wait(timeout=5)
         except Exception:
-            self._proc.kill()
+            # The child did not exit in time: kill it AND reap it. A kill()
+            # without a following wait() leaves a zombie until the parent
+            # exits, which leaks a process table entry per close.
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            try:
+                proc.wait(timeout=5)
+            except Exception:
+                pass
         self._proc = None
 
     # ------------------------------------------------------------ JSON-RPC

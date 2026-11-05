@@ -29,6 +29,7 @@ from .engines import LEGACY_ALIASES, build_backends
 from .engines.base import SearchBackend
 from .fallback import run_chain
 from .intent import classify_query, intent_multiplier, specialist_search_engines
+from .news import detect_news_intent, source_quality
 from .querytext import parse_site_scopes, sanitize_query, term_set
 from .ranking import (
     authority, combine, freshness, relevance, relevance_gate, today_utc,
@@ -192,6 +193,19 @@ class SearchEngine:
         if scope_domains and not filters.include_domains:
             filters = replace(filters, include_domains=tuple(scope_domains))
 
+        # A news question that names an explicit time window ("today", "last
+        # 24 hours", "last seven days") gets a real recency constraint. It is
+        # applied only when the caller has not set their own date filter, and
+        # undated results are still kept (exclude_unknown_dates stays off) so
+        # the window sharpifies ranking/discovery without silently hiding
+        # results whose date is unknown. The news backends use it natively.
+        news_intent = detect_news_intent(question)
+        if (news_intent.is_news and news_intent.explicit_window
+                and self.settings.news_engines_enabled
+                and not filters.date_from and not filters.date_to):
+            filters = replace(filters, date_from=news_intent.date_from,
+                              date_to=news_intent.date_to)
+
         # Intent-matched public APIs complement the general engines on their
         # own domains (scholarship, code repositories, and software questions).
         # They are never added when the caller explicitly chooses engines.
@@ -202,6 +216,14 @@ class SearchEngine:
             for name in reversed(routed):
                 backend = self.backends.get(name)
                 if backend is None:
+                    continue
+                # Each news lane can be turned off independently; a disabled
+                # lane is simply not routed, never reported as a failure.
+                if name == "sitemaps" and not self.settings.news_archive_enabled:
+                    continue
+                if name == "publisher-feeds" and not self.settings.news_publisher_feeds_enabled:
+                    continue
+                if name in ("bing-news", "google-news") and not self.settings.news_engines_enabled:
                     continue
                 try:
                     available, reason = backend.availability()
@@ -373,8 +395,18 @@ class SearchEngine:
             hit.title = content_guard.sanitize(hit.title, 200)
             hit.snippet = content_guard.sanitize(hit.snippet, 400)
 
-        groups, dedup_log = dedup(filtered, self.settings.dedup_title_similarity)
+        groups, dedup_log = dedup(filtered, self.settings.dedup_title_similarity,
+                                  syndication=news_intent.is_news and self.settings.news_engines_enabled)
         results = self._rank(question, groups, options.max_results)
+
+        # Recent-news verification: read the top publisher pages to corroborate
+        # the feed's publication date against the page's own metadata and to
+        # confirm the article actually addresses the topic. Bounded and honest:
+        # a page that cannot be read keeps its feed date but is marked
+        # unverified, never silently presented as confirmed fresh evidence.
+        if (news_intent.is_news and self.settings.news_engines_enabled
+                and self.settings.news_verify_dates and results and context is not None):
+            self._verify_news(question, results, news_intent, context)
 
         flags = sorted({f for r in results for f in r.security_flags})
         engine_answered = any(o.status in ("results", "empty") for o in outcomes)
@@ -425,6 +457,58 @@ class SearchEngine:
             if not info.get("available"))
         if not_configured:
             summary += (f"; not configured (skipped, not failed): {', '.join(not_configured)}")
+
+        # Recent-news diagnostics: make the recency story auditable. A caller
+        # can see the detected window, how many results carry a publication
+        # date, and how many were actually read and corroborated — instead of
+        # trusting an undated list or an unverified "fresh" claim.
+        news_diag: Dict[str, Any] = {}
+        if news_intent.is_news:
+            dated = [r for r in results if r.published_at]
+            verified = [r for r in results if r.news_verification.get("read")]
+            corroborated = [r for r in verified if r.news_verification.get("date_corroborated")]
+            topic_ok = [r for r in verified if r.news_verification.get("topic_match")]
+            news_diag = {
+                "is_news": True,
+                "is_archive": news_intent.is_archive,
+                "window_days": news_intent.window_days,
+                "effective_window_days": news_intent.effective_window_days(),
+                "explicit_window": news_intent.explicit_window,
+                "window_evidence": news_intent.window_evidence,
+                "date_from": news_intent.date_from,
+                "date_to": news_intent.date_to,
+                "results": len(results),
+                "with_publication_date": len(dated),
+                "pages_read": len(verified),
+                "dates_corroborated": len(corroborated),
+                "topic_matched": len(topic_ok),
+                "high_confidence_dates": sum(1 for r in results if r.date_confidence == "high"),
+                "verification_enabled": bool(self.settings.news_verify_dates),
+            }
+            if results and not dated:
+                summary += "; news: no result carries a verifiable publication date"
+            elif dated and not verified and self.settings.news_verify_dates:
+                summary += "; news: publication dates are from feeds, not yet page-verified"
+
+        # Story-level view: eight copies of one wire report are one story, and
+        # a developing event has a first report and a latest update. Only real
+        # publication dates order the timeline; undated stories are counted but
+        # never placed on it.
+        events_diag: Dict[str, Any] = {}
+        trend_signals: List[Dict[str, Any]] = []
+        if news_intent.is_news and self.settings.news_events_enabled and results:
+            from .events import build_timeline, detect_trends
+            timeline = build_timeline(question, results)
+            events_diag = timeline.to_dict()
+            trend_signals = [signal.to_dict() for signal in detect_trends(
+                question, results, window_days=max(1, self.settings.news_trend_window_days))]
+            if timeline.story_count and timeline.story_count < len(results):
+                noun = "story" if timeline.story_count == 1 else "stories"
+                summary += (f"; {len(results)} results grouped into "
+                            f"{timeline.story_count} {noun}")
+            if timeline.note:
+                summary += f"; timeline: {timeline.note}"
+
         return SearchResponse(
             query=question,
             results=results,
@@ -441,6 +525,9 @@ class SearchEngine:
             engine_readiness=readiness or {},
             coverage=coverage,
             paid_fallback=paid_fallback,
+            news=news_diag,
+            events=events_diag,
+            trends=trend_signals,
         )
 
     # --------------------------------------------------------- filtering
@@ -514,9 +601,30 @@ class SearchEngine:
     # ----------------------------------------------------------- ranking
     def _rank(self, question: str, groups, max_results: int) -> List[RankedResult]:
         s = self.settings
-        weights = {"relevance": s.weight_relevance, "authority": s.weight_authority,
-                   "freshness": s.weight_freshness, "agreement": s.weight_agreement}
         intent = classify_query(question)
+        news_intent = detect_news_intent(question)
+        is_news = news_intent.is_news and s.news_engines_enabled
+        if is_news:
+            # News weight profile: recency is part of relevance for a news
+            # question, and publisher credibility matters more than a generic
+            # domain suffix. The relevance gate below still runs on pure
+            # relevance, so this never lets an off-topic page win on recency.
+            weights = {"relevance": s.news_weight_relevance,
+                       "authority": s.news_weight_authority,
+                       "freshness": s.news_weight_freshness,
+                       "agreement": s.news_weight_agreement,
+                       "source_quality": s.news_source_quality_weight}
+        else:
+            weights = {"relevance": s.weight_relevance, "authority": s.weight_authority,
+                       "freshness": s.weight_freshness, "agreement": s.weight_agreement}
+        # News decays on a much shorter half-life than evergreen content; a
+        # 365-day half-life made a year-old article look as fresh as today's.
+        half_life = s.news_freshness_half_life_days if is_news else s.freshness_half_life_days
+        # An archive question is the exception: for "climate policy in 2019" a
+        # 2019 article is exactly right, and decaying it toward zero would rank
+        # the correct answer last. The date window does the selecting, so
+        # freshness is held neutral instead of rewarding newness.
+        flat_freshness = is_news and news_intent.is_archive
         engines_with_results = {h.engine for g in groups for h in g.hits}
         n_engines = max(1, len(engines_with_results))
         today = today_utc()
@@ -552,9 +660,17 @@ class SearchEngine:
             factors = {
                 "relevance": rel,
                 "authority": authority(group.hits[0].url, s.authority_weights, s.default_authority),
-                "freshness": freshness(published, today, s.freshness_half_life_days, s.neutral_freshness),
+                "freshness": (s.neutral_freshness if flat_freshness
+                              else freshness(published, today, half_life, s.neutral_freshness)),
                 "agreement": round(len(engines) / n_engines, 4),
             }
+            # News only: publisher credibility is its own bounded factor, not
+            # folded into relevance. Keeping relevance pure means the gate
+            # below still reflects true topic match, and an established or
+            # primary publisher can settle a near-tie without ever outranking
+            # a clearly more relevant article. Non-news ranking is unchanged.
+            if is_news:
+                factors["source_quality"] = round(source_quality(group.hits[0].url), 4)
             # Relevance gate: recency must not rescue a result the query does
             # not match. A page published today scores ~1.0 on freshness, so
             # without this a dated piece of junk ("15 best pizza places",
@@ -584,6 +700,7 @@ class SearchEngine:
                 modified_at=modified,
                 date_kind=date_kind,
                 freshness_gated=gated,
+                date_confidence=_date_confidence(hits) if is_news else "",
             ))
         ranked.sort(key=lambda r: (-r.score, r.url))
         # D5: Wikipedia is an entity/definition source. For procedure,
@@ -608,9 +725,117 @@ class SearchEngine:
         # D6 shortfall reason) beats filling a procedure slot with hubs.
         return capped[:max_results]
 
+    # ------------------------------------------------------- news verification
+    def _verify_news(self, question: str, results: List[RankedResult],
+                     news_intent, context: Any) -> None:
+        """Read the top publisher pages to corroborate dates and topic.
+
+        For each of the top ``news_verify_top_n`` results this reads the actual
+        publisher page through the normal retrieval infrastructure (static
+        first, browser fallback for JS shells), extracts the page's own
+        publication metadata, and checks that the article addresses the topic.
+        The page's structured date is more authoritative than a feed pubDate,
+        so it corroborates or corrects the feed date. A page that cannot be
+        read keeps its feed date but is marked unverified — never silently
+        presented as confirmed fresh evidence. Bounded and failure-tolerant:
+        one unreadable page never aborts the others or the search.
+        """
+        from typing import cast
+
+        from ..sources import get_source
+        from ..sources.web import WebSource
+        from .ranking import combine, freshness as _freshness
+
+        s = self.settings
+        web = cast(WebSource, get_source("web"))
+        if web is None:
+            return
+        q_terms = term_set(question)
+        # Recompute with the same news weight profile used in _rank, so a
+        # corrected date moves the score consistently with the original ranking.
+        weights = {"relevance": s.news_weight_relevance,
+                   "authority": s.news_weight_authority,
+                   "freshness": s.news_weight_freshness,
+                   "agreement": s.news_weight_agreement,
+                   "source_quality": s.news_source_quality_weight}
+        today = today_utc()
+        half_life = s.news_freshness_half_life_days
+        top_n = max(0, s.news_verify_top_n)
+        for result in results[:top_n]:
+            verification: Dict[str, Any] = {"read": False, "topic_match": False}
+            try:
+                artifact = web.read_url(result.url, context, mode="auto", max_chars=6000)
+            except Exception as exc:  # a failed read is reported, not hidden
+                verification["reason"] = type(exc).__name__
+                verification["detail"] = str(getattr(exc, "detail", "") or exc)[:160]
+                result.news_verification = verification
+                continue
+            verification["read"] = True
+            verification["method"] = artifact.retrieval_method
+            content = artifact.content or ""
+            # Topic check: a meaningful share of the question's content terms
+            # must appear in the article body, or it is not evidence for it.
+            body_terms = term_set(content)
+            overlap = (len(q_terms & body_terms) / len(q_terms)) if q_terms else 0.0
+            verification["topic_overlap"] = round(overlap, 3)
+            verification["topic_match"] = overlap >= 0.4
+            dates = (artifact.metadata or {}).get("article_dates") or {}
+            page_pub = dates.get("published_at")
+            page_mod = dates.get("modified_at")
+            if page_mod and not result.modified_at:
+                result.modified_at = page_mod
+            if page_pub:
+                feed_date = result.published_at
+                verification["page_published_at"] = page_pub
+                verification["feed_published_at"] = feed_date
+                verification["date_corroborated"] = bool(feed_date and feed_date == page_pub)
+                # The page's structured metadata wins over the feed pubDate.
+                if feed_date != page_pub:
+                    result.published_at = page_pub
+                    result.date_evidence = str(dates.get("published_evidence") or "page:metadata")
+                    result.date_kind = "publication"
+                    result.date_status = "known"
+                    # Recompute freshness/score so ranking reflects the verified date.
+                    result.score_breakdown["freshness"] = _freshness(
+                        page_pub, today, half_life, s.neutral_freshness)
+                    result.score = combine(result.score_breakdown, weights)
+                result.date_confidence = "high"
+            else:
+                verification["page_published_at"] = None
+                verification["date_corroborated"] = False
+            result.news_verification = verification
+        # Re-sort so a corrected/verified date is reflected in the ordering.
+        results.sort(key=lambda r: (-r.score, r.url))
+
 
 def _default_synonyms() -> Dict[str, List[str]]:
     return DEFAULT_SYNONYMS
+
+
+def _date_confidence(hits) -> str:
+    """The strongest publication-date evidence across a group's hits.
+
+    Page metadata (JSON-LD / article meta) is high; a feed pubDate or a
+    ``<time>`` tag is medium; a snippet/URL heuristic is low. This is a
+    heuristic label for the caller, not a calibrated probability.
+    """
+    best = ""
+    rank = {"": 0, "low": 1, "medium": 2, "high": 3}
+    for h in hits:
+        if not h.published_at:
+            continue
+        evidence = str(h.raw.get("date_evidence") or "")
+        if evidence.startswith(("jsonld:", "meta:article", "meta:og:article")):
+            level = "high"
+        elif evidence.startswith(("rss:", "time:")):
+            level = "medium"
+        elif evidence:
+            level = "low"
+        else:
+            level = "low"
+        if rank[level] > rank[best]:
+            best = level
+    return best
 
 
 def _summarize(question: str, results: List[RankedResult], outcomes: List[Any],

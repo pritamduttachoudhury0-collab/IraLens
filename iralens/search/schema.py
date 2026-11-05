@@ -164,6 +164,13 @@ class RankedResult:
     #: True when freshness was held at neutral because relevance failed the
     #: gate. Reported so a capped score is explainable rather than mysterious.
     freshness_gated: bool = False
+    #: News date confidence: "high" (page JSON-LD/article meta), "medium"
+    #: (feed pubDate / time tag), "low" (heuristic), "" (not a news result or
+    #: unknown). A heuristic label, not a calibrated probability.
+    date_confidence: str = ""
+    #: News verification outcome for this result (topic match, page-read
+    #: status, corroborated publication date). Empty for non-news results.
+    news_verification: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -209,6 +216,20 @@ class SearchResponse:
     # coverage/trigger that led to it. An absent key is never implied to be a
     # successful replacement; callers can measure the free result separately.
     paid_fallback: Dict[str, Any] = field(default_factory=dict)
+    # Recent-news diagnostics: the detected intent/window, how many results
+    # carry a verified publication date, and how many were actually read and
+    # corroborated against the publisher page. Empty for non-news queries. This
+    # is what lets a caller see *why* a news answer is (or is not) fresh, rather
+    # than trusting an undated list.
+    news: Dict[str, Any] = field(default_factory=dict)
+    # Event timeline for a news query: results grouped into stories (one wire
+    # report on eight outlets is ONE story), with first report / latest update
+    # taken only from real publication dates. Empty for non-news queries.
+    events: Dict[str, Any] = field(default_factory=dict)
+    # Trend signals: which stories are being picked up by the most independent
+    # publishers, with the counts behind each score. A heuristic over coverage,
+    # not an official "trending" list and not a probability.
+    trends: List[Dict[str, Any]] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SearchResponse":
@@ -228,6 +249,9 @@ class SearchResponse:
             engine_readiness=data.get("engine_readiness", {}),
             coverage=data.get("coverage", {}),
             paid_fallback=data.get("paid_fallback", {}),
+            news=data.get("news", {}),
+            events=data.get("events", {}),
+            trends=data.get("trends", []),
         )
 
     @property

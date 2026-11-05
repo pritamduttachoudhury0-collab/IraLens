@@ -34,7 +34,8 @@ if TYPE_CHECKING:
 #: Engine names the search chain may draw on, used to filter the circuit
 #: snapshot down to the engines this source actually uses.
 _SEARCH_ENGINE_KEYS = ("duckduckgo", "bing", "wikipedia", "startpage",
-                       "brave", "mojeek", "marginalia", "gdelt", "semantic-search",
+                       "brave", "mojeek", "marginalia", "gdelt", "bing-news",
+                       "google-news", "publisher-feeds", "sitemaps", "semantic-search",
                        "crossref", "arxiv", "stackexchange", "github-search", "paid-backup")
 
 

@@ -80,6 +80,7 @@ repository, but the upload needs the project's PyPI account
 | Feature | What you get |
 |---|---|
 | **Search** | Keyless general engines (DuckDuckGo, Bing — experimental —, Mojeek fallback, Wikimedia API, optional self-hosted SearXNG) plus intent-routed GDELT news, Crossref/arXiv/Stack Exchange/GitHub public APIs; adaptive query forms; ranked results, cross-engine dedup, explainable scores, and honest coverage/degradation reporting. These additions are provider-dependent; see the frozen live benchmark and `KNOWN_LIMITATIONS.md` for measured limits. |
+| **News** | News-shaped queries route Bing/Google News RSS, curated publisher feeds and GDELT; results carry real publication dates (kept apart from revision, index-seen and retrieval dates), are page-verified where possible, and are grouped into **stories** with an event timeline and coverage-trend signals. Archive questions ("in 2019", "between 2019 and 2021") route to **publisher sitemaps** instead of recent-only indexes. Regional queries reach local outlets directly — e.g. Assam and Northeast India. A site demanding human verification is reported as `verification_required`, never bypassed. Offline-verified; live scores pending — see `KNOWN_LIMITATIONS.md`. |
 | **Page reading** | Any URL through specialized readers → fast local static extraction → local browser fallback for JS-heavy pages, with typed errors (`http_403`, `soft_404`, `antibot_challenge`, …) that say exactly what happened. |
 | **Documents** | PDF text extraction with ligature/hyphen normalization and a 20 MB cap; scanned PDFs get automatic **local** OCR when `pdftoppm` + `tesseract` are installed — never uploaded. |
 | **Browser** | Integrated native browser engine (`iralens._internal.browser_engine`, V8 + HTML5 DOM): navigate, snapshot, click, fill, extract, evaluate JS, tabs, RFC 6265 cookies, storage state. Bundled out of the box with zero runtime binary downloads; optional stealth tier (one coherent browser identity, off by default); stdio-only control. |
@@ -250,9 +251,11 @@ measures a score.
 ## Known limits
 
 Live results depend on your network and the search sources you configure;
-bot walls and rate limits are reported honestly rather than hidden. The
-browser engine is optional and anything that needs it says so. Research
-output is evidence leads, not verified answers.
+bot walls and rate limits are reported honestly rather than hidden. A browser
+engine is bundled and works out of the box with no runtime download; using it
+is optional (fast static reads do not need it), and anything that does need it
+says so. `iralens install-engine` is an optional upgrade to a native binary,
+not a requirement. Research output is evidence leads, not verified answers.
 
 Sites that answer with a CAPTCHA, a bot check, a login wall, or an
 access-denied page are **reported, not solved**: the read stops with a typed

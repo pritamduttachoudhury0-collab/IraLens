@@ -124,6 +124,7 @@ def fetch_url_text(
     same_origin_redirects: bool = False,
     user_agent: str = DEFAULT_USER_AGENT,
     allow_private_hosts: bool = False,
+    detect_challenge: bool = False,
 ) -> str:
     """Fetch *url* over SSRF-safe HTTP and return the decoded body text.
 
@@ -133,6 +134,13 @@ def fetch_url_text(
       PageUnavailableError — HTTP status problems, classified by code.
       OperationTimeoutError — the overall deadline expired (slow-drip guard).
       ExtractionError — the response exceeded the size cap.
+
+    `detect_challenge` inspects an HTML response for a human-verification wall
+    (CAPTCHA widget, "prove you are not a robot", a Cloudflare/PerimeterX
+    interstitial) and raises `VerificationRequiredError` instead of returning
+    the wall's markup as if it were content. It never attempts to clear the
+    check. Only HTML is inspected: an RSS feed or sitemap that merely mentions
+    a block page in an article title must not be mistaken for one.
 
     `allow_private_hosts` consults IRALENS_ALLOWED_PRIVATE_HOSTS. It is
     only for search transports calling a self-hosted backend; page reads never
@@ -169,7 +177,24 @@ def fetch_url_text(
         if "timed out" in low or "timeout" in low:
             raise OperationTimeoutError("fetch timed out", detail="timeout") from exc
         raise PageUnavailableError("fetch failed", detail=detail[:300]) from exc
-    return body.decode("utf-8", errors="replace")
+    text = body.decode("utf-8", errors="replace")
+    if detect_challenge:
+        head = text[:4096].lstrip().lower()
+        if head.startswith(("<!doctype html", "<html")) or "<html" in head:
+            from . import challenge
+            from .errors import VerificationRequiredError
+
+            verdict = challenge.detect(body)
+            # Only a *confident* verdict stops the read. An article that
+            # quotes "prove you are not a robot" is still an article.
+            if verdict.confident:
+                raise VerificationRequiredError(
+                    "the site asked for human verification instead of serving the page",
+                    hint=("this is a check for a person; it is reported, not bypassed. "
+                          "Use another source, or open the page in your own browser"),
+                    detail=f"challenge:{verdict.kind}", verdict=verdict, url=url,
+                )
+    return text
 
 
 def fetch_search_page(
