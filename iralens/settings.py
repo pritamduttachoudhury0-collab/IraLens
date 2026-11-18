@@ -60,6 +60,11 @@ class Settings:
     # Local-first reading: direct fetch + stdlib extraction is the
     # default; the remote reader (r.jina.ai) is OFF and opt-in only.
     read_remote_reader_enabled: bool = False
+    #: A 200 response whose whole body is the page's own title (`"Title: MSN"`,
+    #: measured at 10 characters on msn.com article URLs) is not an article.
+    #: It is reported as a typed ``extraction_failed`` / ``empty_body`` rather
+    #: than a success. Only named portal hosts with a known title are checked.
+    read_reject_title_only_pages: bool = True
     # --- ranking ------------------------------------------------------------
     weight_relevance: float = 0.4
     weight_authority: float = 0.2
@@ -96,6 +101,33 @@ class Settings:
     news_verify_dates: bool = True
     #: How many top news candidates to read for date/topic verification.
     news_verify_top_n: int = 4
+    #: Resolve provider click-wrappers (``news.google.com/rss/articles/…``) to
+    #: the publisher URL they point at. Modern Google tokens are encrypted and
+    #: cannot be decoded offline; without this every news result would be an
+    #: opaque redirect. Measured before the fix: 45.8% of news top-5 slots.
+    news_resolve_wrappers: bool = True
+    #: Per-wrapper resolution budget, in seconds.
+    news_resolve_timeout_seconds: float = 8.0
+    #: Network resolutions allowed per search. Cached hits are free. When the
+    #: budget is spent the remaining wrappers are reported, not guessed.
+    news_resolve_budget: int = 12
+    #: Drop a wrapper whose target could not be recovered. It would otherwise
+    #: read as a 200 with an 18-character body — a silent wrong-content
+    #: success. Turning this off can keep other unresolved wrappers, but
+    #: ``no_target`` is always dropped and counted.
+    news_drop_unresolved_wrappers: bool = True
+    #: What to do with a slot that lands on a syndication portal
+    #: (msn.com / yahoo.com / apple.news) rather than on a publisher.
+    #:   "drop"   - remove it. Default: measured, a portal is not readable
+    #:              here (msn returns a 10-character "Title: MSN" success,
+    #:              yahoo returns a typed fetch error), and a slot that cannot
+    #:              be read is not a source.
+    #:   "demote" - keep it, ranked below every publisher, and labelled.
+    #:   "off"    - leave ranking untouched (for reproducing the old numbers).
+    news_aggregator_policy: str = "drop"
+    #: Feeds are over-fetched by this factor so that dropping unreadable
+    #: portals still leaves enough publisher results to fill the slots.
+    news_feed_overfetch: float = 2.0
     #: News ranking weight profile. For a news question, recency is part of
     #: relevance, so freshness carries far more weight than for an evergreen
     #: query (0.35 vs 0.20) and decays on the short news half-life. Publisher

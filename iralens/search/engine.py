@@ -26,7 +26,9 @@ from ..settings import Settings
 from .coverage import assess_coverage
 from .dedup import dedup
 from .engines import LEGACY_ALIASES, build_backends
+from .engines.aggregators import DEMOTION_PENALTY, aggregator_host
 from .engines.base import SearchBackend
+from .engines.url_resolve import STATUS_NO_TARGET
 from .fallback import run_chain
 from .intent import classify_query, intent_multiplier, specialist_search_engines
 from .news import detect_news_intent, source_quality
@@ -50,6 +52,30 @@ _FLAGGED_RELEVANCE_FACTOR = 0.5
 _CACHE_NS = "search.v1"
 
 
+#: Portal-specific demotion strength. A near-zero gain over the generic value
+#: would let a portal that scores high on relevance/authority still win; these
+#: are ordered by how opaque the redirect is (a Google News blob is the worst
+#: case: it hides the publisher entirely, so it is punished hardest).
+_AGGREGATOR_SEVERITY = {
+    "news.google.com": 1.0,
+    "google.com": 1.0,
+    "bing.com": 0.9,
+    "www.bing.com": 0.9,
+    "apple.news": 1.0,
+    "news.yahoo.com": 0.8,
+    "yahoo.com": 0.8,
+    "msn.com": 0.8,
+    "flipboard.com": 0.9,
+    "smartnews.com": 0.9,
+    "newsbreak.com": 0.9,
+}
+_DEFAULT_SEVERITY = 0.7
+
+
+def _aggregator_severity(host: str) -> float:
+    return _AGGREGATOR_SEVERITY.get(host, _DEFAULT_SEVERITY)
+
+
 class SearchEngine:
     def __init__(
         self,
@@ -68,6 +94,10 @@ class SearchEngine:
         self.gate = gate or ConcurrencyGate(settings.search_max_concurrent, settings.search_acquire_timeout_seconds)
         self.site_gate = site_gate or PerSiteConcurrencyGate(settings.search_per_site_concurrent, settings.search_acquire_timeout_seconds)
         self.synonyms = synonyms
+        #: Wrapper links seen and discarded because their target could not be
+        #: recovered. Surfaced in diagnostics so an all-wrapper feed reads as
+        #: "resolution failed", not as "the web had no news".
+        self._unresolved_wrapper_events = 0
         self.policy = RetryPolicy(settings.retry_max_attempts, settings.retry_base_delay_seconds,
                                   settings.retry_max_delay_seconds)
         self.breaker = breaker or PersistentCircuitBreaker(
@@ -377,6 +407,27 @@ class SearchEngine:
                 filter_report["excluded_seen"] = dropped
                 filter_report.setdefault("applied_post", []).append("exclude_urls")
         filter_report["non_public_dropped"] = rejected
+
+        # Wrapper resolution: a provider redirect we could not see through is
+        # not a result. Reading one returns a 200 with the portal's own page
+        # title (measured: 18 characters, "Title: Google News"), so keeping it
+        # would manufacture a silent success. Dropped here, counted, and
+        # reported -- never silently substituted with a guess at the target.
+        dropped_wrappers: Dict[str, int] = {}
+        kept: List[SearchHit] = []
+        for hit in filtered:
+            if hit.raw.get("wrapper_unresolved"):
+                status = str(hit.raw.get("wrapper_status") or "unresolved")
+                if self.settings.news_drop_unresolved_wrappers or status == STATUS_NO_TARGET:
+                    dropped_wrappers[status] = dropped_wrappers.get(status, 0) + 1
+                    self._unresolved_wrapper_events += 1
+                    continue
+            kept.append(hit)
+        if dropped_wrappers:
+            filtered = kept
+            filter_report["unresolved_wrappers_dropped"] = dict(dropped_wrappers)
+            filter_report["dropped"] = filter_report.get("dropped", 0) + sum(dropped_wrappers.values())
+            filter_report.setdefault("applied_post", []).append("wrapper_resolution")
         for hit in filtered:
             # Scan the raw text first: sanitizing strips invisible characters,
             # which is itself a signal worth reporting.
@@ -397,7 +448,8 @@ class SearchEngine:
 
         groups, dedup_log = dedup(filtered, self.settings.dedup_title_similarity,
                                   syndication=news_intent.is_news and self.settings.news_engines_enabled)
-        results = self._rank(question, groups, options.max_results)
+        results = self._rank(question, groups, options.max_results,
+                             filter_report=filter_report)
 
         # Recent-news verification: read the top publisher pages to corroborate
         # the feed's publication date against the page's own metadata and to
@@ -599,7 +651,8 @@ class SearchEngine:
         return kept, report
 
     # ----------------------------------------------------------- ranking
-    def _rank(self, question: str, groups, max_results: int) -> List[RankedResult]:
+    def _rank(self, question: str, groups, max_results: int,
+              filter_report: Optional[Dict[str, Any]] = None) -> List[RankedResult]:
         s = self.settings
         intent = classify_query(question)
         news_intent = detect_news_intent(question)
@@ -702,7 +755,33 @@ class SearchEngine:
                 freshness_gated=gated,
                 date_confidence=_date_confidence(hits) if is_news else "",
             ))
-        ranked.sort(key=lambda r: (-r.score, r.url))
+        # Aggregator policy. A slot on a syndication portal is a slot the
+        # caller cannot use: measured, msn.com returns a 10-character
+        # "Title: MSN" success and yahoo returns a typed fetch error. Citing a
+        # middleman is also strictly worse than citing the article it copies.
+        # The policy is a setting because "unreadable" is an observation about
+        # *this* reader on *this* date, not a law of nature.
+        policy = str(getattr(s, "news_aggregator_policy", "drop") or "drop").lower()
+        if is_news and policy in ("drop", "demote"):
+            kept: List[RankedResult] = []
+            dropped_agg: Dict[str, int] = {}
+            for r in ranked:
+                agg = aggregator_host(r.url)
+                if not agg:
+                    kept.append(r)
+                    continue
+                if policy == "demote":
+                    multiplier = 1.0 - (1.0 - DEMOTION_PENALTY) * _aggregator_severity(agg)
+                    r.score = round(r.score * multiplier, 6)
+                    r.score_breakdown["aggregator_demotion_multiplier"] = multiplier
+                    kept.append(r)
+                else:
+                    dropped_agg[agg] = dropped_agg.get(agg, 0) + 1
+            if dropped_agg and filter_report is not None:
+                filter_report["aggregator_dropped"] = dict(dropped_agg)
+                filter_report["aggregator_dropped_total"] = sum(dropped_agg.values())
+            ranked = kept
+        ranked.sort(key=_news_result_order)
         # D5: Wikipedia is an entity/definition source. For procedure,
         # statistic, current-event, comparison and error questions it must not
         # fill the top slots with hub articles. Definitional/entity queries
@@ -798,14 +877,19 @@ class SearchEngine:
                     # Recompute freshness/score so ranking reflects the verified date.
                     result.score_breakdown["freshness"] = _freshness(
                         page_pub, today, half_life, s.neutral_freshness)
-                    result.score = combine(result.score_breakdown, weights)
+                    multiplier = result.score_breakdown.get("aggregator_demotion_multiplier", 1.0)
+                    result.score = round(combine(result.score_breakdown, weights) * multiplier, 6)
                 result.date_confidence = "high"
             else:
                 verification["page_published_at"] = None
                 verification["date_corroborated"] = False
             result.news_verification = verification
         # Re-sort so a corrected/verified date is reflected in the ordering.
-        results.sort(key=lambda r: (-r.score, r.url))
+        results.sort(key=_news_result_order)
+
+
+def _news_result_order(result: RankedResult) -> tuple[bool, float, str]:
+    return ("aggregator_demotion_multiplier" in result.score_breakdown, -result.score, result.url)
 
 
 def _default_synonyms() -> Dict[str, List[str]]:

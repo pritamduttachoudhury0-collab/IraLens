@@ -40,7 +40,7 @@ from ..errors import (
 )
 from ..model import Artifact
 from ..reliability import HOST_RATE_LIMITER, TRANSPORT_HEALTH
-from ..security import normalize_public_http_url, public_message, safe_urlopen
+from ..security import host_matches, normalize_public_http_url, public_message, safe_urlopen
 from ..settings import Settings
 from .base import Source, SourceHealth
 
@@ -94,6 +94,25 @@ def _is_antibot_page(body: bytes) -> bool:
         "ray id" in sample or "/cdn-cgi/challenge-platform/" in sample
     )
     return (captcha_warning and challenge_structure) or cloudflare_block
+
+
+#: Reject only known portal hosts serving exactly their title as content.
+#: Short publisher pages and portal pages with actual article text are valid.
+_PORTAL_SHELL_TITLES = {
+    "msn.com": "title: msn",
+    "news.google.com": "title: google news",
+    "yahoo.com": "title: yahoo",
+    "apple.news": "title: apple news",
+}
+
+
+def _empty_body_reason(markdown: str, url: str) -> str:
+    """Why this response is a known portal shell, or ``""."""
+    body = (markdown or "").strip().casefold()
+    for host, title in _PORTAL_SHELL_TITLES.items():
+        if body == title and host_matches(url, host):
+            return "portal_shell"
+    return ""
 
 
 def _reject_if_challenge(body: bytes, *, url: str = "",
@@ -605,6 +624,16 @@ class WebSource(Source):
                     urllib.parse.urlsplit(safe_url).netloc.lower(), "static", ok=False)
                 if mode == "static":
                     raise
+
+        # Known title-only portal responses are not articles. Test the full
+        # text before truncation, separately from generic renderer heuristics.
+        if (static_artifact is not None and settings.read_reject_title_only_pages
+                and _empty_body_reason(markdown, static_artifact.url)):
+            raise ExtractionError(
+                "portal served its title with no article body",
+                detail="empty_body",
+                hint="use a direct publisher URL if one is available",
+            )
 
         # A static read that succeeded but produced an app shell (or almost no
         # text) has not read the page: the useful text is rendered client-side.

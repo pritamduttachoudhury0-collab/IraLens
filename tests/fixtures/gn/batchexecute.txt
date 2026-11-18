@@ -1,0 +1,5 @@
+Captured 2026-11-16: the endpoint's reply to the request built from
+interstitial.html. Trimmed to the wrb.fr row.
+)]}'
+
+[["wrb.fr","Fbv4je","[\"garturlres\",\"https://thehackernews.com/2026/11/stolen-fireworks-ai-key-led-to-cursor.html\",1]",null,null,null,"generic"],["di",16],["af.httprm",16,"3218058360458655609",0]]
