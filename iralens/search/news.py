@@ -246,7 +246,8 @@ def detect_news_intent(question: str, *, today: Optional[date] = None) -> NewsIn
         window_days = None
     elif window_days is not None:
         date_to = now.isoformat()
-        date_from = (now - timedelta(days=max(0, window_days - 1))).isoformat()
+        # Inclusive date bounds cover both endpoint days of a rolling span.
+        date_from = (now - timedelta(days=window_days)).isoformat()
     return NewsIntent(
         is_news=True, window_days=window_days, date_from=date_from, date_to=date_to,
         window_evidence=evidence, explicit_window=explicit, is_archive=is_archive,

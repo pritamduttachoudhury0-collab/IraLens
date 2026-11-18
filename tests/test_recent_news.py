@@ -16,7 +16,7 @@ separate, clearly-labelled step (see benchmarks/run_recent_news.py).
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -62,7 +62,20 @@ def test_explicit_time_windows(query, days):
     assert intent.explicit_window
     assert intent.window_days == days
     assert intent.date_to == TODAY.isoformat()
-    assert intent.date_from == (TODAY - timedelta(days=days - 1)).isoformat()
+    # Inclusive rolling bounds span today and yesterday for "today", so
+    # a 02:00 UTC run can still include articles from the previous evening.
+    assert intent.date_from == (TODAY - timedelta(days=days)).isoformat()
+
+
+def test_today_window_includes_previous_evening_at_0219_utc():
+    now = datetime(2026, 11, 18, 2, 19, tzinfo=timezone.utc)
+    article_date = news.normalize_timestamp((now - timedelta(hours=17)).isoformat())
+    intent = news.detect_news_intent("earthquake today magnitude USGS", today=now.date())
+
+    assert article_date == "2026-11-17"
+    assert intent.date_from == "2026-11-17"
+    assert intent.date_to == "2026-11-18"
+    assert intent.date_from <= article_date <= intent.date_to
 
 
 def test_news_without_explicit_window_is_soft():
